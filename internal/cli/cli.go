@@ -231,8 +231,8 @@ func cmdRemove(repoRoot, cfgPath string, args []string) int {
 		return code
 	}
 	if _, exists := cfg.Services[name]; !exists {
-		errf("Service %q does not exist.", name)
-		return 1
+		fmt.Printf("Service %q does not exist; nothing to remove.\n", name)
+		return 0
 	}
 	delete(cfg.Services, name)
 	if err := cfg.Save(); err != nil {

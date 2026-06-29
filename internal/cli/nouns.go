@@ -91,8 +91,8 @@ func hostRemove(cfgPath string, args []string) int {
 		return code
 	}
 	if _, exists := cfg.Hosts[name]; !exists {
-		errf("Host %q does not exist.", name)
-		return 1
+		fmt.Printf("Host %q does not exist; nothing to remove.\n", name)
+		return 0
 	}
 	if users := cfg.ServicesUsingHost(name); len(users) > 0 {
 		errf("Host %q is still referenced by %d %s: %s.", name, len(users), plural(len(users), "service"), strings.Join(users, ", "))
@@ -175,8 +175,8 @@ func domainRemove(cfgPath string, args []string) int {
 		return code
 	}
 	if _, exists := cfg.Domains[name]; !exists {
-		errf("Domain %q does not exist.", name)
-		return 1
+		fmt.Printf("Domain %q does not exist; nothing to remove.\n", name)
+		return 0
 	}
 	if users := cfg.ServicesUsingDomain(name); len(users) > 0 {
 		errf("Domain %q is still referenced by %d %s: %s.", name, len(users), plural(len(users), "service"), strings.Join(users, ", "))

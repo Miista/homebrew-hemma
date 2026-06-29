@@ -198,3 +198,29 @@ func TestDNSHostSet_MissingArgs(t *testing.T) {
 		t.Errorf("dns-host set with no name should exit 2, got %d", code)
 	}
 }
+
+// Removing a nonexistent host/domain is idempotent: no-op success (exit 0),
+// matching docker-unpin's "X is not pinned" behavior.
+func TestHostRemove_NonexistentIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+	if code := Run([]string{"-C", dir, "host", "remove", "ghost"}); code != 0 {
+		t.Errorf("removing nonexistent host should exit 0, got %d", code)
+	}
+}
+
+func TestDomainRemove_NonexistentIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+	if code := Run([]string{"-C", dir, "domain", "remove", "ghost.net"}); code != 0 {
+		t.Errorf("removing nonexistent domain should exit 0, got %d", code)
+	}
+}
+
+func TestServiceRemove_NonexistentIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+	if code := Run([]string{"-C", dir, "remove", "ghost"}); code != 0 {
+		t.Errorf("removing nonexistent service should exit 0, got %d", code)
+	}
+}
