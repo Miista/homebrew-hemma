@@ -360,10 +360,15 @@ func cmdRemove(repoRoot, cfgPath string, args []string) int {
 		errf("%v", err)
 		return 1
 	}
-	for _, d := range res.Deleted {
-		fmt.Printf("  - %s\n", d)
+	switch n := len(res.Deleted); n {
+	case 0:
+		fmt.Printf("Removed service %q (no generated files to delete).\n", name)
+	default:
+		fmt.Printf("Removed service %q — %d %s deleted:\n", name, n, plural(n, "file"))
+		for _, d := range res.Deleted {
+			fmt.Printf("  - %s\n", d)
+		}
 	}
-	fmt.Printf("Removed service %q.\n", name)
 	return 0
 }
 
