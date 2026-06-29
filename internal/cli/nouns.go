@@ -36,37 +36,27 @@ func hostAdd(cfgPath string, args []string) int {
 	name, args, ok := leadingName(args)
 	if !ok {
 		errf("Missing the <name>.")
-		hint("Usage: shd host add <name> --ip <ip> --dir <dir>")
+		hint("Usage: shd host add <name> --ip <ip>")
 		return 2
 	}
 	fs := flag.NewFlagSet("host add", flag.ContinueOnError)
 	ip := fs.String("ip", "", "host LAN IP (required)")
-	dir := fs.String("dir", "", "repo directory for this host (required)")
-	dnsmasqDir := fs.String("dnsmasq-dir", "", "override dnsmasq output dir")
-	caddyDir := fs.String("caddy-sites-dir", "", "override caddy sites dir")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	var missing []string
 	if *ip == "" {
-		missing = append(missing, "--ip")
-	}
-	if *dir == "" {
-		missing = append(missing, "--dir")
-	}
-	if len(missing) > 0 {
-		errf("Missing required %s: %s.", plural(len(missing), "flag"), strings.Join(missing, ", "))
-		hint("Usage: shd host add <name> --ip <ip> --dir <dir>")
+		errf("Missing required flag: --ip.")
+		hint("Usage: shd host add <name> --ip <ip>")
 		return 2
 	}
 
-	// The host's directory is its existing home in the repo (where its compose
-	// and config already live); shd only adds DNS/Caddy artifacts to a real
-	// machine. A --dir that doesn't exist is always a typo, so refuse it.
+	// A host's name IS its repo directory (where its compose and config already
+	// live). shd only adds DNS/Caddy artifacts to a real, already-present host,
+	// so a name with no matching directory is a typo — refuse it.
 	repoRoot := filepath.Dir(cfgPath)
-	if info, err := os.Stat(filepath.Join(repoRoot, *dir)); err != nil || !info.IsDir() {
-		errf("Directory %q does not exist in the repo.", *dir)
-		hint("Create the host's directory first, or check the --dir value for a typo.")
+	if info, err := os.Stat(filepath.Join(repoRoot, name)); err != nil || !info.IsDir() {
+		errf("No directory %q in the repo.", name)
+		hint("A host's name is its repo directory, which must already exist. Check the name for a typo.")
 		return 1
 	}
 
@@ -79,14 +69,13 @@ func hostAdd(cfgPath string, args []string) int {
 		errf("Host %q already exists.", name)
 		return 1
 	}
-	cfg.Hosts[name] = config.Host{
-		IP: *ip, Dir: *dir, DnsmasqDir: *dnsmasqDir, CaddySitesDir: *caddyDir,
-	}
+	// Dir is left empty; it defaults to the host name (config.Host.ResolvedDir).
+	cfg.Hosts[name] = config.Host{IP: *ip}
 	if err := cfg.Save(); err != nil {
 		errf("%v", err)
 		return 1
 	}
-	fmt.Printf("Added host %q (%s, dir %s).\n", name, *ip, *dir)
+	fmt.Printf("Added host %q (%s).\n", name, *ip)
 	return 0
 }
 
@@ -225,7 +214,7 @@ func cmdDNSHost(cfgPath string, args []string) int {
 		return code
 	}
 	if _, exists := cfg.Hosts[name]; !exists {
-		errf("Host %q does not exist — add it first with: shd host add %s --ip <ip> --dir <dir>", name, name)
+		errf("Host %q does not exist — add it first with: shd host add %s --ip <ip>", name, name)
 		return 1
 	}
 	cfg.Defaults.DNSHost = name

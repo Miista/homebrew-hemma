@@ -51,9 +51,9 @@ Bootstrap a usable `services.yaml` entirely from the CLI — no hand-editing req
 ```sh
 cd ~/homelab            # your monorepo checkout
 
-# 1. Declare the hosts (--dir must already exist in the repo)
-shd host add resolver --ip 192.0.2.1 --dir resolver
-shd host add appbox   --ip 192.0.2.2 --dir appbox
+# 1. Declare the hosts (a host's name IS its repo directory, which must exist)
+shd host add resolver --ip 192.0.2.1
+shd host add appbox   --ip 192.0.2.2
 
 # 2. Choose the default resolver host (whose dnsmasq receives the records)
 shd dns-host set resolver
@@ -99,7 +99,7 @@ shd [-C <dir>] update <service> [--fqdn ...] [--host ...] [--backend ...] [--dns
 shd [-C <dir>] remove <service>
 shd [-C <dir>] sync   [--incremental | --complete]
 
-shd [-C <dir>] host   add    <name> --ip <ip> --dir <dir> [--dnsmasq-dir <d>] [--caddy-sites-dir <d>]
+shd [-C <dir>] host   add    <name> --ip <ip>
 shd [-C <dir>] host   remove <name>
 shd [-C <dir>] domain add    <name> --tls-import <snippet>
 shd [-C <dir>] domain remove <name>
@@ -114,7 +114,7 @@ shd [-C <dir>] domain remove <name>
 | `remove` | Drop the service from YAML, delete its tracked files, drop it from the manifest. |
 | `sync --incremental` *(default)* | Write/update files for every valid entry. **Never deletes.** |
 | `sync --complete` | Incremental **plus GC**: delete tracked files whose service is gone. Never touches non-manifest files. |
-| `host add` / `domain add` | Declare a machine / domain. `host` needs `--ip` and `--dir`; `domain` needs `--tls-import`. |
+| `host add` / `domain add` | Declare a host / domain. `host` needs `--ip` (a host's name is its repo directory, which must already exist); `domain` needs `--tls-import`. |
 | `host remove` / `domain remove` | **Refuses** while any service still references it (and lists the blockers). |
 
 `update`, `remove`, and `sync` refuse with a guiding message (and non-zero exit) when there is no
@@ -127,31 +127,27 @@ are not preserved — document intent in this README, not in the YAML.
 
 ```yaml
 hosts:
-  appbox: { ip: 192.0.2.2, dir: appbox }
-  resolver:       { ip: 192.0.2.1,   dir: resolver }
+  resolver: { ip: 192.0.2.1 }   # the host's name is its repo directory
+  appbox:   { ip: 192.0.2.2 }
 
 domains:
   example.com: { tls_import: tls_example_com }
   example.net: { tls_import: tls_example_net }
 
 defaults:
-  dns_host: resolver          # which machine's dnsmasq receives address= records, unless overridden
+  dns_host: resolver          # which host's dnsmasq receives address= records, unless overridden
 
 services:
   docs:
     fqdn: docs.example.com
-    host: appbox        # machine that runs the service; Caddy site block goes in its dir
+    host: appbox        # host that runs the service; Caddy site block goes in its dir
     backend: paperless:8000
     # dns_host: resolver        # optional per-service override of defaults.dns_host
 ```
 
-Output paths default to `<dir>/pihole/data/dnsmasq.d/generated/<service>.conf` and
-`<dir>/caddy/data/sites/<service>.caddy`. If a machine's layout differs, override per machine:
-
-```yaml
-hosts:
-  resolver: { ip: 192.0.2.1, dir: resolver, dnsmasq_dir: pihole/data/dnsmasq.d/generated }
-```
+Output paths are fixed: `<host>/pihole/data/dnsmasq.d/generated/<service>.conf` and
+`<host>/caddy/data/sites/<service>.caddy`, where `<host>` is the host's name (which **is** its
+repo directory).
 
 ## Manifest
 

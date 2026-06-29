@@ -7,7 +7,7 @@ import (
 )
 
 // mkdirs creates host directories inside the temp repo so `host add` (which
-// now requires --dir to exist) succeeds.
+// requires the host name to be an existing directory) succeeds.
 func mkdirs(t *testing.T, root string, names ...string) {
 	t.Helper()
 	for _, n := range names {

@@ -71,23 +71,13 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestResolvedDirs_Defaults(t *testing.T) {
-	m := Host{Dir: "resolver"}
-	if got := m.ResolvedDnsmasqDir(); got != DefaultDnsmasqDir {
-		t.Errorf("dnsmasq default: got %q want %q", got, DefaultDnsmasqDir)
+func TestResolvedDir(t *testing.T) {
+	// Empty Dir defaults to the host name; an explicit Dir overrides it.
+	if got := (Host{}).ResolvedDir("resolver"); got != "resolver" {
+		t.Errorf("empty Dir should default to name, got %q", got)
 	}
-	if got := m.ResolvedCaddySitesDir(); got != DefaultCaddySitesDir {
-		t.Errorf("caddy default: got %q want %q", got, DefaultCaddySitesDir)
-	}
-}
-
-func TestResolvedDirs_Override(t *testing.T) {
-	m := Host{Dir: "resolver", DnsmasqDir: "custom/dns", CaddySitesDir: "custom/caddy"}
-	if got := m.ResolvedDnsmasqDir(); got != "custom/dns" {
-		t.Errorf("dnsmasq override ignored: %q", got)
-	}
-	if got := m.ResolvedCaddySitesDir(); got != "custom/caddy" {
-		t.Errorf("caddy override ignored: %q", got)
+	if got := (Host{Dir: "custom"}).ResolvedDir("resolver"); got != "custom" {
+		t.Errorf("explicit Dir should win, got %q", got)
 	}
 }
 

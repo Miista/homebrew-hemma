@@ -20,29 +20,22 @@ const (
 	DefaultCaddySitesDir = "caddy/data/sites"
 )
 
-// Host is one host in the homelab, owning a directory in the repo.
+// Host is one host in the homelab, owning a directory in the repo. The
+// directory defaults to the host's name (its key in the hosts map); the dir
+// field need only be set for the rare case where they differ. Generated-file
+// subpaths under that directory are fixed (DefaultDnsmasqDir / DefaultCaddySitesDir).
 type Host struct {
 	IP  string `yaml:"ip"`
-	Dir string `yaml:"dir"`
-	// Optional per-host path overrides (design §10).
-	DnsmasqDir    string `yaml:"dnsmasq_dir,omitempty"`
-	CaddySitesDir string `yaml:"caddy_sites_dir,omitempty"`
+	Dir string `yaml:"dir,omitempty"`
 }
 
-// ResolvedDnsmasqDir returns the dnsmasq output dir, applying the default.
-func (m Host) ResolvedDnsmasqDir() string {
-	if m.DnsmasqDir != "" {
-		return m.DnsmasqDir
+// ResolvedDir returns the host's repo directory: the explicit Dir if set,
+// else the host name (the convention is dir == name).
+func (m Host) ResolvedDir(name string) string {
+	if m.Dir != "" {
+		return m.Dir
 	}
-	return DefaultDnsmasqDir
-}
-
-// ResolvedCaddySitesDir returns the Caddy sites output dir, applying the default.
-func (m Host) ResolvedCaddySitesDir() string {
-	if m.CaddySitesDir != "" {
-		return m.CaddySitesDir
-	}
-	return DefaultCaddySitesDir
+	return name
 }
 
 // Domain maps a registrable domain to the tls snippet its Caddyfile imports.

@@ -39,8 +39,8 @@ intent in a README, not in the YAML).
 
 ```yaml
 hosts:
-  appbox: { ip: 192.0.2.2, dir: appbox }
-  resolver:       { ip: 192.0.2.1,   dir: resolver }
+  resolver: { ip: 192.0.2.1 }   # a host's name is its repo directory
+  appbox:   { ip: 192.0.2.2 }
 
 domains:
   example.com: { tls_import: tls_example_com }
@@ -70,8 +70,8 @@ Notes:
 The tool owns dedicated subdirectories. Filenames are `<service>.<ext>`, human-readable.
 
 ### 4.1 DNS record
-Path: `<hosts[dns_host].dir>/pihole/data/dnsmasq.d/generated/<service>.conf`
-*(adjust the middle path segment to match the real repo layout — see §10.)*
+Path: `<dns_host>/pihole/data/dnsmasq.d/generated/<service>.conf`
+*(`<dns_host>` is the resolver host's name, which is its repo directory.)*
 
 Content:
 ```
@@ -88,8 +88,8 @@ address=/docs.example.com/::
   (loopback) is a bug — never emit `::1`.
 
 ### 4.2 Caddy site block
-Path: `<hosts[host].dir>/caddy/data/sites/<service>.caddy`
-*(adjust to match real layout — see §10.)*
+Path: `<host>/caddy/data/sites/<service>.caddy`
+*(`<host>` is the service host's name, which is its repo directory.)*
 
 Content:
 ```
@@ -174,14 +174,15 @@ subcommands, so a usable `services.yaml` can be bootstrapped entirely via the CL
 hand-editing. The command noun `host` matches the schema key `hosts:`.
 
 ```
-shd [-C <dir>] host   add    <name> --ip <ip> --dir <dir> [--dnsmasq-dir <d>] [--caddy-sites-dir <d>]
+shd [-C <dir>] host   add    <name> --ip <ip>
 shd [-C <dir>] host   remove <name>
 shd [-C <dir>] domain add    <name> --tls-import <snippet>
 shd [-C <dir>] domain remove <name>
 ```
 
-- **`host add`**: `--ip` and `--dir` are required; `--dnsmasq-dir`/`--caddy-sites-dir` are the
-  optional per-machine path overrides (§10). Fail loud if the host already exists.
+- **`host add`**: `--ip` is required. A host's name **is** its repo directory; that directory
+  must already exist (a host with no matching directory is treated as a typo and rejected).
+  Output subpaths under the directory are fixed (§4). Fail loud if the host already exists.
 - **`domain add`**: `--tls-import` is required (the Caddy `tls_<domain>` snippet name, §4.2).
   Fail loud if the domain already exists.
 - **`host remove` / `domain remove`**: **refuse** while any service still references the target,
@@ -233,19 +234,17 @@ Manifest unparseable is **not** fatal → rebuild (§5) and continue.
 - Write files atomically (write to temp in the same dir, `fsync`, `rename`) so an interrupted
   write never leaves a half-written `.conf`/`.caddy`.
 
-## 10. Open item: real on-disk paths
+## 10. On-disk paths
 
-The middle path segments in §4 (`pihole/data/dnsmasq.d/generated/`, `caddy/data/sites/`) are
-placeholders. Before implementation, confirm the actual repo layout for one resolver machine
-and one service-host machine, and make the path templates match. Recommended approach: derive
-output paths from per-machine config so layout is data, not hardcoded. Example extension to the
-schema if layouts differ per machine:
+Output subpaths under each host's directory are **fixed** (not per-host configurable):
 
-```yaml
-hosts:
-  resolver:       { ip: 192.0.2.1,   dir: resolver,       dnsmasq_dir: pihole/data/dnsmasq.d/generated }
-  appbox: { ip: 192.0.2.2, dir: appbox, caddy_sites_dir: caddy/data/sites }
-```
+- DNS records: `<host-dir>/pihole/data/dnsmasq.d/generated/<service>.conf`
+- Caddy sites: `<host-dir>/caddy/data/sites/<service>.caddy`
+
+where `<host-dir>` is the host's name (a host's name **is** its repo directory; see §6.2). These
+match the real homelab layout. Per-host path overrides were considered (so layouts could differ
+per host) but dropped as unused complexity — every host follows the same convention. If a host
+ever needs a different layout, reintroduce an override field rather than hardcoding exceptions.
 
 ## 11. Suggested package layout
 
