@@ -174,15 +174,16 @@ subcommands, so a usable `services.yaml` can be bootstrapped entirely via the CL
 hand-editing. The command noun `host` matches the schema key `hosts:`.
 
 ```
-shd [-C <dir>] host   add    <name> --ip <ip>
+shd [-C <dir>] host   add    <name> <ip>
 shd [-C <dir>] host   remove <name>
 shd [-C <dir>] domain add    <name> --tls-import <snippet>
 shd [-C <dir>] domain remove <name>
 ```
 
-- **`host add`**: `--ip` is required. A host's name **is** its repo directory; that directory
-  must already exist (a host with no matching directory is treated as a typo and rejected).
-  Output subpaths under the directory are fixed (§4). Fail loud if the host already exists.
+- **`host add <name> <ip>`**: both positional. The IP must be a valid address and unique across
+  hosts (two hosts sharing one is a typo). A host's name **is** its repo directory; that
+  directory must already exist (a host with no matching directory is treated as a typo and
+  rejected). Output subpaths under the directory are fixed (§4). Fail loud if the host already exists.
 - **`domain add`**: `--tls-import` is required (the Caddy `tls_<domain>` snippet name, §4.2).
   Fail loud if the domain already exists.
 - **`host remove` / `domain remove`**: **refuse** while any service still references the target,

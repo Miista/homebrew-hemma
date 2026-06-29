@@ -397,7 +397,7 @@ Services:
   shd sync   [--incremental | --complete]
 
 Building blocks (a service references a host and a domain):
-  shd host   add    <name> --ip <ip>
+  shd host   add    <name> <ip>
   shd host   remove <name>
   shd domain add    <name> --tls-import <snippet>
   shd domain remove <name>

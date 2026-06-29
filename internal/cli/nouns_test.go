@@ -20,7 +20,7 @@ func load(t *testing.T, dir string) *config.Config {
 func TestHostAdd_CreatesHost(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver")
-	code := Run([]string{"-C", dir, "host", "add", "resolver", "--ip", "192.0.2.1"})
+	code := Run([]string{"-C", dir, "host", "add", "resolver", "192.0.2.1"})
 	if code != 0 {
 		t.Fatalf("host add should exit 0, got %d", code)
 	}
@@ -36,15 +36,35 @@ func TestHostAdd_RequiresIP(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver")
 	if code := Run([]string{"-C", dir, "host", "add", "resolver"}); code != 2 {
-		t.Errorf("host add without --ip should exit 2, got %d", code)
+		t.Errorf("host add without an ip should exit 2, got %d", code)
+	}
+}
+
+func TestHostAdd_InvalidIPRejected(t *testing.T) {
+	dir := t.TempDir()
+	mkdirs(t, dir, "resolver")
+	if code := Run([]string{"-C", dir, "host", "add", "resolver", "not-an-ip"}); code != 2 {
+		t.Errorf("host add with invalid ip should exit 2, got %d", code)
+	}
+}
+
+func TestHostAdd_DuplicateIPRejected(t *testing.T) {
+	dir := t.TempDir()
+	mkdirs(t, dir, "resolver", "appbox")
+	Run([]string{"-C", dir, "host", "add", "resolver", "192.0.2.1"})
+	if code := Run([]string{"-C", dir, "host", "add", "appbox", "192.0.2.1"}); code != 1 {
+		t.Errorf("host add with duplicate ip should exit 1, got %d", code)
+	}
+	if _, ok := load(t, dir).Hosts["appbox"]; ok {
+		t.Error("host with duplicate ip must not be persisted")
 	}
 }
 
 func TestHostAdd_Duplicate(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver")
-	Run([]string{"-C", dir, "host", "add", "resolver", "--ip", "192.0.2.1"})
-	if code := Run([]string{"-C", dir, "host", "add", "resolver", "--ip", "1.2.3.4"}); code != 1 {
+	Run([]string{"-C", dir, "host", "add", "resolver", "192.0.2.1"})
+	if code := Run([]string{"-C", dir, "host", "add", "resolver", "1.2.3.4"}); code != 1 {
 		t.Errorf("duplicate host add should exit 1, got %d", code)
 	}
 }
@@ -72,7 +92,7 @@ func TestHostRemove_RefusesWhenReferenced(t *testing.T) {
 func TestHostRemove_Unreferenced(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "spare")
-	Run([]string{"-C", dir, "host", "add", "spare", "--ip", "10.0.9.9"})
+	Run([]string{"-C", dir, "host", "add", "spare", "10.0.9.9"})
 	if code := Run([]string{"-C", dir, "host", "remove", "spare"}); code != 0 {
 		t.Errorf("removing unreferenced host should exit 0, got %d", code)
 	}
@@ -111,8 +131,8 @@ func TestBootstrap_ViaCLIOnly(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "appbox", "resolver")
 	steps := [][]string{
-		{"-C", dir, "host", "add", "appbox", "--ip", "192.0.2.2"},
-		{"-C", dir, "host", "add", "resolver", "--ip", "192.0.2.1"},
+		{"-C", dir, "host", "add", "appbox", "192.0.2.2"},
+		{"-C", dir, "host", "add", "resolver", "192.0.2.1"},
 		{"-C", dir, "domain", "add", "example.com", "--tls-import", "tls_example_com"},
 		{"-C", dir, "add", "docs", "--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", "--dns-host", "resolver"},
 	}
@@ -133,7 +153,7 @@ func TestBootstrap_ViaCLIOnly(t *testing.T) {
 func TestHostAdd_DoesNotSetDefaultDNSHost(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "appbox")
-	Run([]string{"-C", dir, "host", "add", "appbox", "--ip", "192.0.2.2"})
+	Run([]string{"-C", dir, "host", "add", "appbox", "192.0.2.2"})
 	if got := load(t, dir).Defaults.DNSHost; got != "" {
 		t.Errorf("host add should not set default dns_host, got %q", got)
 	}
@@ -143,7 +163,7 @@ func TestHostAdd_DoesNotSetDefaultDNSHost(t *testing.T) {
 // host name must equal an existing dir; otherwise it's a typo).
 func TestHostAdd_MissingDirRejected(t *testing.T) {
 	dir := t.TempDir() // no "appbox" dir created
-	if code := Run([]string{"-C", dir, "host", "add", "appbox", "--ip", "192.0.2.2"}); code != 1 {
+	if code := Run([]string{"-C", dir, "host", "add", "appbox", "192.0.2.2"}); code != 1 {
 		t.Errorf("host add with no matching dir should exit 1, got %d", code)
 	}
 	if _, ok := load(t, dir).Hosts["appbox"]; ok {
@@ -155,7 +175,7 @@ func TestHostAdd_MissingDirRejected(t *testing.T) {
 func TestSync_RefusesWithoutDNSHost(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "appbox")
-	Run([]string{"-C", dir, "host", "add", "appbox", "--ip", "192.0.2.2"})
+	Run([]string{"-C", dir, "host", "add", "appbox", "192.0.2.2"})
 	Run([]string{"-C", dir, "domain", "add", "example.com", "--tls-import", "tls_example_com"})
 	// add triggers a sync; with no dns_host set it must refuse (exit 1).
 	if code := Run([]string{"-C", dir, "add", "docs",

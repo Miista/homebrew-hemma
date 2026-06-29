@@ -52,8 +52,8 @@ Bootstrap a usable `services.yaml` entirely from the CLI — no hand-editing req
 cd ~/homelab            # your monorepo checkout
 
 # 1. Declare the hosts (a host's name IS its repo directory, which must exist)
-shd host add resolver --ip 192.0.2.1
-shd host add appbox   --ip 192.0.2.2
+shd host add resolver 192.0.2.1
+shd host add appbox   192.0.2.2
 
 # 2. Choose the default resolver host (whose dnsmasq receives the records)
 shd dns-host set resolver
@@ -99,7 +99,7 @@ shd [-C <dir>] update <service> [--fqdn ...] [--host ...] [--backend ...] [--dns
 shd [-C <dir>] remove <service>
 shd [-C <dir>] sync   [--incremental | --complete]
 
-shd [-C <dir>] host   add    <name> --ip <ip>
+shd [-C <dir>] host   add    <name> <ip>
 shd [-C <dir>] host   remove <name>
 shd [-C <dir>] domain add    <name> --tls-import <snippet>
 shd [-C <dir>] domain remove <name>
@@ -114,7 +114,7 @@ shd [-C <dir>] domain remove <name>
 | `remove` | Drop the service from YAML, delete its tracked files, drop it from the manifest. |
 | `sync --incremental` *(default)* | Write/update files for every valid entry. **Never deletes.** |
 | `sync --complete` | Incremental **plus GC**: delete tracked files whose service is gone. Never touches non-manifest files. |
-| `host add` / `domain add` | Declare a host / domain. `host` needs `--ip` (a host's name is its repo directory, which must already exist); `domain` needs `--tls-import`. |
+| `host add` / `domain add` | Declare a host / domain. `host add <name> <ip>` (the name is its repo directory, which must already exist; the IP must be unique); `domain` needs `--tls-import`. |
 | `host remove` / `domain remove` | **Refuses** while any service still references it (and lists the blockers). |
 
 `update`, `remove`, and `sync` refuse with a guiding message (and non-zero exit) when there is no

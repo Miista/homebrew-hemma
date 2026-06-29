@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,20 +34,22 @@ func cmdHost(cfgPath string, args []string) int {
 }
 
 func hostAdd(cfgPath string, args []string) int {
-	name, args, ok := leadingName(args)
-	if !ok {
+	// Two positionals: <name> <ip>. The IP is the one piece of required data
+	// and isn't derivable from anything else.
+	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: shd host add <name> --ip <ip>")
+		hint("Usage: shd host add <name> <ip>")
 		return 2
 	}
-	fs := flag.NewFlagSet("host add", flag.ContinueOnError)
-	ip := fs.String("ip", "", "host LAN IP (required)")
-	if err := fs.Parse(args); err != nil {
+	if len(args) < 2 {
+		errf("Missing the <ip> for host %q.", args[0])
+		hint("Usage: shd host add <name> <ip>")
 		return 2
 	}
-	if *ip == "" {
-		errf("Missing required flag: --ip.")
-		hint("Usage: shd host add <name> --ip <ip>")
+	name, ip := args[0], args[1]
+
+	if net.ParseIP(ip) == nil {
+		errf("%q is not a valid IP address.", ip)
 		return 2
 	}
 
@@ -69,13 +72,20 @@ func hostAdd(cfgPath string, args []string) int {
 		errf("Host %q already exists.", name)
 		return 1
 	}
+	// A LAN IP identifies exactly one host; two hosts sharing one is a typo.
+	for n, h := range cfg.Hosts {
+		if h.IP == ip {
+			errf("IP %s is already used by host %q.", ip, n)
+			return 1
+		}
+	}
 	// Dir is left empty; it defaults to the host name (config.Host.ResolvedDir).
-	cfg.Hosts[name] = config.Host{IP: *ip}
+	cfg.Hosts[name] = config.Host{IP: ip}
 	if err := cfg.Save(); err != nil {
 		errf("%v", err)
 		return 1
 	}
-	fmt.Printf("Added host %q (%s).\n", name, *ip)
+	fmt.Printf("Added host %q (%s).\n", name, ip)
 	return 0
 }
 
@@ -214,7 +224,7 @@ func cmdDNSHost(cfgPath string, args []string) int {
 		return code
 	}
 	if _, exists := cfg.Hosts[name]; !exists {
-		errf("Host %q does not exist — add it first with: shd host add %s --ip <ip>", name, name)
+		errf("Host %q does not exist — add it first with: shd host add %s <ip>", name, name)
 		return 1
 	}
 	cfg.Defaults.DNSHost = name
