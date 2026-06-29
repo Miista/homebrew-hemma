@@ -44,7 +44,7 @@ func warnIfIgnored(repoRoot string, p *plan.Plan) {
 		verb = "are"
 	}
 	fmt.Fprintf(os.Stderr,
-		"Warning: %d generated %s %s gitignored and won't deploy. Run 'shd doctor' for the fix.\n",
+		"Warning: %d generated %s %s gitignored and won't deploy. Run 'shd doctor --fix'.\n",
 		len(ignored), noun, verb)
 }
 
@@ -56,7 +56,7 @@ func printIgnoreDetail(ignored []string) {
 	for _, p := range ignored {
 		fmt.Printf("  %s\n", p)
 	}
-	fmt.Println("\nAdd these lines to un-ignore them (shd won't edit .gitignore for you):")
+	fmt.Println("\nThese .gitignore entries would un-ignore them (or run 'shd doctor --fix'):")
 	sugg := unignoreSuggestions(ignored)
 	for _, host := range sortedKeysOf(sugg) {
 		fmt.Printf("  # in %s/.gitignore\n", host)
