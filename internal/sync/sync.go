@@ -31,7 +31,7 @@ type Result struct {
 	Created   []string // paths that did not exist before
 	Updated   []string // paths whose content changed
 	Deleted   []string // paths removed
-	Unchanged int      // paths rewritten with identical content
+	Unchanged []string // paths rewritten with identical content
 	Synced    []string // service names successfully synced
 	Skipped   map[string]string
 	Total     int
@@ -80,7 +80,7 @@ func (e *Engine) Reconcile(p *plan.Plan, mode Mode) (*Result, error) {
 			case err != nil: // missing (or unreadable) → treat as create
 				res.Created = append(res.Created, f.Path)
 			case string(existing) == f.Content:
-				res.Unchanged++
+				res.Unchanged = append(res.Unchanged, f.Path)
 			default:
 				res.Updated = append(res.Updated, f.Path)
 			}
@@ -124,6 +124,7 @@ func (e *Engine) Reconcile(p *plan.Plan, mode Mode) (*Result, error) {
 		}
 	}
 
+	sort.Strings(res.Unchanged)
 	sort.Strings(res.Created)
 	sort.Strings(res.Updated)
 	sort.Strings(res.Deleted)

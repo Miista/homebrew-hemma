@@ -185,6 +185,10 @@ func domainOwner(domain string) string { return domainOwnerPrefix + domain }
 // owner rather than a service name.
 func IsDomainOwner(key string) bool { return strings.HasPrefix(key, domainOwnerPrefix) }
 
+// DomainOf returns the domain name from a synthetic owner key (inverse of
+// domainOwner); returns the key unchanged if it isn't an owner key.
+func DomainOf(key string) string { return strings.TrimPrefix(key, domainOwnerPrefix) }
+
 // matchDomain returns the longest registrable domain suffix of fqdn present in
 // the domains map.
 func matchDomain(c *config.Config, fqdn string) (string, bool) {

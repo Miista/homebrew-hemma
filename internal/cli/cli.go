@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"shd/internal/config"
@@ -252,6 +253,59 @@ func runSyncAfterMutation(repoRoot string, cfg *config.Config, name string) int 
 	return 0
 }
 
+// printVerbose lists every generated file grouped by its owner — services by
+// name, then a "shared" group for the per-domain TLS snippets — each path
+// marked by what the sync did to it (+ created, ~ updated, = unchanged), plus
+// a trailing group for deletions.
+func printVerbose(p *plan.Plan, res *syncpkg.Result) {
+	mark := map[string]string{}
+	for _, f := range res.Created {
+		mark[f] = "+"
+	}
+	for _, f := range res.Updated {
+		mark[f] = "~"
+	}
+	for _, f := range res.Unchanged {
+		mark[f] = "="
+	}
+
+	group := func(title string, files []plan.File) {
+		if len(files) == 0 {
+			return
+		}
+		fmt.Printf("  %s\n", title)
+		paths := make([]string, 0, len(files))
+		for _, f := range files {
+			paths = append(paths, f.Path)
+		}
+		sort.Strings(paths)
+		for _, path := range paths {
+			m := mark[path]
+			if m == "" {
+				m = "="
+			}
+			fmt.Printf("    %s %s\n", m, path)
+		}
+	}
+
+	// Services in sync order, then shared TLS owners.
+	for _, name := range res.Synced {
+		group(name, p.Files[name])
+	}
+	for _, owner := range sortedKeysOf(p.Files) {
+		if plan.IsDomainOwner(owner) {
+			group("shared TLS for "+plan.DomainOf(owner), p.Files[owner])
+		}
+	}
+
+	if len(res.Deleted) > 0 {
+		fmt.Println("  deleted")
+		for _, d := range res.Deleted {
+			fmt.Printf("    - %s\n", d)
+		}
+	}
+}
+
 // syncBlockedReason returns a human-readable reason a sync cannot run at all
 // (a global precondition), or "" if sync may proceed. Per-entry skips are not
 // blockers — only repo-wide preconditions are.
@@ -398,24 +452,15 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode, verbose boo
 		return 1
 	}
 
-	// Default output: the service count + the service names. Generated-file
-	// detail is shown only with --verbose.
-	if verbose {
-		for _, w := range res.Created {
-			fmt.Printf("  + %s\n", w)
-		}
-		for _, w := range res.Updated {
-			fmt.Printf("  ~ %s\n", w)
-		}
-		for _, d := range res.Deleted {
-			fmt.Printf("  - %s\n", d)
-		}
-	}
-
 	synced, total := len(res.Synced), res.Total
 	fmt.Printf("Synced %d/%d services.\n", synced, total)
-	for _, name := range res.Synced {
-		fmt.Printf("  • %s\n", name)
+
+	if verbose {
+		printVerbose(p, res)
+	} else {
+		for _, name := range res.Synced {
+			fmt.Printf("  • %s\n", name)
+		}
 	}
 
 	if len(res.Skipped) > 0 {

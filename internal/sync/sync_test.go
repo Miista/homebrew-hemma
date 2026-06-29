@@ -130,8 +130,8 @@ func TestReconcile_ClassifiesChanges(t *testing.T) {
 
 	// First run: created.
 	r1, _ := eng.Reconcile(p, Incremental)
-	if len(r1.Created) != 1 || len(r1.Updated) != 0 || r1.Unchanged != 0 {
-		t.Fatalf("first run: want 1 created, got created=%v updated=%v unchanged=%d", r1.Created, r1.Updated, r1.Unchanged)
+	if len(r1.Created) != 1 || len(r1.Updated) != 0 || len(r1.Unchanged) != 0 {
+		t.Fatalf("first run: want 1 created, got created=%v updated=%v unchanged=%v", r1.Created, r1.Updated, r1.Unchanged)
 	}
 	if !r1.Changed() {
 		t.Error("first run should report Changed()")
@@ -139,8 +139,8 @@ func TestReconcile_ClassifiesChanges(t *testing.T) {
 
 	// Second run, same content: unchanged.
 	r2, _ := eng.Reconcile(p, Incremental)
-	if r2.Unchanged != 1 || len(r2.Created) != 0 || len(r2.Updated) != 0 {
-		t.Fatalf("rerun: want 1 unchanged, got created=%v updated=%v unchanged=%d", r2.Created, r2.Updated, r2.Unchanged)
+	if len(r2.Unchanged) != 1 || len(r2.Created) != 0 || len(r2.Updated) != 0 {
+		t.Fatalf("rerun: want 1 unchanged, got created=%v updated=%v unchanged=%v", r2.Created, r2.Updated, r2.Unchanged)
 	}
 	if r2.Changed() {
 		t.Error("rerun with identical content should not report Changed()")
