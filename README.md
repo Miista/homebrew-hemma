@@ -207,9 +207,9 @@ e.g. in `pi/.gitignore`:
 !pihole/data/dnsmasq.d/generated/**
 ```
 
-`shd doctor` reports the problem and the exact lines; **`shd doctor fix`** writes them for you,
+`shd doctor` reports the problem and the exact lines; **`shd doctor --fix`** writes them for you,
 into a managed block in each `<host>/.gitignore` (preserving your other rules), then re-verifies.
-`shd` only touches `.gitignore` when you explicitly run `doctor fix`. Runtime data stays ignored.
+`shd` only touches `.gitignore` when you explicitly run `doctor --fix`. Runtime data stays ignored.
 
 ## After a sync (deploy concern, not this tool)
 

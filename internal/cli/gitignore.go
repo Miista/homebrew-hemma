@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -66,14 +67,15 @@ func printIgnoreDetail(ignored []string) {
 }
 
 // cmdDoctor audits the repo for problems shd can detect. Read-only by default;
-// `shd doctor fix` applies the .gitignore negations (the one fix shd can make
+// `shd doctor --fix` applies the .gitignore negations (the one fix shd can make
 // safely). Exits non-zero if problems remain.
 func cmdDoctor(cfgPath string, args []string) int {
-	fix := len(args) > 0 && args[0] == "fix"
-	if len(args) > 0 && !fix {
-		errf("Unknown doctor subcommand %q — expected 'fix' or nothing.", args[0])
+	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
+	fixFlag := fs.Bool("fix", false, "apply fixes (write .gitignore entries)")
+	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	fix := *fixFlag
 
 	repoRoot := filepath.Dir(cfgPath)
 	cfg, code := loadExisting(cfgPath, "check")
@@ -94,7 +96,7 @@ func cmdDoctor(cfgPath string, args []string) int {
 
 	if !fix {
 		printIgnoreDetail(ignored)
-		fmt.Println("\nRun 'shd doctor fix' to add these entries automatically.")
+		fmt.Println("\nRun 'shd doctor --fix' to add these entries automatically.")
 		return 1
 	}
 
@@ -144,7 +146,7 @@ func writeManagedBlock(path string, rules []string) error {
 
 	block := giBlockStart + "\n" +
 		"# shd-generated config under data/ dirs the repo otherwise ignores.\n" +
-		"# Managed by 'shd doctor fix'; edit outside these markers.\n" +
+		"# Managed by 'shd doctor --fix'; edit outside these markers.\n" +
 		strings.Join(rules, "\n") + "\n" +
 		giBlockEnd + "\n"
 

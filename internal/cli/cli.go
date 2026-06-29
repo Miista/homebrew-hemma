@@ -581,7 +581,7 @@ Other:
   shd sync   [--incremental | --complete]
   shd list                     Show current hosts, domains, and services (with validity).
   shd verify                   Check live DNS resolution per service (run on the resolver host; needs docker).
-  shd doctor [fix]             Audit the repo (e.g. gitignored generated files); 'fix' applies .gitignore entries.
+  shd doctor [--fix]           Audit the repo (e.g. gitignored generated files); --fix applies .gitignore entries.
   shd version
   shd help
 
