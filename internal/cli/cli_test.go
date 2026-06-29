@@ -135,3 +135,30 @@ func TestRun_UpdateNoOpRejected(t *testing.T) {
 		t.Errorf("update with no field flags should exit 2, got %d", code)
 	}
 }
+
+func TestRun_List(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir) // resolver + appbox, dns_host resolver, example.com
+	mkdirs(t, dir, "resolver", "appbox")
+	Run([]string{"-C", dir, "add", "docs",
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+
+	// All valid -> exit 0.
+	if code := Run([]string{"-C", dir, "list"}); code != 0 {
+		t.Errorf("list with all-valid state should exit 0, got %d", code)
+	}
+
+	// Add an invalid service -> list should exit 1.
+	Run([]string{"-C", dir, "add", "bad",
+		"--fqdn", "bad.unknown.org", "--host", "appbox", "--backend", "x:1"})
+	if code := Run([]string{"-C", dir, "list"}); code != 1 {
+		t.Errorf("list with a skipped service should exit 1, got %d", code)
+	}
+}
+
+func TestRun_ListMissingConfig(t *testing.T) {
+	dir := t.TempDir()
+	if code := Run([]string{"-C", dir, "list"}); code != 1 {
+		t.Errorf("list with no services.yaml should exit 1, got %d", code)
+	}
+}

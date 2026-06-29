@@ -103,6 +103,10 @@ shd [-C <dir>] host   add    <name> <ip>
 shd [-C <dir>] host   remove <name>
 shd [-C <dir>] domain add    <name>
 shd [-C <dir>] domain remove <name>
+shd [-C <dir>] dns-host set   <name>
+
+shd [-C <dir>] list
+shd [-C <dir>] version
 
   -C <dir>   run as if shd were started in <dir> (default: current directory)
 ```
@@ -115,7 +119,8 @@ shd [-C <dir>] domain remove <name>
 | `sync --incremental` *(default)* | Write/update files for every valid entry. **Never deletes.** |
 | `sync --complete` | Incremental **plus GC**: delete tracked files whose service is gone. Never touches non-manifest files. |
 | `host add` / `domain add` | Declare a host / domain. `host add <name> <ip>` (the name is its repo directory, which must already exist; the IP must be unique). `domain add <name>` — shd generates the domain's TLS snippet on sync. |
-| `host remove` / `domain remove` | **Refuses** while any service still references it (and lists the blockers). |
+| `host remove` / `domain remove` | **Refuses** while any service still references it (and lists the blockers). Idempotent otherwise. |
+| `list` | Show current hosts, domains, and services with per-service validity (✓/✗). Read-only; exits non-zero if any service is invalid. |
 
 `update`, `remove`, and `sync` refuse with a guiding message (and non-zero exit) when there is no
 `services.yaml` in the directory. `add`, `host add`, and `domain add` create it.

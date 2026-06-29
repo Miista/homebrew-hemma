@@ -92,6 +92,8 @@ func Run(args []string) int {
 		return cmdDomain(cfgPath, rest)
 	case "dns-host":
 		return cmdDNSHost(cfgPath, rest)
+	case "list":
+		return cmdList(cfgPath, rest)
 	case "sync":
 		return cmdSync(repoRoot, cfgPath, rest)
 	case "-h", "--help", "help":
@@ -404,6 +406,7 @@ Building blocks (a service references a host and a domain):
   shd dns-host set  <name>    Set the default resolver host for new records.
 
 Other:
+  shd list                   Show current hosts, domains, and services (with validity).
   shd version
   shd help
 

@@ -169,7 +169,12 @@ shd [-C <dir>] add    <service> --fqdn <f> --host <h> --backend <b> [--dns-host 
 shd [-C <dir>] update <service> [--fqdn ...] [--host ...] [--backend ...] [--dns-host ...]
 shd [-C <dir>] remove <service>
 shd [-C <dir>] sync   [--incremental | --complete]
+shd [-C <dir>] list
 ```
+
+- **`list`**: read-only. Prints hosts (marking the default dns_host), domains, and services with
+  per-service validity (✓ valid / ✗ skipped + reason, computed via the planner). Exits non-zero
+  if any service is invalid, like `sync`.
 
 - **`add`**: fail loud if the service name or fqdn already exists. Otherwise mutate YAML, then
   run sync logic for the resulting state.
