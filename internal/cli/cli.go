@@ -81,17 +81,13 @@ func Run(args []string) int {
 		fmt.Println("shd", Version)
 		return 0
 	case "add":
-		return cmdAdd(repoRoot, cfgPath, rest)
+		return dispatchNoun(repoRoot, cfgPath, "add", rest)
 	case "update":
-		return cmdUpdate(repoRoot, cfgPath, rest)
+		return dispatchNoun(repoRoot, cfgPath, "update", rest)
 	case "remove":
-		return cmdRemove(repoRoot, cfgPath, rest)
-	case "host":
-		return cmdHost(cfgPath, rest)
-	case "domain":
-		return cmdDomain(cfgPath, rest)
-	case "dns-host":
-		return cmdDNSHost(cfgPath, rest)
+		return dispatchNoun(repoRoot, cfgPath, "remove", rest)
+	case "set":
+		return dispatchSet(cfgPath, rest)
 	case "list":
 		return cmdList(cfgPath, rest)
 	case "sync":
@@ -107,13 +103,80 @@ func Run(args []string) int {
 	}
 }
 
+// dispatchNoun routes verb-first commands of the form
+// `<verb> <noun> <args...>` (e.g. "add domain x", "remove service y") to the
+// matching handler. One word order across the whole CLI avoids the
+// add-service vs noun-add confusion.
+func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
+	if len(args) < 1 {
+		errf("Missing the noun for %q — expected service, host, or domain.", verb)
+		hint("Usage: shd %s service|host|domain ...", verb)
+		return 2
+	}
+	noun, rest := args[0], args[1:]
+	switch noun {
+	case "service":
+		switch verb {
+		case "add":
+			return cmdAdd(repoRoot, cfgPath, rest)
+		case "update":
+			return cmdUpdate(repoRoot, cfgPath, rest)
+		case "remove":
+			return cmdRemove(repoRoot, cfgPath, rest)
+		}
+	case "host":
+		switch verb {
+		case "add":
+			return hostAdd(cfgPath, rest)
+		case "remove":
+			return hostRemove(cfgPath, rest)
+		default:
+			errf("Cannot %q a host — hosts support add and remove.", verb)
+			return 2
+		}
+	case "domain":
+		switch verb {
+		case "add":
+			return domainAdd(cfgPath, rest)
+		case "remove":
+			return domainRemove(cfgPath, rest)
+		default:
+			errf("Cannot %q a domain — domains support add and remove.", verb)
+			return 2
+		}
+	default:
+		errf("Unknown noun %q — expected service, host, or domain.", noun)
+		hint("Usage: shd %s service|host|domain ...", verb)
+		return 2
+	}
+	// Reached only if a verb/noun combo fell through (shouldn't happen).
+	errf("Unsupported: %s %s.", verb, noun)
+	return 2
+}
+
+// dispatchSet routes `set <thing> <args>`; currently only `set dns-host`.
+func dispatchSet(cfgPath string, args []string) int {
+	if len(args) < 1 {
+		errf("Missing what to set — expected dns-host.")
+		hint("Usage: shd set dns-host <name>")
+		return 2
+	}
+	switch args[0] {
+	case "dns-host":
+		return cmdSetDNSHost(cfgPath, args[1:])
+	default:
+		errf("Unknown setting %q — expected dns-host.", args[0])
+		return 2
+	}
+}
+
 func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	// Usage puts <service> before flags; Go's flag pkg stops at the first
 	// positional, so split it off first.
 	name, args, ok := leadingName(args)
 	if !ok {
 		errf("Missing the <service> name.")
-		hint("Usage: shd add <service> --fqdn <fqdn> --host <host> --backend <name:port>")
+		hint("Usage: shd add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		return 2
 	}
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
@@ -138,7 +201,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	}
 	if len(missing) > 0 {
 		errf("Missing required %s: %s.", plural(len(missing), "flag"), strings.Join(missing, ", "))
-		hint("Usage: shd add <service> --fqdn <fqdn> --host <host> --backend <name:port> [--dns-host <host>]")
+		hint("Usage: shd add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--dns-host <host>]")
 		return 2
 	}
 
@@ -162,14 +225,43 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 		errf("%v", err)
 		return 1
 	}
+	fmt.Printf("Added service %q.\n", name)
+	return runSyncAfterMutation(repoRoot, cfg, name)
+}
+
+// runSyncAfterMutation runs an incremental sync following an add/update. If
+// the sync can't proceed (e.g. no dns_host), it makes clear the YAML change
+// WAS saved — only the file generation was deferred — so the user isn't left
+// thinking the whole command failed.
+func runSyncAfterMutation(repoRoot string, cfg *config.Config, svc string) int {
+	if reason := syncBlockedReason(cfg); reason != "" {
+		fmt.Println()
+		errf("Saved, but not synced: %s", reason)
+		hint("The change is in services.yaml. Run 'shd sync' once that's resolved.")
+		return 1
+	}
 	return runSync(repoRoot, cfg, syncpkg.Incremental)
+}
+
+// syncBlockedReason returns a human-readable reason a sync cannot run at all
+// (a global precondition), or "" if sync may proceed. Per-entry skips are not
+// blockers — only repo-wide preconditions are.
+func syncBlockedReason(cfg *config.Config) string {
+	if cfg.Defaults.DNSHost == "" {
+		for _, svc := range cfg.Services {
+			if svc.DNSHost == "" {
+				return "no default dns_host is set, so DNS records can't be routed. Set one with: shd set dns-host <name>"
+			}
+		}
+	}
+	return ""
 }
 
 func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	name, args, ok := leadingName(args)
 	if !ok {
 		errf("Missing the <service> name.")
-		hint("Usage: shd update <service> [--fqdn ...] [--host ...] [--backend ...] [--dns-host ...]")
+		hint("Usage: shd update service <name> [--fqdn ...] [--host ...] [--backend ...] [--dns-host ...]")
 		return 2
 	}
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
@@ -217,13 +309,14 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 		errf("%v", err)
 		return 1
 	}
-	return runSync(repoRoot, cfg, syncpkg.Incremental)
+	fmt.Printf("Updated service %q.\n", name)
+	return runSyncAfterMutation(repoRoot, cfg, name)
 }
 
 func cmdRemove(repoRoot, cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <service> name.")
-		hint("Usage: shd remove <service>")
+		hint("Usage: shd remove service <name>")
 		return 2
 	}
 	name := args[0]
@@ -282,18 +375,11 @@ func cmdSync(repoRoot, cfgPath string, args []string) int {
 // runSync builds the plan, reconciles, prints a summary, and returns the exit
 // code per design §8.
 func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
-	// Pre-flight: if any service relies on a default dns_host that isn't set,
-	// refuse the whole sync with one clear pointer rather than silently
-	// skipping every affected service.
-	if cfg.Defaults.DNSHost == "" {
-		for _, svc := range cfg.Services {
-			if svc.DNSHost == "" {
-				errf("No default dns_host is set, so DNS records can't be routed.")
-				hint("Set the resolver host with: shd dns-host set <name>")
-				hint("(or give individual services a --dns-host override.)")
-				return 1
-			}
-		}
+	// Pre-flight: refuse the whole sync (rather than silently skipping every
+	// affected service) when a repo-wide precondition isn't met.
+	if reason := syncBlockedReason(cfg); reason != "" {
+		errf("Cannot sync: %s", reason)
+		return 1
 	}
 
 	p := plan.Build(cfg)
@@ -392,21 +478,23 @@ func usage() {
 Generates split-horizon DNS records and Caddy site blocks from a declarative
 services.yaml. Operates on the file in the current directory by default.
 
-Services:
-  shd add    <service> --fqdn <f> --host <h> --backend <b> [--dns-host <d>]
-  shd update <service> [--fqdn ...] [--host ...] [--backend ...] [--dns-host ...]
-  shd remove <service>
-  shd sync   [--incremental | --complete]
+Commands are verb-first: <verb> <noun> <args>.
+
+Services (an app reached at an fqdn, on a host, under a domain):
+  shd add    service <name> --fqdn <f> --host <h> --backend <b> [--dns-host <d>]
+  shd update service <name> [--fqdn ...] [--host ...] [--backend ...] [--dns-host ...]
+  shd remove service <name>
 
 Building blocks (a service references a host and a domain):
-  shd host   add    <name> <ip>
-  shd host   remove <name>
-  shd domain add    <name>
-  shd domain remove <name>
-  shd dns-host set  <name>    Set the default resolver host for new records.
+  shd add    host   <name> <ip>
+  shd remove host   <name>
+  shd add    domain <name>
+  shd remove domain <name>
+  shd set    dns-host <name>    Set the default resolver host for DNS records.
 
 Other:
-  shd list                   Show current hosts, domains, and services (with validity).
+  shd sync   [--incremental | --complete]
+  shd list                     Show current hosts, domains, and services (with validity).
   shd version
   shd help
 

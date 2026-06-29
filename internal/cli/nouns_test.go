@@ -20,7 +20,7 @@ func load(t *testing.T, dir string) *config.Config {
 func TestHostAdd_CreatesHost(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver")
-	code := Run([]string{"-C", dir, "host", "add", "resolver", "192.0.2.1"})
+	code := Run([]string{"-C", dir, "add", "host", "resolver", "192.0.2.1"})
 	if code != 0 {
 		t.Fatalf("host add should exit 0, got %d", code)
 	}
@@ -35,7 +35,7 @@ func TestHostAdd_CreatesHost(t *testing.T) {
 func TestHostAdd_RequiresIP(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver")
-	if code := Run([]string{"-C", dir, "host", "add", "resolver"}); code != 2 {
+	if code := Run([]string{"-C", dir, "add", "host", "resolver"}); code != 2 {
 		t.Errorf("host add without an ip should exit 2, got %d", code)
 	}
 }
@@ -43,7 +43,7 @@ func TestHostAdd_RequiresIP(t *testing.T) {
 func TestHostAdd_InvalidIPRejected(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver")
-	if code := Run([]string{"-C", dir, "host", "add", "resolver", "not-an-ip"}); code != 2 {
+	if code := Run([]string{"-C", dir, "add", "host", "resolver", "not-an-ip"}); code != 2 {
 		t.Errorf("host add with invalid ip should exit 2, got %d", code)
 	}
 }
@@ -51,8 +51,8 @@ func TestHostAdd_InvalidIPRejected(t *testing.T) {
 func TestHostAdd_DuplicateIPRejected(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver", "appbox")
-	Run([]string{"-C", dir, "host", "add", "resolver", "192.0.2.1"})
-	if code := Run([]string{"-C", dir, "host", "add", "appbox", "192.0.2.1"}); code != 1 {
+	Run([]string{"-C", dir, "add", "host", "resolver", "192.0.2.1"})
+	if code := Run([]string{"-C", dir, "add", "host", "appbox", "192.0.2.1"}); code != 1 {
 		t.Errorf("host add with duplicate ip should exit 1, got %d", code)
 	}
 	if _, ok := load(t, dir).Hosts["appbox"]; ok {
@@ -63,8 +63,8 @@ func TestHostAdd_DuplicateIPRejected(t *testing.T) {
 func TestHostAdd_Duplicate(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver")
-	Run([]string{"-C", dir, "host", "add", "resolver", "192.0.2.1"})
-	if code := Run([]string{"-C", dir, "host", "add", "resolver", "1.2.3.4"}); code != 1 {
+	Run([]string{"-C", dir, "add", "host", "resolver", "192.0.2.1"})
+	if code := Run([]string{"-C", dir, "add", "host", "resolver", "1.2.3.4"}); code != 1 {
 		t.Errorf("duplicate host add should exit 1, got %d", code)
 	}
 }
@@ -72,11 +72,11 @@ func TestHostAdd_Duplicate(t *testing.T) {
 func TestHostRemove_RefusesWhenReferenced(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir) // defines resolver + appbox, dns_host resolver
-	Run([]string{"-C", dir, "add", "docs",
+	Run([]string{"-C", dir, "add", "service", "docs",
 		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
 
 	// appbox is host of docs -> refuse.
-	if code := Run([]string{"-C", dir, "host", "remove", "appbox"}); code != 1 {
+	if code := Run([]string{"-C", dir, "remove", "host", "appbox"}); code != 1 {
 		t.Errorf("removing referenced host should exit 1, got %d", code)
 	}
 	if _, ok := load(t, dir).Hosts["appbox"]; !ok {
@@ -84,7 +84,7 @@ func TestHostRemove_RefusesWhenReferenced(t *testing.T) {
 	}
 
 	// resolver is the dns_host of docs (via defaults) -> also refuse.
-	if code := Run([]string{"-C", dir, "host", "remove", "resolver"}); code != 1 {
+	if code := Run([]string{"-C", dir, "remove", "host", "resolver"}); code != 1 {
 		t.Errorf("removing dns_host should exit 1, got %d", code)
 	}
 }
@@ -92,8 +92,8 @@ func TestHostRemove_RefusesWhenReferenced(t *testing.T) {
 func TestHostRemove_Unreferenced(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "spare")
-	Run([]string{"-C", dir, "host", "add", "spare", "10.0.9.9"})
-	if code := Run([]string{"-C", dir, "host", "remove", "spare"}); code != 0 {
+	Run([]string{"-C", dir, "add", "host", "spare", "10.0.9.9"})
+	if code := Run([]string{"-C", dir, "remove", "host", "spare"}); code != 0 {
 		t.Errorf("removing unreferenced host should exit 0, got %d", code)
 	}
 	if _, ok := load(t, dir).Hosts["spare"]; ok {
@@ -103,7 +103,7 @@ func TestHostRemove_Unreferenced(t *testing.T) {
 
 func TestDomainAdd_CreatesDomain(t *testing.T) {
 	dir := t.TempDir()
-	code := Run([]string{"-C", dir, "domain", "add", "example.com"})
+	code := Run([]string{"-C", dir, "add", "domain", "example.com"})
 	if code != 0 {
 		t.Fatalf("domain add should exit 0, got %d", code)
 	}
@@ -115,10 +115,10 @@ func TestDomainAdd_CreatesDomain(t *testing.T) {
 func TestDomainRemove_RefusesWhenReferenced(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
-	Run([]string{"-C", dir, "add", "docs",
+	Run([]string{"-C", dir, "add", "service", "docs",
 		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
 
-	if code := Run([]string{"-C", dir, "domain", "remove", "example.com"}); code != 1 {
+	if code := Run([]string{"-C", dir, "remove", "domain", "example.com"}); code != 1 {
 		t.Errorf("removing referenced domain should exit 1, got %d", code)
 	}
 	if _, ok := load(t, dir).Domains["example.com"]; !ok {
@@ -131,10 +131,10 @@ func TestBootstrap_ViaCLIOnly(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "appbox", "resolver")
 	steps := [][]string{
-		{"-C", dir, "host", "add", "appbox", "192.0.2.2"},
-		{"-C", dir, "host", "add", "resolver", "192.0.2.1"},
-		{"-C", dir, "domain", "add", "example.com"},
-		{"-C", dir, "add", "docs", "--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", "--dns-host", "resolver"},
+		{"-C", dir, "add", "host", "appbox", "192.0.2.2"},
+		{"-C", dir, "add", "host", "resolver", "192.0.2.1"},
+		{"-C", dir, "add", "domain", "example.com"},
+		{"-C", dir, "add", "service", "docs", "--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", "--dns-host", "resolver"},
 	}
 	for _, s := range steps {
 		if code := Run(s); code != 0 {
@@ -153,7 +153,7 @@ func TestBootstrap_ViaCLIOnly(t *testing.T) {
 func TestHostAdd_DoesNotSetDefaultDNSHost(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "appbox")
-	Run([]string{"-C", dir, "host", "add", "appbox", "192.0.2.2"})
+	Run([]string{"-C", dir, "add", "host", "appbox", "192.0.2.2"})
 	if got := load(t, dir).Defaults.DNSHost; got != "" {
 		t.Errorf("host add should not set default dns_host, got %q", got)
 	}
@@ -163,7 +163,7 @@ func TestHostAdd_DoesNotSetDefaultDNSHost(t *testing.T) {
 // host name must equal an existing dir; otherwise it's a typo).
 func TestHostAdd_MissingDirRejected(t *testing.T) {
 	dir := t.TempDir() // no "appbox" dir created
-	if code := Run([]string{"-C", dir, "host", "add", "appbox", "192.0.2.2"}); code != 1 {
+	if code := Run([]string{"-C", dir, "add", "host", "appbox", "192.0.2.2"}); code != 1 {
 		t.Errorf("host add with no matching dir should exit 1, got %d", code)
 	}
 	if _, ok := load(t, dir).Hosts["appbox"]; ok {
@@ -175,15 +175,15 @@ func TestHostAdd_MissingDirRejected(t *testing.T) {
 func TestSync_RefusesWithoutDNSHost(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "appbox")
-	Run([]string{"-C", dir, "host", "add", "appbox", "192.0.2.2"})
-	Run([]string{"-C", dir, "domain", "add", "example.com"})
+	Run([]string{"-C", dir, "add", "host", "appbox", "192.0.2.2"})
+	Run([]string{"-C", dir, "add", "domain", "example.com"})
 	// add triggers a sync; with no dns_host set it must refuse (exit 1).
-	if code := Run([]string{"-C", dir, "add", "docs",
+	if code := Run([]string{"-C", dir, "add", "service", "docs",
 		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"}); code != 1 {
 		t.Errorf("sync without dns_host should exit 1, got %d", code)
 	}
 	// After setting it, sync succeeds.
-	Run([]string{"-C", dir, "dns-host", "set", "appbox"})
+	Run([]string{"-C", dir, "set", "dns-host", "appbox"})
 	if code := Run([]string{"-C", dir, "sync"}); code != 0 {
 		t.Errorf("sync after dns-host set should exit 0, got %d", code)
 	}
@@ -192,7 +192,7 @@ func TestSync_RefusesWithoutDNSHost(t *testing.T) {
 func TestDNSHostSet(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir) // defines resolver + appbox, default dns_host resolver
-	if code := Run([]string{"-C", dir, "dns-host", "set", "appbox"}); code != 0 {
+	if code := Run([]string{"-C", dir, "set", "dns-host", "appbox"}); code != 0 {
 		t.Fatalf("dns-host set to existing host should exit 0, got %d", code)
 	}
 	if got := load(t, dir).Defaults.DNSHost; got != "appbox" {
@@ -203,7 +203,7 @@ func TestDNSHostSet(t *testing.T) {
 func TestDNSHostSet_UnknownHostRejected(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
-	if code := Run([]string{"-C", dir, "dns-host", "set", "ghost"}); code != 1 {
+	if code := Run([]string{"-C", dir, "set", "dns-host", "ghost"}); code != 1 {
 		t.Errorf("dns-host set to unknown host should exit 1, got %d", code)
 	}
 }
@@ -214,7 +214,7 @@ func TestDNSHostSet_MissingArgs(t *testing.T) {
 	if code := Run([]string{"-C", dir, "dns-host"}); code != 2 {
 		t.Errorf("dns-host with no subcommand should exit 2, got %d", code)
 	}
-	if code := Run([]string{"-C", dir, "dns-host", "set"}); code != 2 {
+	if code := Run([]string{"-C", dir, "set", "dns-host"}); code != 2 {
 		t.Errorf("dns-host set with no name should exit 2, got %d", code)
 	}
 }
@@ -224,7 +224,7 @@ func TestDNSHostSet_MissingArgs(t *testing.T) {
 func TestHostRemove_NonexistentIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
-	if code := Run([]string{"-C", dir, "host", "remove", "ghost"}); code != 0 {
+	if code := Run([]string{"-C", dir, "remove", "host", "ghost"}); code != 0 {
 		t.Errorf("removing nonexistent host should exit 0, got %d", code)
 	}
 }
@@ -232,7 +232,7 @@ func TestHostRemove_NonexistentIsIdempotent(t *testing.T) {
 func TestDomainRemove_NonexistentIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
-	if code := Run([]string{"-C", dir, "domain", "remove", "ghost.net"}); code != 0 {
+	if code := Run([]string{"-C", dir, "remove", "domain", "ghost.net"}); code != 0 {
 		t.Errorf("removing nonexistent domain should exit 0, got %d", code)
 	}
 }
@@ -240,7 +240,7 @@ func TestDomainRemove_NonexistentIsIdempotent(t *testing.T) {
 func TestServiceRemove_NonexistentIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
-	if code := Run([]string{"-C", dir, "remove", "ghost"}); code != 0 {
+	if code := Run([]string{"-C", dir, "remove", "service", "ghost"}); code != 0 {
 		t.Errorf("removing nonexistent service should exit 0, got %d", code)
 	}
 }
@@ -253,10 +253,10 @@ func TestSyncComplete_GCsTLSAfterHostRemoval(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver", "appbox", "spare")
 	for _, h := range [][]string{{"resolver", "192.0.2.1"}, {"appbox", "192.0.2.2"}, {"spare", "192.0.2.9"}} {
-		Run([]string{"-C", dir, "host", "add", h[0], h[1]})
+		Run([]string{"-C", dir, "add", "host", h[0], h[1]})
 	}
-	Run([]string{"-C", dir, "dns-host", "set", "resolver"})
-	Run([]string{"-C", dir, "domain", "add", "example.com"})
+	Run([]string{"-C", dir, "set", "dns-host", "resolver"})
+	Run([]string{"-C", dir, "add", "domain", "example.com"})
 	Run([]string{"-C", dir, "sync"})
 
 	spareTLS := filepath.Join(dir, "spare", "caddy/data/tls/tls_example_com.caddy")
@@ -264,7 +264,7 @@ func TestSyncComplete_GCsTLSAfterHostRemoval(t *testing.T) {
 		t.Fatalf("spare's tls snippet should exist after sync: %v", err)
 	}
 
-	Run([]string{"-C", dir, "host", "remove", "spare"})
+	Run([]string{"-C", dir, "remove", "host", "spare"})
 	if code := Run([]string{"-C", dir, "sync", "--complete"}); code != 0 {
 		t.Fatalf("sync --complete should exit 0, got %d", code)
 	}
@@ -281,11 +281,11 @@ func TestSyncComplete_GCsTLSAfterHostRemoval(t *testing.T) {
 func TestSyncComplete_GCsTLSAfterDomainRemoval(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver")
-	Run([]string{"-C", dir, "host", "add", "resolver", "192.0.2.1"})
-	Run([]string{"-C", dir, "dns-host", "set", "resolver"})
-	Run([]string{"-C", dir, "domain", "add", "example.com"})
+	Run([]string{"-C", dir, "add", "host", "resolver", "192.0.2.1"})
+	Run([]string{"-C", dir, "set", "dns-host", "resolver"})
+	Run([]string{"-C", dir, "add", "domain", "example.com"})
 	Run([]string{"-C", dir, "sync"})
-	Run([]string{"-C", dir, "domain", "remove", "example.com"})
+	Run([]string{"-C", dir, "remove", "domain", "example.com"})
 	Run([]string{"-C", dir, "sync", "--complete"})
 	if _, err := os.Stat(filepath.Join(dir, "resolver", "caddy/data/tls/tls_example_com.caddy")); !os.IsNotExist(err) {
 		t.Error("removed domain's tls snippet should be GC'd")

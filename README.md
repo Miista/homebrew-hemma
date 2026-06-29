@@ -52,18 +52,18 @@ Bootstrap a usable `services.yaml` entirely from the CLI — no hand-editing req
 cd ~/homelab            # your monorepo checkout
 
 # 1. Declare the hosts (a host's name IS its repo directory, which must exist)
-shd host add resolver 192.0.2.1
-shd host add appbox   192.0.2.2
+shd add host resolver 192.0.2.1
+shd add host appbox   192.0.2.2
 
 # 2. Choose the default resolver host (whose dnsmasq receives the records)
-shd dns-host set resolver
+shd set dns-host resolver
 
 # 3. Declare the domains (shd generates each one's TLS snippet on sync)
-shd domain add example.com
-shd domain add example.net
+shd add domain example.com
+shd add domain example.net
 
 # 4. Add a service (mutates YAML, then syncs)
-shd add docs --fqdn docs.example.com --host appbox --backend paperless:8000
+shd add service docs --fqdn docs.example.com --host appbox --backend paperless:8000
 
 # 5. Re-generate everything any time (e.g. after a git pull)
 shd sync
@@ -94,16 +94,16 @@ AAAA record so IPv6-preferring clients can't bypass split-horizon.
 ## Commands
 
 ```
-shd [-C <dir>] add    <service> --fqdn <f> --host <h> --backend <b> [--dns-host <d>]
-shd [-C <dir>] update <service> [--fqdn ...] [--host ...] [--backend ...] [--dns-host ...]
-shd [-C <dir>] remove <service>
+shd [-C <dir>] add    service <name> --fqdn <f> --host <h> --backend <b> [--dns-host <d>]
+shd [-C <dir>] update service <name> [--fqdn ...] [--host ...] [--backend ...] [--dns-host ...]
+shd [-C <dir>] remove service <name>
 shd [-C <dir>] sync   [--incremental | --complete]
 
-shd [-C <dir>] host   add    <name> <ip>
-shd [-C <dir>] host   remove <name>
-shd [-C <dir>] domain add    <name>
-shd [-C <dir>] domain remove <name>
-shd [-C <dir>] dns-host set   <name>
+shd [-C <dir>] add    host   <name> <ip>
+shd [-C <dir>] remove host   <name>
+shd [-C <dir>] add    domain <name>
+shd [-C <dir>] remove domain <name>
+shd [-C <dir>] set    dns-host <name>
 
 shd [-C <dir>] list
 shd [-C <dir>] version
@@ -118,12 +118,14 @@ shd [-C <dir>] version
 | `remove` | Drop the service from YAML, delete its tracked files, drop it from the manifest. |
 | `sync --incremental` *(default)* | Write/update files for every valid entry. **Never deletes.** |
 | `sync --complete` | Incremental **plus GC**: delete tracked files whose service is gone. Never touches non-manifest files. |
-| `host add` / `domain add` | Declare a host / domain. `host add <name> <ip>` (the name is its repo directory, which must already exist; the IP must be unique). `domain add <name>` — shd generates the domain's TLS snippet on sync. |
-| `host remove` / `domain remove` | **Refuses** while any service still references it (and lists the blockers). Idempotent otherwise. |
+| `add host` / `add domain` | Declare a host / domain. `add host <name> <ip>` (the name is its repo directory, which must already exist; the IP must be unique). `add domain <name>` — shd generates the domain's TLS snippet on sync. |
+| `remove host` / `remove domain` | **Refuses** while any service still references it (and lists the blockers). Idempotent otherwise. |
+| `set dns-host <name>` | Set the default resolver host (the one whose dnsmasq receives records). |
 | `list` | Show current hosts, domains, and services with per-service validity (✓/✗). Read-only; exits non-zero if any service is invalid. |
 
+All commands are **verb-first**: `<verb> <noun> <args>` (e.g. `add domain example.com`).
 `update`, `remove`, and `sync` refuse with a guiding message (and non-zero exit) when there is no
-`services.yaml` in the directory. `add`, `host add`, and `domain add` create it.
+`services.yaml` in the directory; `add` creates it.
 
 ## Source of truth: `services.yaml`
 

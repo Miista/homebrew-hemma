@@ -43,10 +43,10 @@ func TestRun_SyncMissingConfig(t *testing.T) {
 
 func TestRun_UpdateAndRemoveMissingConfig(t *testing.T) {
 	dir := t.TempDir()
-	if code := Run([]string{"-C", dir, "update", "foo", "--backend", "a:1"}); code != 1 {
+	if code := Run([]string{"-C", dir, "update", "service", "foo", "--backend", "a:1"}); code != 1 {
 		t.Errorf("update on missing config should exit 1, got %d", code)
 	}
-	if code := Run([]string{"-C", dir, "remove", "foo"}); code != 1 {
+	if code := Run([]string{"-C", dir, "remove", "service", "foo"}); code != 1 {
 		t.Errorf("remove on missing config should exit 1, got %d", code)
 	}
 }
@@ -54,7 +54,7 @@ func TestRun_UpdateAndRemoveMissingConfig(t *testing.T) {
 func TestRun_AddCreatesConfig(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
-	code := Run([]string{"-C", dir, "add", "docs",
+	code := Run([]string{"-C", dir, "add", "service", "docs",
 		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
 	if code != 0 {
 		t.Fatalf("valid add should exit 0, got %d", code)
@@ -71,7 +71,7 @@ func TestRun_AddCreatesConfig(t *testing.T) {
 func TestRun_AddCreatesFreshConfig(t *testing.T) {
 	// No seed: add must create services.yaml from nothing.
 	dir := t.TempDir()
-	Run([]string{"-C", dir, "add", "docs",
+	Run([]string{"-C", dir, "add", "service", "docs",
 		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
 	if _, err := os.Stat(filepath.Join(dir, configName)); err != nil {
 		t.Errorf("add should create services.yaml even on empty repo: %v", err)
@@ -81,7 +81,7 @@ func TestRun_AddCreatesFreshConfig(t *testing.T) {
 func TestRun_AddDuplicateFails(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
-	args := []string{"-C", dir, "add", "docs",
+	args := []string{"-C", dir, "add", "service", "docs",
 		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"}
 	if code := Run(args); code != 0 {
 		t.Fatalf("first add should succeed, got %d", code)
@@ -95,7 +95,7 @@ func TestRun_SyncReportsSkips(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
 	// Add a service whose domain isn't defined -> skipped -> exit 1.
-	Run([]string{"-C", dir, "add", "x",
+	Run([]string{"-C", dir, "add", "service", "x",
 		"--fqdn", "x.undefined.org", "--host", "resolver", "--backend", "a:1"})
 	if code := Run([]string{"-C", dir, "sync"}); code != 1 {
 		t.Errorf("sync with a skipped entry should exit 1, got %d", code)
@@ -106,7 +106,7 @@ func TestRun_SyncReportsSkips(t *testing.T) {
 
 func TestRun_AddMissingFlagsDoesNotPersist(t *testing.T) {
 	dir := t.TempDir()
-	if code := Run([]string{"-C", dir, "add", "docs"}); code != 2 {
+	if code := Run([]string{"-C", dir, "add", "service", "docs"}); code != 2 {
 		t.Errorf("add with no flags should exit 2, got %d", code)
 	}
 	// Crucially: no services.yaml should have been written.
@@ -118,7 +118,7 @@ func TestRun_AddMissingFlagsDoesNotPersist(t *testing.T) {
 func TestRun_AddPartialFlagsRejected(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
-	if code := Run([]string{"-C", dir, "add", "docs", "--fqdn", "docs.example.com"}); code != 2 {
+	if code := Run([]string{"-C", dir, "add", "service", "docs", "--fqdn", "docs.example.com"}); code != 2 {
 		t.Errorf("add missing --host/--backend should exit 2, got %d", code)
 	}
 	if _, ok := load(t, dir).Services["docs"]; ok {
@@ -129,7 +129,7 @@ func TestRun_AddPartialFlagsRejected(t *testing.T) {
 func TestRun_UpdateNoOpRejected(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
-	Run([]string{"-C", dir, "add", "docs",
+	Run([]string{"-C", dir, "add", "service", "docs",
 		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
 	if code := Run([]string{"-C", dir, "update", "docs"}); code != 2 {
 		t.Errorf("update with no field flags should exit 2, got %d", code)
@@ -140,7 +140,7 @@ func TestRun_List(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir) // resolver + appbox, dns_host resolver, example.com
 	mkdirs(t, dir, "resolver", "appbox")
-	Run([]string{"-C", dir, "add", "docs",
+	Run([]string{"-C", dir, "add", "service", "docs",
 		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
 
 	// All valid -> exit 0.
@@ -149,7 +149,7 @@ func TestRun_List(t *testing.T) {
 	}
 
 	// Add an invalid service -> list should exit 1.
-	Run([]string{"-C", dir, "add", "bad",
+	Run([]string{"-C", dir, "add", "service", "bad",
 		"--fqdn", "bad.unknown.org", "--host", "appbox", "--backend", "x:1"})
 	if code := Run([]string{"-C", dir, "list"}); code != 1 {
 		t.Errorf("list with a skipped service should exit 1, got %d", code)

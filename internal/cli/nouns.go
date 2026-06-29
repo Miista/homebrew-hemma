@@ -10,39 +10,22 @@ import (
 	"shd/internal/config"
 )
 
-// cmdHost handles `host add|remove`. The command noun matches the schema key
-// `hosts:`. These commands mutate the YAML but do NOT write generated files:
-// hosts/domains have no per-host output of their own, and a run that changes
-// them is followed by sync to regenerate affected services.
-func cmdHost(cfgPath string, args []string) int {
-	if len(args) < 1 {
-		errf("Missing subcommand.")
-		hint("Usage: shd host add|remove <name> ...")
-		return 2
-	}
-	sub, rest := args[0], args[1:]
-	switch sub {
-	case "add":
-		return hostAdd(cfgPath, rest)
-	case "remove":
-		return hostRemove(cfgPath, rest)
-	default:
-		errf("Unknown host subcommand %q — expected add or remove.", sub)
-		return 2
-	}
-}
+// host/domain mutate the YAML but do NOT write generated files;
+// the schema key `hosts:` matches the `host` noun. A run that changes them is
+// followed by sync to regenerate affected services. Routing of the verb/noun
+// grammar lives in dispatchNoun (cli.go); these are the leaf handlers.
 
 func hostAdd(cfgPath string, args []string) int {
 	// Two positionals: <name> <ip>. The IP is the one piece of required data
 	// and isn't derivable from anything else.
 	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: shd host add <name> <ip>")
+		hint("Usage: shd add host <name> <ip>")
 		return 2
 	}
 	if len(args) < 2 {
 		errf("Missing the <ip> for host %q.", args[0])
-		hint("Usage: shd host add <name> <ip>")
+		hint("Usage: shd add host <name> <ip>")
 		return 2
 	}
 	name, ip := args[0], args[1]
@@ -117,29 +100,10 @@ func hostRemove(cfgPath string, args []string) int {
 	return 0
 }
 
-// cmdDomain handles `domain add|remove`.
-func cmdDomain(cfgPath string, args []string) int {
-	if len(args) < 1 {
-		errf("Missing subcommand.")
-		hint("Usage: shd domain add|remove <name> ...")
-		return 2
-	}
-	sub, rest := args[0], args[1:]
-	switch sub {
-	case "add":
-		return domainAdd(cfgPath, rest)
-	case "remove":
-		return domainRemove(cfgPath, rest)
-	default:
-		errf("Unknown domain subcommand %q — expected add or remove.", sub)
-		return 2
-	}
-}
-
 func domainAdd(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: shd domain add <name>")
+		hint("Usage: shd add domain <name>")
 		return 2
 	}
 	name := args[0]
@@ -191,29 +155,23 @@ func domainRemove(cfgPath string, args []string) int {
 	return 0
 }
 
-// cmdDNSHost handles `dns-host set <name>` — sets defaults.dns_host, the
-// host whose dnsmasq receives address= records unless a service overrides
-// it. Without this, a CLI-only bootstrap leaves dns_host unset and every
-// service is skipped.
-func cmdDNSHost(cfgPath string, args []string) int {
-	if len(args) < 1 || args[0] != "set" {
-		errf("Missing or unknown subcommand — expected 'set'.")
-		hint("Usage: shd dns-host set <name>")
-		return 2
-	}
-	if len(args) < 2 {
+// cmdSetDNSHost handles `set dns-host <name>` — sets defaults.dns_host, the
+// host whose dnsmasq receives address= records unless a service overrides it.
+// Without this, a CLI-only bootstrap leaves dns_host unset and sync refuses.
+func cmdSetDNSHost(cfgPath string, args []string) int {
+	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: shd dns-host set <name>")
+		hint("Usage: shd set dns-host <name>")
 		return 2
 	}
-	name := args[1]
+	name := args[0]
 
 	cfg, code := loadExisting(cfgPath, "set the dns-host in")
 	if cfg == nil {
 		return code
 	}
 	if _, exists := cfg.Hosts[name]; !exists {
-		errf("Host %q does not exist — add it first with: shd host add %s <ip>", name, name)
+		errf("Host %q does not exist — add it first with: shd add host %s <ip>", name, name)
 		return 1
 	}
 	cfg.Defaults.DNSHost = name

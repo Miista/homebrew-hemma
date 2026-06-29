@@ -15,9 +15,9 @@ truth committed to a git repository.
   service. Therefore the source of truth must be **repo-level**, not per-machine.
 - DNS uses dnsmasq `address=` directives via Pi-hole v6 (`FTLCONF_misc_etc_dnsmasq_d: 'true'`
   must be set so `/etc/dnsmasq.d/*.conf` is sourced).
-- Caddy serves wildcard certs pushed by an external acme.sh pipeline. The tool never touches
-  certs or ACME; it only emits site blocks that `import` a per-domain `tls_<domain>` snippet
-  that already exists in each machine's Caddyfile.
+- Caddy serves wildcard certs pushed by an external acme.sh pipeline (every cert to every host).
+  The tool never touches certs or ACME; it generates the per-domain `tls_<domain>` snippet (§4.3)
+  and emits site blocks that `import` it.
 
 ## 2. Core model
 
@@ -160,14 +160,16 @@ photos:
 ## 6. Commands
 
 All commands operate on `services.yaml` in the current directory; `-C <dir>` runs as if
-started in `<dir>` (git-style). There is no environment variable for the repo path.
+started in `<dir>` (git-style). There is no environment variable for the repo path. Commands
+are **verb-first**: `<verb> <noun> <args>` (e.g. `add domain example.com`) — one consistent
+word order across services, hosts, and domains.
 
 ### 6.1 Service commands
 
 ```
-shd [-C <dir>] add    <service> --fqdn <f> --host <h> --backend <b> [--dns-host <d>]
-shd [-C <dir>] update <service> [--fqdn ...] [--host ...] [--backend ...] [--dns-host ...]
-shd [-C <dir>] remove <service>
+shd [-C <dir>] add    service <name> --fqdn <f> --host <h> --backend <b> [--dns-host <d>]
+shd [-C <dir>] update service <name> [--fqdn ...] [--host ...] [--backend ...] [--dns-host ...]
+shd [-C <dir>] remove service <name>
 shd [-C <dir>] sync   [--incremental | --complete]
 shd [-C <dir>] list
 ```
@@ -197,17 +199,17 @@ subcommands, so a usable `services.yaml` can be bootstrapped entirely via the CL
 hand-editing. The command noun `host` matches the schema key `hosts:`.
 
 ```
-shd [-C <dir>] host   add    <name> <ip>
-shd [-C <dir>] host   remove <name>
-shd [-C <dir>] domain add    <name>
-shd [-C <dir>] domain remove <name>
+shd [-C <dir>] add    host   <name> <ip>
+shd [-C <dir>] remove host   <name>
+shd [-C <dir>] add    domain <name>
+shd [-C <dir>] remove domain <name>
 ```
 
-- **`host add <name> <ip>`**: both positional. The IP must be a valid address and unique across
+- **`add host <name> <ip>`**: both positional. The IP must be a valid address and unique across
   hosts (two hosts sharing one is a typo). A host's name **is** its repo directory; that
   directory must already exist (a host with no matching directory is treated as a typo and
   rejected). Output subpaths under the directory are fixed (§4). Fail loud if the host already exists.
-- **`domain add <name>`**: name only. The TLS snippet name and cert path are derived (§4.3), so
+- **`add domain <name>`**: name only. The TLS snippet name and cert path are derived (§4.3), so
   no flag is needed; the snippet is generated on the next sync.
   Fail loud if the domain already exists.
 - **`host remove` / `domain remove`**: **refuse** while any service still references the target,

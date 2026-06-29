@@ -26,7 +26,7 @@ func cmdList(cfgPath string, args []string) int {
 		fmt.Printf("  %-12s %s%s\n", name, cfg.Hosts[name].IP, marker)
 	}
 	if cfg.Defaults.DNSHost == "" {
-		fmt.Println("  (no default dns_host set — run: shd dns-host set <name>)")
+		fmt.Println("  (no default dns_host set — run: shd set dns-host <name>)")
 	}
 
 	// Domains.
