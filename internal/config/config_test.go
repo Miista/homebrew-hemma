@@ -81,13 +81,10 @@ func TestResolvedDir(t *testing.T) {
 	}
 }
 
-func TestDNSHostFor(t *testing.T) {
+func TestDNSHost(t *testing.T) {
 	c := &Config{Defaults: Defaults{DNSHost: "resolver"}}
-	if got := c.DNSHostFor(Service{}); got != "resolver" {
-		t.Errorf("default dns_host: got %q want resolver", got)
-	}
-	if got := c.DNSHostFor(Service{DNSHost: "appbox"}); got != "appbox" {
-		t.Errorf("override dns_host: got %q want appbox", got)
+	if got := c.DNSHost(); got != "resolver" {
+		t.Errorf("dns_host: got %q want resolver", got)
 	}
 }
 
@@ -114,19 +111,19 @@ func TestServicesUsingHost(t *testing.T) {
 	c := &Config{
 		Defaults: Defaults{DNSHost: "resolver"},
 		Services: map[string]Service{
-			"docs":   {FQDN: "docs.example.com", Host: "appbox"},     // dns_host defaults to resolver
-			"photos": {FQDN: "photos.example.net", Host: "resolver"}, // host = resolver
-			"vault":  {FQDN: "vault.example.net", Host: "appbox", DNSHost: "appbox"},
+			"docs":   {FQDN: "docs.example.com", Host: "appbox"},
+			"photos": {FQDN: "photos.example.net", Host: "resolver"},
+			"vault":  {FQDN: "vault.example.net", Host: "appbox"},
 		},
 	}
-	// appbox is host of docs+vault, and dns_host of vault.
+	// appbox runs docs+vault.
 	if got := c.ServicesUsingHost("appbox"); len(got) != 2 || got[0] != "docs" || got[1] != "vault" {
 		t.Errorf("appbox users: %v", got)
 	}
-	// resolver is host of photos and the default dns_host of docs.
+	// resolver is the dns_host — EVERY service depends on it (plus it runs photos).
 	got := c.ServicesUsingHost("resolver")
-	if len(got) != 2 || got[0] != "docs" || got[1] != "photos" {
-		t.Errorf("resolver users: %v", got)
+	if len(got) != 3 {
+		t.Errorf("resolver (the dns_host) should be used by all 3 services, got %v", got)
 	}
 	if got := c.ServicesUsingHost("ghost"); len(got) != 0 {
 		t.Errorf("unused host should have no users: %v", got)

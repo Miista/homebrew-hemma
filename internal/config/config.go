@@ -50,12 +50,12 @@ type Defaults struct {
 	DNSHost string `yaml:"dns_host"`
 }
 
-// Service is one declared service entry.
+// Service is one declared service entry. There is no per-service dns_host:
+// every record is served by the single resolver (defaults.dns_host).
 type Service struct {
 	FQDN    string `yaml:"fqdn"`
 	Host    string `yaml:"host"`
 	Backend string `yaml:"backend"`
-	DNSHost string `yaml:"dns_host,omitempty"` // optional per-service override
 }
 
 // Config is the in-memory representation of services.yaml.
@@ -117,22 +117,19 @@ func (c *Config) Save() error {
 	return atomicWrite(c.path, data)
 }
 
-// DNSHostFor returns the resolved dns_host for a service (override or default).
-func (c *Config) DNSHostFor(s Service) string {
-	if s.DNSHost != "" {
-		return s.DNSHost
-	}
+// DNSHost returns the single resolver host for all records (defaults.dns_host).
+func (c *Config) DNSHost() string {
 	return c.Defaults.DNSHost
 }
 
-// ServicesUsingHost returns the names of services that reference host
-// `name` as their host or resolved dns_host (sorted). A host is also
-// considered referenced if it is the defaults.dns_host and any service relies
-// on that default.
+// ServicesUsingHost returns the names of services that depend on host `name`
+// (sorted): either it runs the service, or it is the resolver (dns_host) that
+// every service's DNS record is routed through.
 func (c *Config) ServicesUsingHost(name string) []string {
+	resolver := c.Defaults.DNSHost
 	var out []string
 	for svc, s := range c.Services {
-		if s.Host == name || c.DNSHostFor(s) == name {
+		if s.Host == name || name == resolver {
 			out = append(out, svc)
 		}
 	}

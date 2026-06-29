@@ -133,8 +133,9 @@ func TestBootstrap_ViaCLIOnly(t *testing.T) {
 	steps := [][]string{
 		{"-C", dir, "add", "host", "appbox", "192.0.2.2"},
 		{"-C", dir, "add", "host", "resolver", "192.0.2.1"},
+		{"-C", dir, "set", "dns-host", "resolver"},
 		{"-C", dir, "add", "domain", "example.com"},
-		{"-C", dir, "add", "service", "docs", "--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", "--dns-host", "resolver"},
+		{"-C", dir, "add", "service", "docs", "--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"},
 	}
 	for _, s := range steps {
 		if code := Run(s); code != 0 {

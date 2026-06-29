@@ -75,7 +75,6 @@ func TestBuild_SkipReasons(t *testing.T) {
 		{"no-domain-match", config.Service{FQDN: "x.example.org", Host: "resolver", Backend: "a:1"}, "matches no domain"},
 		{"unknown-host", config.Service{FQDN: "x.example.com", Host: "nope", Backend: "a:1"}, "unknown host"},
 		{"bad-backend", config.Service{FQDN: "x.example.com", Host: "resolver", Backend: "noport"}, "name:port"},
-		{"unknown-dnshost", config.Service{FQDN: "x.example.com", Host: "resolver", Backend: "a:1", DNSHost: "ghost"}, "unknown dns_host"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

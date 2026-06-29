@@ -47,21 +47,21 @@ domains:
   example.net: {}
 
 defaults:
-  dns_host: resolver          # which machine's dnsmasq receives address= records, unless overridden
+  dns_host: resolver          # the single resolver host (set via: shd set dns-host)
 
 services:
   docs:
     fqdn: docs.example.com
     host: appbox        # machine that runs the service; Caddy site block goes in its dir
     backend: paperless:8000
-    # dns_host: resolver        # optional per-service override of defaults.dns_host
 ```
 
 Notes:
 - `host_ip` for the A record is **looked up** from `hosts[<host>].ip`. The IP is declared
   once per machine and never repeated in service entries.
-- `dns_host` defaults to `defaults.dns_host` and may be overridden per service. **Do not assume
-  the DNS host is fixed** — route each record to its entry's resolved `dns_host`.
+- `dns_host` is a **single repo-wide resolver** (`defaults.dns_host`, set via `shd set dns-host`).
+  Every service's DNS record is routed through it; there is **no per-service override** — the
+  homelab forces all clients through one resolver (pihole), so a single dns_host is the model.
 - A service's domain is chosen by matching its `fqdn`'s registrable domain suffix against the
   `domains` map; the TLS snippet name (`tls_<domain with dots→underscores>`) and cert path are
   derived from that domain — no per-domain config.
@@ -167,8 +167,8 @@ word order across services, hosts, and domains.
 ### 6.1 Service commands
 
 ```
-shd [-C <dir>] add    service <name> --fqdn <f> --host <h> --backend <b> [--dns-host <d>]
-shd [-C <dir>] update service <name> [--fqdn ...] [--host ...] [--backend ...] [--dns-host ...]
+shd [-C <dir>] add    service <name> --fqdn <f> --host <h> --backend <b>
+shd [-C <dir>] update service <name> [--fqdn ...] [--host ...] [--backend ...]
 shd [-C <dir>] remove service <name>
 shd [-C <dir>] sync   [--incremental | --complete]
 shd [-C <dir>] list

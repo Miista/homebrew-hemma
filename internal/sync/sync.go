@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"shd/internal/config"
 	"shd/internal/manifest"
@@ -107,8 +108,7 @@ func (e *Engine) Reconcile(p *plan.Plan, mode Mode) (*Result, error) {
 				stale = append(stale, rel)
 			}
 		}
-		sort.Strings(stale)
-		for _, rel := range stale {
+		for _, rel := range deletionOrder(stale) {
 			abs := filepath.Join(e.RepoRoot, rel)
 			if err := os.Remove(abs); err != nil && !os.IsNotExist(err) {
 				return res, fmt.Errorf("delete %s: %w", rel, err)
@@ -139,8 +139,10 @@ func (e *Engine) Reconcile(p *plan.Plan, mode Mode) (*Result, error) {
 // the manifest. Shared by --complete GC and the remove command (§6). TLS
 // snippets are owned by synthetic @domain: keys, not services, so a service's
 // files never overlap another owner's — no cross-reference guard is needed.
+//
+// Deletion never needs dns_host: paths come from the manifest, not config.
 func (e *Engine) deleteService(svc string, res *Result) error {
-	for _, rel := range e.Manifest.Files(svc) {
+	for _, rel := range deletionOrder(e.Manifest.Files(svc)) {
 		abs := filepath.Join(e.RepoRoot, rel)
 		if err := os.Remove(abs); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("delete %s for %s: %w", rel, svc, err)
@@ -149,6 +151,26 @@ func (e *Engine) deleteService(svc string, res *Result) error {
 	}
 	e.Manifest.Remove(svc)
 	return nil
+}
+
+// deletionOrder sorts paths so DNS records (dnsmasq .conf) are removed BEFORE
+// Caddy blocks. If deletion is interrupted partway, the safe residual state is
+// "the name no longer resolves" rather than "it resolves to a host that no
+// longer routes it" (a dangling record pointing at a dead backend).
+func deletionOrder(paths []string) []string {
+	out := append([]string(nil), paths...)
+	sort.SliceStable(out, func(i, j int) bool {
+		di, dj := isDNSRecord(out[i]), isDNSRecord(out[j])
+		if di != dj {
+			return di // DNS records first
+		}
+		return out[i] < out[j]
+	})
+	return out
+}
+
+func isDNSRecord(rel string) bool {
+	return strings.HasSuffix(rel, ".conf") && strings.Contains(rel, "dnsmasq")
 }
 
 // RemoveService deletes one service's tracked files and persists the manifest.

@@ -151,10 +151,10 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 	if hostM.IP == "" {
 		return nil, fmt.Sprintf("host %q has no ip", svc.Host)
 	}
-	// dns_host host
-	dnsHostName := c.DNSHostFor(svc)
+	// The single resolver host (defaults.dns_host) receives every DNS record.
+	dnsHostName := c.DNSHost()
 	if dnsHostName == "" {
-		return nil, "no dns_host set — run 'shd set dns-host <name>' or pass --dns-host"
+		return nil, "no dns_host set — run 'shd set dns-host <name>'"
 	}
 	dnsM, ok := c.Hosts[dnsHostName]
 	if !ok {

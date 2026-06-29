@@ -94,8 +94,8 @@ AAAA record so IPv6-preferring clients can't bypass split-horizon.
 ## Commands
 
 ```
-shd [-C <dir>] add    service <name> --fqdn <f> --host <h> --backend <b> [--dns-host <d>]
-shd [-C <dir>] update service <name> [--fqdn ...] [--host ...] [--backend ...] [--dns-host ...]
+shd [-C <dir>] add    service <name> --fqdn <f> --host <h> --backend <b>
+shd [-C <dir>] update service <name> [--fqdn ...] [--host ...] [--backend ...]
 shd [-C <dir>] remove service <name>
 shd [-C <dir>] sync   [--incremental | --complete]
 
@@ -147,14 +147,13 @@ domains:
   example.net: {}
 
 defaults:
-  dns_host: resolver          # which host's dnsmasq receives address= records, unless overridden
+  dns_host: resolver          # the single resolver host (set via: shd set dns-host)
 
 services:
   docs:
     fqdn: docs.example.com
     host: appbox        # host that runs the service; Caddy site block goes in its dir
     backend: paperless:8000
-    # dns_host: resolver        # optional per-service override of defaults.dns_host
 ```
 
 Output paths are fixed: `<host>/pihole/data/dnsmasq.d/generated/<service>.conf` and

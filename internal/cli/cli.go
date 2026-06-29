@@ -185,7 +185,6 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	fqdn := fs.String("fqdn", "", "service fqdn")
 	host := fs.String("host", "", "host that runs the service")
 	backend := fs.String("backend", "", "reverse_proxy upstream name:port")
-	dnsHost := fs.String("dns-host", "", "optional dns_host override")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -203,7 +202,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	}
 	if len(missing) > 0 {
 		errf("Missing required %s: %s.", plural(len(missing), "flag"), strings.Join(missing, ", "))
-		hint("Usage: shd add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--dns-host <host>]")
+		hint("Usage: shd add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		return 2
 	}
 
@@ -222,7 +221,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 			return 1
 		}
 	}
-	cfg.Services[name] = config.Service{FQDN: *fqdn, Host: *host, Backend: *backend, DNSHost: *dnsHost}
+	cfg.Services[name] = config.Service{FQDN: *fqdn, Host: *host, Backend: *backend}
 	if err := cfg.Save(); err != nil {
 		errf("%v", err)
 		return 1
@@ -253,32 +252,12 @@ func runSyncAfterMutation(repoRoot string, cfg *config.Config, name string) int 
 	return 0
 }
 
-// fileTally renders a compact summary of file changes (e.g. "2 written,
-// 1 updated, 3 deleted"), or "" if nothing changed.
-func fileTally(res *syncpkg.Result) string {
-	var parts []string
-	if n := len(res.Created); n > 0 {
-		parts = append(parts, fmt.Sprintf("%d written", n))
-	}
-	if n := len(res.Updated); n > 0 {
-		parts = append(parts, fmt.Sprintf("%d updated", n))
-	}
-	if n := len(res.Deleted); n > 0 {
-		parts = append(parts, fmt.Sprintf("%d deleted", n))
-	}
-	return strings.Join(parts, ", ")
-}
-
 // syncBlockedReason returns a human-readable reason a sync cannot run at all
 // (a global precondition), or "" if sync may proceed. Per-entry skips are not
 // blockers — only repo-wide preconditions are.
 func syncBlockedReason(cfg *config.Config) string {
-	if cfg.Defaults.DNSHost == "" {
-		for _, svc := range cfg.Services {
-			if svc.DNSHost == "" {
-				return "no default dns_host is set, so DNS records can't be routed. Set one with: shd set dns-host <name>"
-			}
-		}
+	if len(cfg.Services) > 0 && cfg.Defaults.DNSHost == "" {
+		return "no dns_host is set, so DNS records can't be routed. Set the resolver with: shd set dns-host <name>"
 	}
 	return ""
 }
@@ -287,14 +266,13 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	name, args, ok := leadingName(args)
 	if !ok {
 		errf("Missing the <service> name.")
-		hint("Usage: shd update service <name> [--fqdn ...] [--host ...] [--backend ...] [--dns-host ...]")
+		hint("Usage: shd update service <name> [--fqdn ...] [--host ...] [--backend ...]")
 		return 2
 	}
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fqdn := fs.String("fqdn", "", "service fqdn")
 	host := fs.String("host", "", "host that runs the service")
 	backend := fs.String("backend", "", "reverse_proxy upstream name:port")
-	dnsHost := fs.String("dns-host", "", "dns_host override")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -304,7 +282,7 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	fs.Visit(func(*flag.Flag) { changed++ })
 	if changed == 0 {
 		errf("Nothing to change for %q.", name)
-		hint("Pass at least one of --fqdn, --host, --backend, or --dns-host.")
+		hint("Pass at least one of --fqdn, --host, or --backend.")
 		return 2
 	}
 
@@ -326,8 +304,6 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 			svc.Host = *host
 		case "backend":
 			svc.Backend = *backend
-		case "dns-host":
-			svc.DNSHost = *dnsHost
 		}
 	})
 	cfg.Services[name] = svc
@@ -422,33 +398,24 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode, verbose boo
 		return 1
 	}
 
-	// Show changed files (always) and, in verbose mode, the unchanged ones too.
-	for _, w := range res.Created {
-		fmt.Printf("  + %s\n", w)
-	}
-	for _, w := range res.Updated {
-		fmt.Printf("  ~ %s\n", w)
-	}
-	for _, d := range res.Deleted {
-		fmt.Printf("  - %s\n", d)
+	// Default output: the service count + the service names. Generated-file
+	// detail is shown only with --verbose.
+	if verbose {
+		for _, w := range res.Created {
+			fmt.Printf("  + %s\n", w)
+		}
+		for _, w := range res.Updated {
+			fmt.Printf("  ~ %s\n", w)
+		}
+		for _, d := range res.Deleted {
+			fmt.Printf("  - %s\n", d)
+		}
 	}
 
-	// Summary line: services + a compact file tally, then the service names.
 	synced, total := len(res.Synced), res.Total
-	fmt.Printf("Synced %d/%d services", synced, total)
-	if parts := fileTally(res); parts != "" {
-		fmt.Printf(" — %s", parts)
-	} else {
-		fmt.Printf(" — no file changes")
-	}
-	fmt.Println(".")
+	fmt.Printf("Synced %d/%d services.\n", synced, total)
 	for _, name := range res.Synced {
 		fmt.Printf("  • %s\n", name)
-	}
-
-	if verbose {
-		fmt.Printf("(%d files generated, %d unchanged)\n",
-			len(res.Created)+len(res.Updated)+res.Unchanged, res.Unchanged)
 	}
 
 	if len(res.Skipped) > 0 {
@@ -530,8 +497,8 @@ services.yaml. Operates on the file in the current directory by default.
 Commands are verb-first: <verb> <noun> <args>.
 
 Services (an app reached at an fqdn, on a host, under a domain):
-  shd add    service <name> --fqdn <f> --host <h> --backend <b> [--dns-host <d>]
-  shd update service <name> [--fqdn ...] [--host ...] [--backend ...] [--dns-host ...]
+  shd add    service <name> --fqdn <f> --host <h> --backend <b>
+  shd update service <name> [--fqdn ...] [--host ...] [--backend ...]
   shd remove service <name>
 
 Building blocks (a service references a host and a domain):
