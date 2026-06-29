@@ -228,21 +228,31 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 		return 1
 	}
 	fmt.Printf("Added service %q.\n", name)
-	return runSyncAfterMutation(repoRoot, cfg, name)
+	return runSyncAfterMutation(repoRoot, cfg)
 }
 
 // runSyncAfterMutation runs an incremental sync following an add/update. If
 // the sync can't proceed (e.g. no dns_host), it makes clear the YAML change
 // WAS saved — only the file generation was deferred — so the user isn't left
 // thinking the whole command failed.
-func runSyncAfterMutation(repoRoot string, cfg *config.Config, svc string) int {
+func runSyncAfterMutation(repoRoot string, cfg *config.Config) int {
 	if reason := syncBlockedReason(cfg); reason != "" {
 		fmt.Println()
 		errf("Saved, but not synced: %s", reason)
 		hint("The change is in services.yaml. Run 'shd sync' once that's resolved.")
 		return 1
 	}
-	return runSync(repoRoot, cfg, syncpkg.Incremental, false)
+	// Sync silently: the caller already printed the action ("Added service X").
+	// Files are generated, but add/update don't narrate them — that's what
+	// `shd sync` is for. Errors still surface.
+	p := plan.Build(cfg)
+	mf := loadManifest(repoRoot, cfg)
+	eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: mf}
+	if _, err := eng.Reconcile(p, syncpkg.Incremental); err != nil {
+		errf("%v", err)
+		return 1
+	}
+	return 0
 }
 
 // fileTally renders a compact summary of file changes (e.g. "2 written,
@@ -328,7 +338,7 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 		return 1
 	}
 	fmt.Printf("Updated service %q.\n", name)
-	return runSyncAfterMutation(repoRoot, cfg, name)
+	return runSyncAfterMutation(repoRoot, cfg)
 }
 
 func cmdRemove(repoRoot, cfgPath string, args []string) int {
