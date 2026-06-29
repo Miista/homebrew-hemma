@@ -93,6 +93,8 @@ func Run(args []string) int {
 		return cmdList(cfgPath, rest)
 	case "verify":
 		return cmdVerify(cfgPath, rest)
+	case "doctor":
+		return cmdDoctor(cfgPath, rest)
 	case "sync":
 		return cmdSync(repoRoot, cfgPath, rest)
 	case "-h", "--help", "help":
@@ -243,6 +245,7 @@ func runSyncAfterMutation(repoRoot string, cfg *config.Config, name string) int 
 		return 1
 	}
 	p := plan.Build(cfg)
+	warnIfIgnored(repoRoot, p)
 	mf := loadManifest(repoRoot, cfg)
 	eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: mf}
 	if _, err := eng.Reconcile(p, syncpkg.Incremental); err != nil {
@@ -443,6 +446,13 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode, verbose boo
 	}
 
 	p := plan.Build(cfg)
+
+	// Before writing, warn if any output path would be gitignored — those
+	// files would generate fine but never commit/deploy (the repo's
+	// **/data/** rule swallows them). Checked before the write so the user
+	// learns of it up front.
+	warnIfIgnored(repoRoot, p)
+
 	mf := loadManifest(repoRoot, cfg)
 	eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: mf}
 
@@ -557,6 +567,7 @@ Other:
   shd sync   [--incremental | --complete]
   shd list                     Show current hosts, domains, and services (with validity).
   shd verify                   Check live DNS resolution per service (run on the resolver host; needs docker).
+  shd doctor                   Audit the repo for problems (e.g. generated files git would ignore).
   shd version
   shd help
 

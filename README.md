@@ -192,6 +192,23 @@ import sites/*.caddy
 convention `caddy/data/certs/<domain>/`), so you no longer hand-write them. Caddy serves the
 wildcard certs from an external acme.sh pipeline — `shd` never touches certs or ACME.
 
+### .gitignore and the `data/` directory
+
+`shd`'s generated files live under `data/` directories (`caddy/data/sites/`, etc.). If your repo
+ignores runtime data with a broad rule like `**/data/**`, those generated files are **silently
+ignored by git** — they generate fine but never commit or deploy. `shd` detects this and warns on
+`sync` (and via `shd doctor`), printing the exact per-host `.gitignore` negation lines to add,
+e.g. in `pi/.gitignore`:
+
+```
+!pihole/data/
+!pihole/data/dnsmasq.d/
+!pihole/data/dnsmasq.d/generated/
+!pihole/data/dnsmasq.d/generated/**
+```
+
+`shd` never edits `.gitignore` itself — it only tells you what to add. Runtime data stays ignored.
+
 ## After a sync (deploy concern, not this tool)
 
 A changed bind-mounted file does **not** restart a container on its own. Your per-machine deploy
