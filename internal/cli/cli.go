@@ -516,7 +516,7 @@ func loadExisting(cfgPath, command string) (*config.Config, int) {
 		errf("No %s in this directory — nothing to %s.", configName, command)
 		fmt.Fprintln(os.Stderr)
 		hint("To create your first service:")
-		hint("  shd add <name> --fqdn <fqdn> --host <host> --backend <name:port>")
+		hint("  shd add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		fmt.Fprintln(os.Stderr)
 		hint("Or run from the repo root, or pass -C <dir>.")
 		return nil, 1
