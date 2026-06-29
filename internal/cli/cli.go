@@ -227,24 +227,21 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 		errf("%v", err)
 		return 1
 	}
-	fmt.Printf("Added service %q.\n", name)
-	return runSyncAfterMutation(repoRoot, cfg)
+	fmt.Printf("✓ Added service %q\n", name)
+	return runSyncAfterMutation(repoRoot, cfg, name)
 }
 
-// runSyncAfterMutation runs an incremental sync following an add/update. If
-// the sync can't proceed (e.g. no dns_host), it makes clear the YAML change
-// WAS saved — only the file generation was deferred — so the user isn't left
-// thinking the whole command failed.
-func runSyncAfterMutation(repoRoot string, cfg *config.Config) int {
+// runSyncAfterMutation runs an incremental sync following an add/update of
+// service `name` and prints the second phase line. The caller has already
+// printed the first ("✓ Added service X"). On success: "✓ Synced service X".
+// If sync can't proceed (e.g. no dns_host): "✗ Not synced: <reason>", making
+// clear the YAML change WAS saved — only generation was deferred.
+func runSyncAfterMutation(repoRoot string, cfg *config.Config, name string) int {
 	if reason := syncBlockedReason(cfg); reason != "" {
-		fmt.Println()
-		errf("Saved, but not synced: %s", reason)
-		hint("The change is in services.yaml. Run 'shd sync' once that's resolved.")
+		fmt.Fprintf(os.Stderr, "✗ Not synced: %s\n", reason)
+		hint("  The change is saved in services.yaml. Run 'shd sync' once that's resolved.")
 		return 1
 	}
-	// Sync silently: the caller already printed the action ("Added service X").
-	// Files are generated, but add/update don't narrate them — that's what
-	// `shd sync` is for. Errors still surface.
 	p := plan.Build(cfg)
 	mf := loadManifest(repoRoot, cfg)
 	eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: mf}
@@ -252,6 +249,7 @@ func runSyncAfterMutation(repoRoot string, cfg *config.Config) int {
 		errf("%v", err)
 		return 1
 	}
+	fmt.Printf("✓ Synced service %q\n", name)
 	return 0
 }
 
@@ -337,8 +335,8 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 		errf("%v", err)
 		return 1
 	}
-	fmt.Printf("Updated service %q.\n", name)
-	return runSyncAfterMutation(repoRoot, cfg)
+	fmt.Printf("✓ Updated service %q\n", name)
+	return runSyncAfterMutation(repoRoot, cfg, name)
 }
 
 func cmdRemove(repoRoot, cfgPath string, args []string) int {
@@ -370,14 +368,11 @@ func cmdRemove(repoRoot, cfgPath string, args []string) int {
 		errf("%v", err)
 		return 1
 	}
-	switch n := len(res.Deleted); n {
-	case 0:
-		fmt.Printf("Removed service %q (no generated files to delete).\n", name)
-	default:
-		fmt.Printf("Removed service %q — %d %s deleted:\n", name, n, plural(n, "file"))
-		for _, d := range res.Deleted {
-			fmt.Printf("  - %s\n", d)
-		}
+	fmt.Printf("✓ Removed service %q\n", name)
+	if n := len(res.Deleted); n > 0 {
+		fmt.Printf("✓ Deleted %d generated %s\n", n, plural(n, "file"))
+	} else {
+		fmt.Printf("✓ No generated files to delete\n")
 	}
 	return 0
 }
