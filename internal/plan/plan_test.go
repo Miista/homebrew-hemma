@@ -48,7 +48,7 @@ func TestBuild_ValidService(t *testing.T) {
 
 	// DNS goes to the dns_host (resolver) dir; A record points at the host (appbox) IP.
 	conf := byExt["conf"]
-	if conf.Path != "resolver/"+config.DefaultDnsmasqDir+"/docs.conf" {
+	if conf.Path != "resolver/"+config.DefaultDnsmasqDir+"/docs.generated.conf" {
 		t.Errorf("dns path wrong: %q", conf.Path)
 	}
 	if !strings.Contains(conf.Content, "192.0.2.2") {

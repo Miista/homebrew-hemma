@@ -63,7 +63,7 @@ func TestRun_AddCreatesConfig(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "appbox", "caddy/data/sites/docs.caddy")); err != nil {
 		t.Errorf("caddy site not generated: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "resolver", "pihole/data/dnsmasq.d/generated/docs.conf")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "resolver", "pihole/data/dnsmasq.d/docs.generated.conf")); err != nil {
 		t.Errorf("dns conf not generated: %v", err)
 	}
 }

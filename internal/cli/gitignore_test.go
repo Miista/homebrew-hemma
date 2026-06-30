@@ -44,23 +44,39 @@ func TestIgnoredPaths_NotARepo(t *testing.T) {
 	}
 }
 
-func TestUnignoreSuggestions_ParentChain(t *testing.T) {
-	got := unignoreSuggestions([]string{"pi/pihole/data/dnsmasq.d/generated/x.conf"})
-	rules := got["pi"]
-	// Must un-ignore each parent dir top-down before the leaf glob.
-	want := []string{
-		"!pihole/",
-		"!pihole/data/",
-		"!pihole/data/dnsmasq.d/",
-		"!pihole/data/dnsmasq.d/generated/",
-		"!pihole/data/dnsmasq.d/generated/**",
+// The unignore block must re-include shd's .conf/.caddy under data/ while
+// leaving runtime data (e.g. .db) ignored — verified against real git.
+func TestUnignoreRules_RoundTrip(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
 	}
-	if len(rules) != len(want) {
-		t.Fatalf("rules = %v, want %v", rules, want)
+	dir := t.TempDir()
+	gitInit(t, dir)
+	gi := "**/data/**\n" + strings.Join(unignoreRules(), "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(gi), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	for i := range want {
-		if rules[i] != want[i] {
-			t.Errorf("rule[%d] = %q, want %q", i, rules[i], want[i])
+	for _, d := range []string{"pi/pihole/data/dnsmasq.d", "optiplex/caddy/data/sites", "pi/pihole/data/data"} {
+		os.MkdirAll(filepath.Join(dir, d), 0o755)
+	}
+	tracked := []string{"pi/pihole/data/dnsmasq.d/x.generated.conf", "optiplex/caddy/data/sites/y.caddy"}
+	ignoredStill := []string{"pi/pihole/data/data/gravity.db", "pi/pihole/data/dnsmasq.d/cache.db"}
+	for _, f := range append(append([]string{}, tracked...), ignoredStill...) {
+		os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o644)
+	}
+	ig, _ := ignoredPaths(dir, append(append([]string{}, tracked...), ignoredStill...))
+	set := map[string]bool{}
+	for _, p := range ig {
+		set[p] = true
+	}
+	for _, f := range tracked {
+		if set[f] {
+			t.Errorf("%s should be tracked (un-ignored) but is ignored", f)
+		}
+	}
+	for _, f := range ignoredStill {
+		if !set[f] {
+			t.Errorf("%s (runtime data) should stay ignored but is tracked", f)
 		}
 	}
 }

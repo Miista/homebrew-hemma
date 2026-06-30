@@ -138,42 +138,19 @@ func (v *verifier) dns(fqdn, wantIP string) {
 // caddy runs the service-host-side checks (in the caddy container).
 func (v *verifier) caddy(fqdn, backend string) {
 	const cf = "/etc/caddy/Caddyfile"
-	// imports present AND tls before sites (snippets must parse before use).
-	tlsLn := dexecSh(caddyContainer, "grep -nE 'import[[:space:]]+tls/' "+cf+" 2>/dev/null | head -1 | cut -d: -f1")
-	sitesLn := dexecSh(caddyContainer, "grep -nE 'import[[:space:]]+sites/' "+cf+" 2>/dev/null | head -1 | cut -d: -f1")
-	switch {
-	case tlsLn == "" || sitesLn == "":
-		v.no("Caddyfile missing 'import tls/*' and/or 'import sites/*'")
-	case atoi(tlsLn) < atoi(sitesLn):
-		v.ok("Caddyfile imports tls/ before sites/ (correct order)")
-	default:
-		v.no("Caddyfile imports sites/ before tls/ — snippets undefined, validate fails. Put 'import tls/*.caddy' first.")
-	}
-
-	// In adapted config (the file), and validates.
+	// Ask Caddy itself: `caddy adapt` expands the effective config (resolving
+	// imports, ignoring comments), so this can't be fooled by commented-out or
+	// mis-ordered import lines the way a text grep can. If the fqdn is in the
+	// adapted config, the imports genuinely loaded the generated site block.
 	if strings.Contains(strings.ToLower(dexecShAll(caddyContainer, "caddy adapt --config "+cf+" --adapter caddyfile 2>/dev/null")), strings.ToLower(fqdn)) {
-		v.ok("%s in adapted config", fqdn)
+		v.ok("%s in adapted config (imports load the generated site)", fqdn)
 	} else {
-		v.no("%s not in adapted config", fqdn)
+		v.no("%s not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)", fqdn)
 	}
 	if dexecOK(caddyContainer, "caddy validate --config "+cf+" --adapter caddyfile") {
 		v.ok("caddy validate passes")
 	} else {
 		v.no("caddy validate FAILED")
-	}
-
-	// In the RUNNING config (admin API) — catches an unreloaded change. The
-	// admin endpoint isn't always reachable (bound elsewhere/disabled); when
-	// the API returns nothing, skip rather than false-fail — the live-HTTPS
-	// check below is the real proof Caddy is serving.
-	running := dexecShAll(caddyContainer, "wget -qO- http://localhost:2019/config/ 2>/dev/null")
-	switch {
-	case running == "":
-		fmt.Printf("  · running-config check skipped (admin API unreachable); relying on live response\n")
-	case strings.Contains(strings.ToLower(running), strings.ToLower(fqdn)):
-		v.ok("%s in running config", fqdn)
-	default:
-		v.no("%s not in running config — reload: docker exec caddy caddy reload --config %s", fqdn, cf)
 	}
 
 	// reverse_proxy backend matches the declared backend.
@@ -184,7 +161,9 @@ func (v *verifier) caddy(fqdn, backend string) {
 		v.no("reverse_proxy does not use %s (declared backend)", backend)
 	}
 
-	// Live HTTPS from local Caddy (fresh connection).
+	// Live HTTPS from local Caddy (fresh connection). This is the running-state
+	// proof: it hits the in-memory Caddy and the real backend, so it can't pass
+	// on a stale/unreloaded config that doesn't actually serve the host.
 	code := dexecSh(caddyContainer, fmt.Sprintf("curl -sk -o /dev/null -w '%%{http_code}' --resolve %s:443:127.0.0.1 https://%s/ 2>/dev/null", fqdn, fqdn))
 	if code != "" && code != "000" {
 		v.ok("local Caddy answered HTTPS (%s)", code)
@@ -271,15 +250,4 @@ func orNone(s string) string {
 		return "(none)"
 	}
 	return s
-}
-
-func atoi(s string) int {
-	n := 0
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			break
-		}
-		n = n*10 + int(c-'0')
-	}
-	return n
 }

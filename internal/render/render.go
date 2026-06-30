@@ -27,15 +27,22 @@ func TLSSnippet(domain string) string {
 		Header, TLSSnippetName(domain), domain, domain)
 }
 
-// DNSRecord renders the dnsmasq address= directives for a service.
+// DNSRecord renders the dnsmasq directives for a service.
 //
-// The A record points at hostIP (the host that RUNS the service), not the
-// dns_host. The address=/<fqdn>/:: line is always emitted to suppress the
-// public AAAA record; :: (unspecified) is correct, ::1 (loopback) is a bug
-// (design §4.1).
+//   - local=/<fqdn>/ makes dnsmasq authoritative for the WHOLE name, so query
+//     types with no local record — notably the HTTPS/SVCB (type 65) record —
+//     return NODATA instead of being forwarded upstream and cached. Required:
+//     address= alone only covers A/AAAA; without local=, dnsmasq forwards the
+//     HTTPS query to Cloudflare, and SVCB-aware clients (Safari, Chrome/Edge)
+//     follow its public endpoint hint, bypassing split-horizon. (Verified: with
+//     local= type 65 is NODATA; without it, type 65 is the cached Cloudflare
+//     record.)
+//   - the A record points at hostIP (the host that RUNS the service).
+//   - address=/<fqdn>/:: suppresses the public AAAA; :: (unspecified) is
+//     correct, ::1 (loopback) is a bug (design §4.1).
 func DNSRecord(fqdn, hostIP string) string {
-	return fmt.Sprintf("%s\naddress=/%s/%s\naddress=/%s/::\n",
-		Header, fqdn, hostIP, fqdn)
+	return fmt.Sprintf("%s\nlocal=/%s/\naddress=/%s/%s\naddress=/%s/::\n",
+		Header, fqdn, fqdn, hostIP, fqdn)
 }
 
 // CaddySite renders the Caddy site block for a service. tlsImport is the

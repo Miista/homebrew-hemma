@@ -16,7 +16,10 @@ import (
 // Default output-path segments (design §4, §10). Per-host config may
 // override these so layout is data, not hardcoded.
 const (
-	DefaultDnsmasqDir    = "pihole/data/dnsmasq.d/generated"
+	// Directly in dnsmasq.d/ — pihole's conf-dir=...,*.conf does NOT recurse
+	// into subdirectories, so a 'generated/' subdir would be silently ignored.
+	// The "generated" marker lives in the filename (<service>.generated.conf).
+	DefaultDnsmasqDir    = "pihole/data/dnsmasq.d"
 	DefaultCaddySitesDir = "caddy/data/sites"
 	DefaultCaddyTLSDir   = "caddy/data/tls"
 )

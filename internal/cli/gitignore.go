@@ -56,13 +56,9 @@ func printIgnoreDetail(ignored []string) {
 	for _, p := range ignored {
 		fmt.Printf("  %s\n", p)
 	}
-	fmt.Println("\nThese .gitignore entries would un-ignore them (or run 'shd doctor --fix'):")
-	sugg := unignoreSuggestions(ignored)
-	for _, host := range sortedKeysOf(sugg) {
-		fmt.Printf("  # in %s/.gitignore\n", host)
-		for _, rule := range sugg[host] {
-			fmt.Printf("  %s\n", rule)
-		}
+	fmt.Println("\nAdd to .gitignore to un-ignore them (or run 'shd doctor --fix'):")
+	for _, rule := range unignoreRules() {
+		fmt.Printf("  %s\n", rule)
 	}
 }
 
@@ -100,17 +96,15 @@ func cmdDoctor(cfgPath string, args []string) int {
 		return 1
 	}
 
-	// fix: write the negations into each host's .gitignore (marked block),
-	// then re-verify.
-	sugg := unignoreSuggestions(ignored)
-	for _, host := range sortedKeysOf(sugg) {
-		gi := filepath.Join(repoRoot, host, ".gitignore")
-		if err := writeManagedBlock(gi, sugg[host]); err != nil {
-			errf("%v", err)
-			return 1
-		}
-		fmt.Printf("✓ Updated %s/.gitignore\n", host)
+	// fix: write the negation block to the repo-root .gitignore, then re-verify.
+	// The globs are repo-wide and file-type-scoped (see unignoreRules), so one
+	// block at the root covers every host and never un-ignores runtime data.
+	gi := filepath.Join(repoRoot, ".gitignore")
+	if err := writeManagedBlock(gi, unignoreRules()); err != nil {
+		errf("%v", err)
+		return 1
 	}
+	fmt.Println("✓ Updated .gitignore")
 
 	// Re-verify: the negations should now un-ignore the files.
 	still, ok := ignoredPaths(repoRoot, planPaths(p))
@@ -200,57 +194,17 @@ func ignoredPaths(repoRoot string, relPaths []string) (ignored []string, ok bool
 	return ignored, true
 }
 
-// unignoreSuggestions turns a set of ignored repo-relative paths into the
-// per-host .gitignore negation lines that would re-include them. Git requires
-// un-ignoring each parent directory before the files within, so the chain is
-// emitted top-down. Keyed by host directory (the dir holding the .gitignore to
-// edit), value is the ordered list of "!..."-rules relative to that host dir.
-func unignoreSuggestions(ignored []string) map[string][]string {
-	out := map[string][]string{}
-	for _, p := range ignored {
-		host, rel := splitHostRel(p)
-		if host == "" {
-			continue
-		}
-		seen := map[string]bool{}
-		add := func(rule string) {
-			if !seen[rule] {
-				seen[rule] = true
-				out[host] = append(out[host], rule)
-			}
-		}
-		// Emit each parent dir top-down, then a glob for the leaf dir's contents.
-		segs := strings.Split(filepath.ToSlash(rel), "/")
-		for i := 1; i < len(segs); i++ {
-			add("!" + strings.Join(segs[:i], "/") + "/")
-		}
-		dir := strings.Join(segs[:len(segs)-1], "/")
-		add("!" + dir + "/**")
+// unignoreRules returns the repo-root .gitignore negation block that
+// re-includes shd's generated files when a broad rule like **/data/** would
+// otherwise ignore them. Git won't re-include a file under an excluded
+// directory, so the directories must be un-ignored first (lines 1–2); then
+// only shd's file types are re-included (lines 3–4) — runtime data (.db,
+// caches, certs, …) stays ignored. Host-agnostic; one block at the repo root.
+func unignoreRules() []string {
+	return []string{
+		"!**/data/",
+		"!**/data/**/",
+		"!**/data/**/*.conf",
+		"!**/data/**/*.caddy",
 	}
-	for host := range out {
-		out[host] = dedupeStable(out[host])
-	}
-	return out
-}
-
-// splitHostRel splits a repo-relative path "host/rest..." into its first
-// segment (the host dir) and the remainder.
-func splitHostRel(p string) (host, rel string) {
-	p = filepath.ToSlash(p)
-	if i := strings.IndexByte(p, '/'); i > 0 {
-		return p[:i], p[i+1:]
-	}
-	return "", p
-}
-
-func dedupeStable(in []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, s := range in {
-		if !seen[s] {
-			seen[s] = true
-			out = append(out, s)
-		}
-	}
-	return out
 }

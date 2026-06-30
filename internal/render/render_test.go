@@ -8,6 +8,7 @@ import (
 func TestDNSRecord(t *testing.T) {
 	got := DNSRecord("docs.example.com", "192.0.2.2")
 	want := Header + "\n" +
+		"local=/docs.example.com/\n" +
 		"address=/docs.example.com/192.0.2.2\n" +
 		"address=/docs.example.com/::\n"
 	if got != want {

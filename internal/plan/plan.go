@@ -165,7 +165,7 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 		return nil, fmt.Sprintf("backend %q is not name:port shape", svc.Backend)
 	}
 
-	dnsPath := filepath.Join(dnsM.ResolvedDir(dnsHostName), config.DefaultDnsmasqDir, name+".conf")
+	dnsPath := filepath.Join(dnsM.ResolvedDir(dnsHostName), config.DefaultDnsmasqDir, name+".generated.conf")
 	caddyPath := filepath.Join(hostM.ResolvedDir(svc.Host), config.DefaultCaddySitesDir, name+".caddy")
 
 	return []File{
