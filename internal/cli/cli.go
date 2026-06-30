@@ -120,6 +120,10 @@ func Run(args []string) int {
 		return dispatchNoun(repoRoot, cfgPath, "update", rest)
 	case "remove":
 		return dispatchNoun(repoRoot, cfgPath, "remove", rest)
+	case "enable":
+		return dispatchNoun(repoRoot, cfgPath, "enable", rest)
+	case "disable":
+		return dispatchNoun(repoRoot, cfgPath, "disable", rest)
 	case "set":
 		return dispatchSet(cfgPath, rest)
 	case "list":
@@ -161,6 +165,10 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 			return cmdUpdate(repoRoot, cfgPath, rest)
 		case "remove":
 			return cmdRemove(repoRoot, cfgPath, rest)
+		case "enable":
+			return cmdEnableDisable(repoRoot, cfgPath, rest, false)
+		case "disable":
+			return cmdEnableDisable(repoRoot, cfgPath, rest, true)
 		}
 	case "host":
 		switch verb {
@@ -436,6 +444,63 @@ func cmdRemove(repoRoot, cfgPath string, args []string) int {
 	return 0
 }
 
+func cmdEnableDisable(repoRoot, cfgPath string, args []string, disable bool) int {
+	verb := "enable"
+	if disable {
+		verb = "disable"
+	}
+	if len(args) < 1 {
+		errf("Missing the <service> name.")
+		hint("Usage: sd %s service <name>", verb)
+		return 2
+	}
+	name := args[0]
+
+	cfg, code := loadExisting(cfgPath, verb)
+	if cfg == nil {
+		return code
+	}
+	svc, exists := cfg.Services[name]
+	if !exists {
+		errf("Service %q does not exist.", name)
+		return 1
+	}
+	if disable && svc.Disabled {
+		fmt.Printf("Service %q is already disabled.\n", name)
+		return 0
+	}
+	if !disable && !svc.Disabled {
+		fmt.Printf("Service %q is already enabled.\n", name)
+		return 0
+	}
+	svc.Disabled = disable
+	cfg.Services[name] = svc
+	if err := cfg.Save(); err != nil {
+		errf("%v", err)
+		return 1
+	}
+
+	if disable {
+		// Delete generated files immediately — same as remove but the service
+		// stays in services.yaml so it can be re-enabled later.
+		mf := loadManifest(repoRoot, cfg)
+		eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: mf}
+		res, err := eng.RemoveService(name)
+		if err != nil {
+			errf("%v", err)
+			return 1
+		}
+		fmt.Printf(tick+" Disabled service %q\n", name)
+		if n := len(res.Deleted); n > 0 {
+			fmt.Printf(tick+" Deleted %d generated %s\n", n, plural(n, "file"))
+		}
+		return 0
+	}
+
+	fmt.Printf(tick+" Enabled service %q\n", name)
+	return runSync(repoRoot, cfg, syncOpts{mode: syncpkg.Incremental, afterMutation: true})
+}
+
 func cmdSync(repoRoot, cfgPath string, args []string) int {
 	fs := flag.NewFlagSet("sync", flag.ContinueOnError)
 	incremental := fs.Bool("incremental", false, "write/update only, never delete (default)")
@@ -526,10 +591,17 @@ func runSync(repoRoot string, cfg *config.Config, o syncOpts) int {
 			fmt.Printf("  • %s\n", name)
 		}
 	}
-	if len(res.Skipped) > 0 {
-		fmt.Printf("%d skipped:\n", len(res.Skipped))
-		for _, name := range sortedSkip(res.Skipped) {
-			fmt.Printf("  • %s: %s\n", name, res.Skipped[name])
+	disabled, errored := splitSkipped(res.Skipped)
+	if len(disabled) > 0 {
+		fmt.Printf("%d disabled:\n", len(disabled))
+		for _, name := range disabled {
+			fmt.Printf("  • %s\n", name)
+		}
+	}
+	if len(errored) > 0 {
+		fmt.Printf("%d skipped:\n", len(errored))
+		for _, name := range sortedSkip(errored) {
+			fmt.Printf("  • %s: %s\n", name, errored[name])
 		}
 		return 1
 	}
@@ -620,6 +692,20 @@ func loadManifest(repoRoot string, cfg *config.Config) *manifest.Manifest {
 	return mf
 }
 
+// splitSkipped separates disabled services from validation-errored ones.
+func splitSkipped(skipped map[string]string) (disabled []string, errored map[string]string) {
+	errored = map[string]string{}
+	for name, reason := range skipped {
+		if plan.IsDisabled(reason) {
+			disabled = append(disabled, name)
+		} else {
+			errored[name] = reason
+		}
+	}
+	sort.Strings(disabled)
+	return
+}
+
 func sortedSkip(m map[string]string) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -675,9 +761,11 @@ services.yaml. Operates on the file in the current directory by default.
 Commands are verb-first: <verb> <noun> <args>.
 
 Services (an app reached at an fqdn, on a host, under a domain):
-  sd add    service <name> --fqdn <f> --host <h> --backend <b>
-  sd update service <name> [--fqdn ...] [--host ...] [--backend ...]
-  sd remove service <name>
+  sd add     service <name> --fqdn <f> --host <h> --backend <b>
+  sd update  service <name> [--fqdn ...] [--host ...] [--backend ...]
+  sd remove  service <name>
+  sd disable service <name>   Stop generating DNS/Caddy config for a service (keeps it in services.yaml).
+  sd enable  service <name>   Re-enable a disabled service and sync.
 
 Building blocks (a service references a host and a domain):
   sd add    host   <name> <ip>

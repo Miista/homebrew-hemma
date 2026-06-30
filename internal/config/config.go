@@ -56,9 +56,10 @@ type Defaults struct {
 // Service is one declared service entry. There is no per-service dns_host:
 // every record is served by the single resolver (defaults.dns_host).
 type Service struct {
-	FQDN    string `yaml:"fqdn"`
-	Host    string `yaml:"host"`
-	Backend string `yaml:"backend"`
+	FQDN     string `yaml:"fqdn"`
+	Host     string `yaml:"host"`
+	Backend  string `yaml:"backend"`
+	Disabled bool   `yaml:"disabled,omitempty"`
 }
 
 // Config is the in-memory representation of services.yaml.

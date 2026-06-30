@@ -30,6 +30,10 @@ type Plan struct {
 	Total int
 }
 
+// IsDisabled reports whether a skipped service was explicitly disabled (as
+// opposed to failing validation).
+func IsDisabled(reason string) bool { return reason == "disabled" }
+
 // Valid returns service names that produced files (sorted).
 func (p *Plan) Valid() []string {
 	out := make([]string, 0, len(p.Files))
@@ -74,6 +78,10 @@ func Build(c *config.Config) *Plan {
 	tentative := map[string][]File{} // svc -> files, before collision pruning
 
 	for name, svc := range c.Services {
+		if svc.Disabled {
+			p.Skipped[name] = "disabled"
+			continue
+		}
 		files, reason := planService(c, name, svc, hostNames)
 		if reason != "" {
 			p.Skipped[name] = reason

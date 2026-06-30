@@ -39,7 +39,11 @@ func cmdList(cfgPath string, args []string) int {
 	fmt.Printf("\n%s== Services (%d) ==%s\n", boldOn, len(cfg.Services), boldOff)
 	for _, name := range sortedKeysOf(cfg.Services) {
 		svc := cfg.Services[name]
-		fmt.Printf("  %-12s %s -> %s  (%s)\n", name, svc.FQDN, svc.Host, svc.Backend)
+		if svc.Disabled {
+			fmt.Printf("  %-12s %s -> %s  (%s)  [disabled]\n", name, svc.FQDN, svc.Host, svc.Backend)
+		} else {
+			fmt.Printf("  %-12s %s -> %s  (%s)\n", name, svc.FQDN, svc.Host, svc.Backend)
+		}
 	}
 	return 0
 }
