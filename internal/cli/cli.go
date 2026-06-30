@@ -531,7 +531,48 @@ func runSync(repoRoot string, cfg *config.Config, o syncOpts) int {
 		}
 		return 1
 	}
+
+	printNextSteps(cfg, res)
 	return 0
+}
+
+// printNextSteps prints the command to make written files live on this host.
+// Only printed when files were actually written this run.
+func printNextSteps(cfg *config.Config, res *syncpkg.Result) {
+	written := append(append([]string{}, res.Created...), res.Updated...)
+	if len(written) == 0 {
+		return
+	}
+
+	self := localHost(cfg)
+	if self == "" {
+		return
+	}
+
+	dnsDirty, caddyDirty := false, false
+	for _, path := range written {
+		if strings.Contains(path, "dnsmasq") {
+			dnsDirty = true
+		} else if strings.Contains(path, "caddy") {
+			caddyDirty = true
+		}
+	}
+
+	if self == cfg.Defaults.DNSHost && dnsDirty {
+		fmt.Println("\nTo make changes live:")
+		fmt.Println("  docker restart pihole")
+	}
+	if caddyDirty {
+		// Check if this host's caddy files were among the written paths.
+		hostDir := cfg.Hosts[self].ResolvedDir(self)
+		for _, path := range written {
+			if strings.HasPrefix(path, hostDir+"/caddy") || strings.HasPrefix(path, self+"/caddy") {
+				fmt.Println("\nTo make changes live:")
+				fmt.Println("  docker exec caddy caddy reload --config /etc/caddy/Caddyfile")
+				break
+			}
+		}
+	}
 }
 
 // changedServices returns the names of real services (not @domain: TLS owners)

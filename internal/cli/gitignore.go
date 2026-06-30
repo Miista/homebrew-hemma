@@ -204,7 +204,7 @@ func unignoreRules() []string {
 	return []string{
 		"!**/data/",
 		"!**/data/**/",
-		"!**/data/**/*.conf",
+		"!**/data/**/*.generated.conf",
 		"!**/data/**/*.caddy",
 	}
 }
