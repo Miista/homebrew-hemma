@@ -86,7 +86,7 @@ func cmdDoctor(cfgPath string, args []string) int {
 		return 0
 	}
 	if len(ignored) == 0 {
-		fmt.Println(tick+" No generated files are gitignored.")
+		fmt.Println(tick + " No generated files are gitignored.")
 		return 0
 	}
 
@@ -104,7 +104,7 @@ func cmdDoctor(cfgPath string, args []string) int {
 		errf("%v", err)
 		return 1
 	}
-	fmt.Println(tick+" Updated .gitignore")
+	fmt.Println(tick + " Updated .gitignore")
 
 	// Re-verify: the negations should now un-ignore the files.
 	still, ok := ignoredPaths(repoRoot, planPaths(p))
@@ -112,7 +112,7 @@ func cmdDoctor(cfgPath string, args []string) int {
 		return 0 // can't re-check; assume the write was enough
 	}
 	if len(still) == 0 {
-		fmt.Println(tick+" All generated files are now tracked by git.")
+		fmt.Println(tick + " All generated files are now tracked by git.")
 		return 0
 	}
 	fmt.Fprintln(os.Stderr)

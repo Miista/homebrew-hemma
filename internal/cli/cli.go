@@ -40,10 +40,10 @@ func init() {
 	if !colorEnabled() {
 		return
 	}
-	tick    = "\033[32m✓\033[0m"
-	cross   = "\033[31m✗\033[0m"
-	warn    = "\033[33m⚠\033[0m"
-	boldOn  = "\033[1m"
+	tick = "\033[32m✓\033[0m"
+	cross = "\033[31m✗\033[0m"
+	warn = "\033[33m⚠\033[0m"
+	boldOn = "\033[1m"
 	boldOff = "\033[0m"
 }
 
