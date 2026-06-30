@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"shd/internal/config"
+	"sd/internal/config"
 )
 
 // host/domain mutate the YAML but do NOT write generated files;
@@ -20,12 +20,12 @@ func hostAdd(cfgPath string, args []string) int {
 	// and isn't derivable from anything else.
 	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: shd add host <name> <ip>")
+		hint("Usage: sd add host <name> <ip>")
 		return 2
 	}
 	if len(args) < 2 {
 		errf("Missing the <ip> for host %q.", args[0])
-		hint("Usage: shd add host <name> <ip>")
+		hint("Usage: sd add host <name> <ip>")
 		return 2
 	}
 	name, ip := args[0], args[1]
@@ -36,7 +36,7 @@ func hostAdd(cfgPath string, args []string) int {
 	}
 
 	// A host's name IS its repo directory (where its compose and config already
-	// live). shd only adds DNS/Caddy artifacts to a real, already-present host,
+	// live). sd only adds DNS/Caddy artifacts to a real, already-present host,
 	// so a name with no matching directory is a typo — refuse it.
 	repoRoot := filepath.Dir(cfgPath)
 	if info, err := os.Stat(filepath.Join(repoRoot, name)); err != nil || !info.IsDir() {
@@ -103,7 +103,7 @@ func hostRemove(cfgPath string, args []string) int {
 func domainAdd(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: shd add domain <name>")
+		hint("Usage: sd add domain <name>")
 		return 2
 	}
 	name := args[0]
@@ -161,7 +161,7 @@ func domainRemove(cfgPath string, args []string) int {
 func cmdSetDNSHost(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: shd set dns-host <name>")
+		hint("Usage: sd set dns-host <name>")
 		return 2
 	}
 	name := args[0]
@@ -171,7 +171,7 @@ func cmdSetDNSHost(cfgPath string, args []string) int {
 		return code
 	}
 	if _, exists := cfg.Hosts[name]; !exists {
-		errf("Host %q does not exist — add it first with: shd add host %s <ip>", name, name)
+		errf("Host %q does not exist — add it first with: sd add host %s <ip>", name, name)
 		return 1
 	}
 	cfg.Defaults.DNSHost = name

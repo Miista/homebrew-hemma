@@ -42,7 +42,7 @@ func (m Host) ResolvedDir(name string) string {
 	return name
 }
 
-// Domain is a registrable domain shd manages. The TLS snippet name and cert
+// Domain is a registrable domain sd manages. The TLS snippet name and cert
 // paths are derived from the domain (see render.TLSSnippetName / TLSSnippet),
 // so no per-domain configuration is needed. The struct is kept (rather than a
 // bare set) so domain-level options can be added later without a schema break.

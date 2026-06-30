@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"shd/internal/config"
-	"shd/internal/plan"
+	"sd/internal/config"
+	"sd/internal/plan"
 )
 
 // Container names are the homelab convention.
@@ -20,7 +20,7 @@ const (
 
 // cmdVerify checks that a service actually resolves and is served, live.
 //
-//	shd verify [<fqdn>]
+//	sd verify [<fqdn>]
 //
 // Verification is split across hosts: the DNS half can only be checked on the
 // resolver (the pihole host), the Caddy half only on the host that runs the

@@ -11,19 +11,19 @@ import (
 	"sort"
 	"strings"
 
-	"shd/internal/config"
-	"shd/internal/manifest"
-	"shd/internal/plan"
-	syncpkg "shd/internal/sync"
+	"sd/internal/config"
+	"sd/internal/manifest"
+	"sd/internal/plan"
+	syncpkg "sd/internal/sync"
 )
 
 const (
 	configName   = "services.yaml"
-	manifestName = "shd-manifest.yaml"
+	manifestName = "sd-manifest.yaml"
 )
 
 // Version is the build version, overridden at release time via
-// -ldflags "-X shd/internal/cli.Version=...".
+// -ldflags "-X sd/internal/cli.Version=...".
 var Version = "dev"
 
 // Status glyphs, colored only when stdout is a terminal (so piped/captured
@@ -112,7 +112,7 @@ func Run(args []string) int {
 
 	switch cmd {
 	case "version", "--version", "-v":
-		fmt.Println("shd", Version)
+		fmt.Println("sd", Version)
 		return 0
 	case "add":
 		return dispatchNoun(repoRoot, cfgPath, "add", rest)
@@ -148,7 +148,7 @@ func Run(args []string) int {
 func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the noun for %q — expected service, host, or domain.", verb)
-		hint("Usage: shd %s service|host|domain ...", verb)
+		hint("Usage: sd %s service|host|domain ...", verb)
 		return 2
 	}
 	noun, rest := args[0], args[1:]
@@ -184,7 +184,7 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 		}
 	default:
 		errf("Unknown noun %q — expected service, host, or domain.", noun)
-		hint("Usage: shd %s service|host|domain ...", verb)
+		hint("Usage: sd %s service|host|domain ...", verb)
 		return 2
 	}
 	// Reached only if a verb/noun combo fell through (shouldn't happen).
@@ -196,7 +196,7 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 func dispatchSet(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing what to set — expected dns-host.")
-		hint("Usage: shd set dns-host <name>")
+		hint("Usage: sd set dns-host <name>")
 		return 2
 	}
 	switch args[0] {
@@ -214,7 +214,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	name, args, ok := leadingName(args)
 	if !ok {
 		errf("Missing the <service> name.")
-		hint("Usage: shd add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
+		hint("Usage: sd add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		return 2
 	}
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
@@ -238,7 +238,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	}
 	if len(missing) > 0 {
 		errf("Missing required %s: %s.", plural(len(missing), "flag"), strings.Join(missing, ", "))
-		hint("Usage: shd add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
+		hint("Usage: sd add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		return 2
 	}
 
@@ -262,9 +262,9 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	if _, ok := cfg.MatchDomain(*fqdn); !ok {
 		errf("The fqdn %q matches no defined domain.", *fqdn)
 		if doms := cfg.DomainNames(); len(doms) > 0 {
-			hint("Defined domains: %s. Add one with 'shd add domain <name>' or fix the fqdn.", strings.Join(doms, ", "))
+			hint("Defined domains: %s. Add one with 'sd add domain <name>' or fix the fqdn.", strings.Join(doms, ", "))
 		} else {
-			hint("No domains defined yet — run 'shd add domain <name>' first.")
+			hint("No domains defined yet — run 'sd add domain <name>' first.")
 		}
 		return 1
 	}
@@ -340,7 +340,7 @@ func printVerbose(p *plan.Plan, res *syncpkg.Result) {
 // blockers — only repo-wide preconditions are.
 func syncBlockedReason(cfg *config.Config) string {
 	if len(cfg.Services) > 0 && cfg.Defaults.DNSHost == "" {
-		return "no dns_host is set, so DNS records can't be routed. Set the resolver with: shd set dns-host <name>"
+		return "no dns_host is set, so DNS records can't be routed. Set the resolver with: sd set dns-host <name>"
 	}
 	return ""
 }
@@ -349,7 +349,7 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	name, args, ok := leadingName(args)
 	if !ok {
 		errf("Missing the <service> name.")
-		hint("Usage: shd update service <name> [--fqdn ...] [--host ...] [--backend ...]")
+		hint("Usage: sd update service <name> [--fqdn ...] [--host ...] [--backend ...]")
 		return 2
 	}
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
@@ -401,7 +401,7 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 func cmdRemove(repoRoot, cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <service> name.")
-		hint("Usage: shd remove service <name>")
+		hint("Usage: sd remove service <name>")
 		return 2
 	}
 	name := args[0]
@@ -480,7 +480,7 @@ func runSync(repoRoot string, cfg *config.Config, o syncOpts) int {
 	if reason := syncBlockedReason(cfg); reason != "" {
 		if o.afterMutation {
 			fmt.Fprintf(os.Stderr, cross+" Not synced: %s\n", reason)
-			hint("  The change is saved in services.yaml. Run 'shd sync' once that's resolved.")
+			hint("  The change is saved in services.yaml. Run 'sd sync' once that's resolved.")
 		} else {
 			errf("Cannot sync: %s", reason)
 		}
@@ -509,10 +509,10 @@ func runSync(repoRoot string, cfg *config.Config, o syncOpts) int {
 	// Surface an incomplete bootstrap so a no-op/partial sync explains itself,
 	// rather than leaving the user wondering why nothing happened.
 	if cfg.Defaults.DNSHost == "" {
-		fmt.Println("Note: no dns_host set — run 'shd set dns-host <name>' (records can't be routed without it).")
+		fmt.Println("Note: no dns_host set — run 'sd set dns-host <name>' (records can't be routed without it).")
 	}
 	if len(cfg.Domains) == 0 {
-		fmt.Println("Note: no domains defined — run 'shd add domain <name>' (a service's fqdn must match a domain).")
+		fmt.Println("Note: no domains defined — run 'sd add domain <name>' (a service's fqdn must match a domain).")
 	}
 
 	if o.verbose {
@@ -649,7 +649,7 @@ func loadExisting(cfgPath, command string) (*config.Config, int) {
 		errf("No %s in this directory — nothing to %s.", configName, command)
 		fmt.Fprintln(os.Stderr)
 		hint("To create your first service:")
-		hint("  shd add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
+		hint("  sd add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		fmt.Fprintln(os.Stderr)
 		hint("Or run from the repo root, or pass -C <dir>.")
 		return nil, 1
@@ -667,7 +667,7 @@ func leadingName(args []string) (name string, rest []string, ok bool) {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `shd — Split-Horizon DNS (Manager)
+	fmt.Fprint(os.Stderr, `sd — Split-Horizon DNS (Manager)
 
 Generates split-horizon DNS records and Caddy site blocks from a declarative
 services.yaml. Operates on the file in the current directory by default.
@@ -675,27 +675,27 @@ services.yaml. Operates on the file in the current directory by default.
 Commands are verb-first: <verb> <noun> <args>.
 
 Services (an app reached at an fqdn, on a host, under a domain):
-  shd add    service <name> --fqdn <f> --host <h> --backend <b>
-  shd update service <name> [--fqdn ...] [--host ...] [--backend ...]
-  shd remove service <name>
+  sd add    service <name> --fqdn <f> --host <h> --backend <b>
+  sd update service <name> [--fqdn ...] [--host ...] [--backend ...]
+  sd remove service <name>
 
 Building blocks (a service references a host and a domain):
-  shd add    host   <name> <ip>
-  shd remove host   <name>
-  shd add    domain <name>
-  shd remove domain <name>
-  shd set    dns-host <name>    Set the default resolver host for DNS records.
+  sd add    host   <name> <ip>
+  sd remove host   <name>
+  sd add    domain <name>
+  sd remove domain <name>
+  sd set    dns-host <name>    Set the default resolver host for DNS records.
 
 Other:
-  shd sync   [--incremental | --complete]
-  shd list                     Show current hosts, domains, and services (with validity).
-  shd verify                   Check live DNS resolution per service (run on the resolver host; needs docker).
-  shd doctor [--fix]           Audit the repo (e.g. gitignored generated files); --fix applies .gitignore entries.
-  shd version
-  shd help
+  sd sync   [--incremental | --complete]
+  sd list                     Show current hosts, domains, and services (with validity).
+  sd verify                   Check live DNS resolution per service (run on the resolver host; needs docker).
+  sd doctor [--fix]           Audit the repo (e.g. gitignored generated files); --fix applies .gitignore entries.
+  sd version
+  sd help
 
 Global flags:
-  -C <dir>   Run as if shd were started in <dir> (default: current directory).
+  -C <dir>   Run as if sd were started in <dir> (default: current directory).
 
 Notes:
   - A host's name is its repo directory (e.g. host "pi" -> ./pi/), which must already exist.

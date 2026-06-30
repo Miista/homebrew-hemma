@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"shd/internal/config"
-	"shd/internal/plan"
+	"sd/internal/config"
+	"sd/internal/plan"
 )
 
 // planPaths returns the unique repo-relative paths a plan would write.
@@ -31,7 +31,7 @@ func planPaths(p *plan.Plan) []string {
 // warnIfIgnored prints a SHORT one-line warning to stderr if any of the plan's
 // output paths are gitignored (they'd generate but never commit/deploy). It
 // fires every run while the problem persists — a standing deploy hazard should
-// stay visible — and points at `shd doctor` for the full file list + fix.
+// stay visible — and points at `sd doctor` for the full file list + fix.
 // Silent when nothing is ignored or the check can't run (git absent / no repo).
 func warnIfIgnored(repoRoot string, p *plan.Plan) {
 	ignored, ok := ignoredPaths(repoRoot, planPaths(p))
@@ -44,26 +44,26 @@ func warnIfIgnored(repoRoot string, p *plan.Plan) {
 		verb = "are"
 	}
 	fmt.Fprintf(os.Stderr,
-		warn+" %d generated %s %s gitignored and won't deploy. Run 'shd doctor --fix'.\n",
+		warn+" %d generated %s %s gitignored and won't deploy. Run 'sd doctor --fix'.\n",
 		len(ignored), noun, verb)
 }
 
 // printIgnoreDetail prints the full report: the ignored paths and the per-host
-// .gitignore negation lines to add. Used by `shd doctor`.
+// .gitignore negation lines to add. Used by `sd doctor`.
 func printIgnoreDetail(ignored []string) {
 	fmt.Printf("%d generated %s ignored by git — they won't be committed or deployed:\n",
 		len(ignored), plural(len(ignored), "file"))
 	for _, p := range ignored {
 		fmt.Printf("  %s\n", p)
 	}
-	fmt.Println("\nAdd to .gitignore to un-ignore them (or run 'shd doctor --fix'):")
+	fmt.Println("\nAdd to .gitignore to un-ignore them (or run 'sd doctor --fix'):")
 	for _, rule := range unignoreRules() {
 		fmt.Printf("  %s\n", rule)
 	}
 }
 
-// cmdDoctor audits the repo for problems shd can detect. Read-only by default;
-// `shd doctor --fix` applies the .gitignore negations (the one fix shd can make
+// cmdDoctor audits the repo for problems sd can detect. Read-only by default;
+// `sd doctor --fix` applies the .gitignore negations (the one fix sd can make
 // safely). Exits non-zero if problems remain.
 func cmdDoctor(cfgPath string, args []string) int {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
@@ -80,55 +80,95 @@ func cmdDoctor(cfgPath string, args []string) int {
 	}
 	p := plan.Build(cfg)
 
+	problems := 0
+
+	// --- gitignore check ---
 	ignored, ok := ignoredPaths(repoRoot, planPaths(p))
 	if !ok {
 		fmt.Println("Skipped gitignore check (git not available or not a repository).")
-		return 0
-	}
-	if len(ignored) == 0 {
+	} else if len(ignored) == 0 {
 		fmt.Println(tick + " No generated files are gitignored.")
+	} else {
+		problems++
+		if fix {
+			// fix: write the negation block to the repo-root .gitignore, then re-verify.
+			gi := filepath.Join(repoRoot, ".gitignore")
+			if err := writeManagedBlock(gi, unignoreRules()); err != nil {
+				errf("%v", err)
+				return 1
+			}
+			fmt.Println(tick + " Updated .gitignore")
+			still, ok := ignoredPaths(repoRoot, planPaths(p))
+			if !ok {
+				// can't re-check; assume the write was enough
+			} else if len(still) == 0 {
+				fmt.Println(tick + " All generated files are now tracked by git.")
+				problems--
+			} else {
+				errf("%d %s still gitignored after fix:", len(still), plural(len(still), "file"))
+				for _, p := range still {
+					fmt.Fprintf(os.Stderr, "  %s\n", p)
+				}
+			}
+		} else {
+			printIgnoreDetail(ignored)
+			fmt.Println("\nRun 'sd doctor --fix' to add these entries automatically.")
+		}
+	}
+
+	// --- Caddy import check ---
+	problems += checkCaddyImports(cfg, p)
+
+	if problems > 0 {
+		return 1
+	}
+	return 0
+}
+
+// checkCaddyImports runs `caddy adapt` inside the caddy container and reports
+// any service FQDNs that don't appear in the adapted config — meaning the
+// Caddyfile is missing the required import lines. Skips silently if docker is
+// unavailable or the caddy container isn't running.
+func checkCaddyImports(cfg *config.Config, p *plan.Plan) int {
+	if _, err := exec.LookPath("docker"); err != nil {
+		return 0
+	}
+	const cf = "/etc/caddy/Caddyfile"
+	adapted := dexecShAll(caddyContainer, "caddy adapt --config "+cf+" --adapter caddyfile 2>/dev/null")
+	if adapted == "" {
+		fmt.Println("Skipped Caddy import check (caddy container not reachable).")
 		return 0
 	}
 
-	if !fix {
-		printIgnoreDetail(ignored)
-		fmt.Println("\nRun 'shd doctor --fix' to add these entries automatically.")
-		return 1
+	adaptedLow := strings.ToLower(adapted)
+	problems := 0
+	for _, k := range p.Valid() {
+		if plan.IsDomainOwner(k) {
+			continue
+		}
+		svc, ok := cfg.Services[k]
+		if !ok {
+			continue
+		}
+		if strings.Contains(adaptedLow, strings.ToLower(svc.FQDN)) {
+			fmt.Printf(tick+" %s in adapted Caddy config\n", svc.FQDN)
+		} else {
+			fmt.Printf(cross+" %s missing from adapted Caddy config — Caddyfile must contain 'import tls/*.caddy' then 'import sites/*.caddy'\n", svc.FQDN)
+			problems++
+		}
 	}
-
-	// fix: write the negation block to the repo-root .gitignore, then re-verify.
-	// The globs are repo-wide and file-type-scoped (see unignoreRules), so one
-	// block at the root covers every host and never un-ignores runtime data.
-	gi := filepath.Join(repoRoot, ".gitignore")
-	if err := writeManagedBlock(gi, unignoreRules()); err != nil {
-		errf("%v", err)
-		return 1
+	if problems == 0 && len(p.Valid()) > 0 {
+		fmt.Println(tick + " All services present in adapted Caddy config.")
 	}
-	fmt.Println(tick + " Updated .gitignore")
-
-	// Re-verify: the negations should now un-ignore the files.
-	still, ok := ignoredPaths(repoRoot, planPaths(p))
-	if !ok {
-		return 0 // can't re-check; assume the write was enough
-	}
-	if len(still) == 0 {
-		fmt.Println(tick + " All generated files are now tracked by git.")
-		return 0
-	}
-	fmt.Fprintln(os.Stderr)
-	errf("%d %s still gitignored after fix:", len(still), plural(len(still), "file"))
-	for _, p := range still {
-		fmt.Fprintf(os.Stderr, "  %s\n", p)
-	}
-	return 1
+	return problems
 }
 
 const (
-	giBlockStart = "# >>> shd managed >>>"
-	giBlockEnd   = "# <<< shd managed <<<"
+	giBlockStart = "# >>> sd managed >>>"
+	giBlockEnd   = "# <<< sd managed <<<"
 )
 
-// writeManagedBlock writes rules into path inside a marked shd block, creating
+// writeManagedBlock writes rules into path inside a marked sd block, creating
 // the file if absent and preserving any content outside the markers. Idempotent.
 func writeManagedBlock(path string, rules []string) error {
 	var existing string
@@ -139,8 +179,8 @@ func writeManagedBlock(path string, rules []string) error {
 	}
 
 	block := giBlockStart + "\n" +
-		"# shd-generated config under data/ dirs the repo otherwise ignores.\n" +
-		"# Managed by 'shd doctor --fix'; edit outside these markers.\n" +
+		"# sd-generated config under data/ dirs the repo otherwise ignores.\n" +
+		"# Managed by 'sd doctor --fix'; edit outside these markers.\n" +
 		strings.Join(rules, "\n") + "\n" +
 		giBlockEnd + "\n"
 
@@ -195,10 +235,10 @@ func ignoredPaths(repoRoot string, relPaths []string) (ignored []string, ok bool
 }
 
 // unignoreRules returns the repo-root .gitignore negation block that
-// re-includes shd's generated files when a broad rule like **/data/** would
+// re-includes sd's generated files when a broad rule like **/data/** would
 // otherwise ignore them. Git won't re-include a file under an excluded
 // directory, so the directories must be un-ignored first (lines 1–2); then
-// only shd's file types are re-included (lines 3–4) — runtime data (.db,
+// only sd's file types are re-included (lines 3–4) — runtime data (.db,
 // caches, certs, …) stays ignored. Host-agnostic; one block at the repo root.
 func unignoreRules() []string {
 	return []string{

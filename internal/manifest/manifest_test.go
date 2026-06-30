@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"shd/internal/plan"
+	"sd/internal/plan"
 )
 
 func TestLoad_Missing(t *testing.T) {

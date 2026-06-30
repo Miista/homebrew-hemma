@@ -5,14 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"shd/internal/manifest"
-	"shd/internal/plan"
+	"sd/internal/manifest"
+	"sd/internal/plan"
 )
 
 func newEngine(t *testing.T) (*Engine, string) {
 	t.Helper()
 	root := t.TempDir()
-	mf, _ := manifest.Load(filepath.Join(root, "shd-manifest.yaml"))
+	mf, _ := manifest.Load(filepath.Join(root, "sd-manifest.yaml"))
 	return &Engine{RepoRoot: root, Manifest: mf}, root
 }
 

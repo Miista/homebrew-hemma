@@ -1,19 +1,19 @@
 version: 2
 
-project_name: shd
+project_name: sd
 
 builds:
-  - id: shd
+  - id: sd
     main: .
-    binary: shd
+    binary: sd
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     ldflags:
-      - -s -w -X shd/internal/cli.Version={{.Version}}
+      - -s -w -X sd/internal/cli.Version={{.Version}}
 
 archives:
   - id: default
-    ids: [shd]
+    ids: [sd]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
@@ -24,19 +24,19 @@ checksum:
   name_template: checksums.txt
 
 brews:
-  - name: shd
+  - name: sd
     repository:
       owner: Miista
-      name: homebrew-shd
+      name: homebrew-sd
       token: "{{ .Env.GITHUB_TOKEN }}"
     directory: Formula
     commit_author:
       name: goreleaser-bot
       email: bot@goreleaser.com
-    homepage: https://github.com/Miista/homebrew-shd
+    homepage: https://github.com/Miista/homebrew-sd
     description: Generate split-horizon DNS (Pi-hole/dnsmasq) and Caddy site blocks from a declarative services.yaml
     license: MIT
     install: |
-      bin.install "shd"
+      bin.install "sd"
     test: |
-      assert_match "shd", shell_output("#{bin}/shd version")
+      assert_match "sd", shell_output("#{bin}/sd version")

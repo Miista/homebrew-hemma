@@ -44,7 +44,7 @@ func TestIgnoredPaths_NotARepo(t *testing.T) {
 	}
 }
 
-// The unignore block must re-include shd's .conf/.caddy under data/ while
+// The unignore block must re-include sd's .conf/.caddy under data/ while
 // leaving runtime data (e.g. .db) ignored — verified against real git.
 func TestUnignoreRules_RoundTrip(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {

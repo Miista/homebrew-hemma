@@ -25,7 +25,7 @@ jobs:
           version: "~> v2"
           args: release --clean
         env:
-          # The repo IS the Homebrew tap (Miista/homebrew-shd), so GoReleaser
+          # The repo IS the Homebrew tap (Miista/homebrew-sd), so GoReleaser
           # self-publishes Formula/ back into this same repo — the default
           # GITHUB_TOKEN suffices, no PAT needed.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

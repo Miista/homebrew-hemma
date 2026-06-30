@@ -1,4 +1,4 @@
-module shd
+module sd
 
 go 1.26.4
 

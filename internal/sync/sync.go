@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 
-	"shd/internal/config"
-	"shd/internal/manifest"
-	"shd/internal/plan"
+	"sd/internal/config"
+	"sd/internal/manifest"
+	"sd/internal/plan"
 )
 
 // Mode selects reconcile behavior.

@@ -11,8 +11,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"shd/internal/config"
-	"shd/internal/plan"
+	"sd/internal/config"
+	"sd/internal/plan"
 )
 
 // Manifest maps service name -> the file paths it generated.
