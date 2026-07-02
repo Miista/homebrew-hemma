@@ -63,6 +63,7 @@ jobs:
           cat > site/conf/distributions <<'EOF'
           Origin: apt.guldmund.dk
           Label: guldmund
+          Suite: stable
           Codename: stable
           Architectures: amd64 arm64
           Components: main
