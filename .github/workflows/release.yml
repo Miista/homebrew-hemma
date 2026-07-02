@@ -29,3 +29,89 @@ jobs:
           # self-publishes Formula/ back into this same repo — the default
           # GITHUB_TOKEN suffices, no PAT needed.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Keep the built .deb artifacts for the apt-repo job.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: debs
+          path: dist/*.deb
+          if-no-files-found: error
+
+  # Build a signed APT repository and publish it to GitHub Pages, so managed
+  # hosts can `apt install sd` from https://miista.github.io/homebrew-sd/.
+  apt-repo:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push to gh-pages
+    steps:
+      - uses: actions/checkout@v5 # for the public key + index.html
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: debs
+          path: incoming
+
+      - name: Install repo tooling
+        run: sudo apt-get update && sudo apt-get install -y apt-utils gnupg
+
+      - name: Import signing key
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          echo "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
+          mkdir -p ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpgconf --kill gpg-agent || true
+
+      - name: Build signed apt repo
+        env:
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          # Single flat suite "stable", component "main", both arches. Layout:
+          #   pool/main/            <- the .deb files
+          #   dists/stable/main/binary-{amd64,arm64}/Packages{,.gz}
+          #   dists/stable/{Release,Release.gpg,InRelease}
+          ROOT=public
+          POOL=$ROOT/pool/main
+          mkdir -p "$POOL"
+          cp incoming/*.deb "$POOL"/
+
+          for arch in amd64 arm64; do
+            d="$ROOT/dists/stable/main/binary-$arch"
+            mkdir -p "$d"
+            # Packages index for this arch (paths relative to $ROOT).
+            ( cd "$ROOT" && apt-ftparchive --arch "$arch" packages pool/main ) > "$d/Packages"
+            gzip -kf "$d/Packages"
+          done
+
+          # Release file over the whole dists/stable tree.
+          cat > /tmp/apt-release.conf <<'EOF'
+          APT::FTPArchive::Release::Origin "Miista";
+          APT::FTPArchive::Release::Label "sd";
+          APT::FTPArchive::Release::Suite "stable";
+          APT::FTPArchive::Release::Codename "stable";
+          APT::FTPArchive::Release::Architectures "amd64 arm64";
+          APT::FTPArchive::Release::Components "main";
+          APT::FTPArchive::Release::Description "sd apt repository";
+          EOF
+          apt-ftparchive -c /tmp/apt-release.conf release "$ROOT/dists/stable" > "$ROOT/dists/stable/Release"
+
+          # Sign: detached Release.gpg + inline InRelease.
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$APT_GPG_PASSPHRASE" \
+            -abs -o "$ROOT/dists/stable/Release.gpg" "$ROOT/dists/stable/Release"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$APT_GPG_PASSPHRASE" \
+            --clearsign -o "$ROOT/dists/stable/InRelease" "$ROOT/dists/stable/Release"
+
+          # Public key + install docs served alongside the repo.
+          cp sd-archive-keyring.asc "$ROOT/"
+          cp .github/apt/index.html "$ROOT/index.html"
+
+      - name: Publish to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          publish_branch: gh-pages
+          force_orphan: true

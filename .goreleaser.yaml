@@ -20,6 +20,21 @@ archives:
       - LICENSE
       - README.md
 
+nfpms:
+  - id: sd
+    ids: [sd]
+    package_name: sd
+    vendor: Miista
+    homepage: https://github.com/Miista/homebrew-sd
+    maintainer: Miista <noreply@users.noreply.github.com>
+    description: Generate split-horizon DNS (Pi-hole/dnsmasq) and Caddy site blocks from a declarative services.yaml
+    license: MIT
+    formats: [deb]
+    bindir: /usr/local/bin
+    # curl is used by `sd measure` (shells out to the embedded measure.sh).
+    recommends:
+      - curl
+
 checksum:
   name_template: checksums.txt
 

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sd — apt repository</title>
+<style>
+  body { font: 15px/1.6 system-ui, sans-serif; max-width: 44rem; margin: 3rem auto; padding: 0 1rem; color: #1a1a1a; }
+  code, pre { font-family: ui-monospace, monospace; }
+  pre { background: #f5f5f5; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+  h1 { margin-bottom: 0; }
+  .sub { color: #666; margin-top: .25rem; }
+  a { color: #0645ad; }
+</style>
+</head>
+<body>
+<h1>sd</h1>
+<p class="sub">Signed APT repository. Split-horizon DNS + Caddy config from a declarative <code>services.yaml</code>.</p>
+
+<h2>Install (Debian / Ubuntu / Raspberry Pi OS)</h2>
+<pre><code># 1. Trust the signing key
+curl -fsSL https://miista.github.io/homebrew-sd/sd-archive-keyring.asc \
+  | sudo tee /usr/share/keyrings/sd-archive-keyring.asc > /dev/null
+
+# 2. Add the repo (arch auto-detected)
+echo "deb [signed-by=/usr/share/keyrings/sd-archive-keyring.asc] https://miista.github.io/homebrew-sd stable main" \
+  | sudo tee /etc/apt/sources.list.d/sd.list
+
+# 3. Install
+sudo apt-get update
+sudo apt-get install sd</code></pre>
+
+<h2>Upgrade</h2>
+<pre><code>sudo apt-get update && sudo apt-get install --only-upgrade sd</code></pre>
+
+<p>Source: <a href="https://github.com/Miista/homebrew-sd">github.com/Miista/homebrew-sd</a></p>
+</body>
+</html>
