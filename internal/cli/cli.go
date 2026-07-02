@@ -11,10 +11,10 @@ import (
 	"sort"
 	"strings"
 
-	"mirage/internal/config"
-	"mirage/internal/manifest"
-	"mirage/internal/plan"
-	syncpkg "mirage/internal/sync"
+	"splitdns/internal/config"
+	"splitdns/internal/manifest"
+	"splitdns/internal/plan"
+	syncpkg "splitdns/internal/sync"
 )
 
 const (
@@ -23,7 +23,7 @@ const (
 )
 
 // Version is the build version, overridden at release time via
-// -ldflags "-X mirage/internal/cli.Version=...".
+// -ldflags "-X splitdns/internal/cli.Version=...".
 var Version = "dev"
 
 // Status glyphs, colored only when stdout is a terminal (so piped/captured
@@ -112,7 +112,7 @@ func Run(args []string) int {
 
 	switch cmd {
 	case "version", "--version", "-v":
-		fmt.Println("mirage", Version)
+		fmt.Println("splitdns", Version)
 		return 0
 	case "add":
 		return dispatchNoun(repoRoot, cfgPath, "add", rest)
@@ -154,7 +154,7 @@ func Run(args []string) int {
 func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the noun for %q — expected service, host, or domain.", verb)
-		hint("Usage: mirage %s service|host|domain ...", verb)
+		hint("Usage: splitdns %s service|host|domain ...", verb)
 		return 2
 	}
 	noun, rest := args[0], args[1:]
@@ -194,7 +194,7 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 		}
 	default:
 		errf("Unknown noun %q — expected service, host, or domain.", noun)
-		hint("Usage: mirage %s service|host|domain ...", verb)
+		hint("Usage: splitdns %s service|host|domain ...", verb)
 		return 2
 	}
 	// Reached only if a verb/noun combo fell through (shouldn't happen).
@@ -206,7 +206,7 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 func dispatchSet(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing what to set — expected dns-host.")
-		hint("Usage: mirage set dns-host <name>")
+		hint("Usage: splitdns set dns-host <name>")
 		return 2
 	}
 	switch args[0] {
@@ -224,7 +224,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	name, args, ok := leadingName(args)
 	if !ok {
 		errf("Missing the <service> name.")
-		hint("Usage: mirage add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
+		hint("Usage: splitdns add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		return 2
 	}
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
@@ -248,7 +248,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	}
 	if len(missing) > 0 {
 		errf("Missing required %s: %s.", plural(len(missing), "flag"), strings.Join(missing, ", "))
-		hint("Usage: mirage add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
+		hint("Usage: splitdns add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		return 2
 	}
 
@@ -272,9 +272,9 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	if _, ok := cfg.MatchDomain(*fqdn); !ok {
 		errf("The fqdn %q matches no defined domain.", *fqdn)
 		if doms := cfg.DomainNames(); len(doms) > 0 {
-			hint("Defined domains: %s. Add one with 'mirage add domain <name>' or fix the fqdn.", strings.Join(doms, ", "))
+			hint("Defined domains: %s. Add one with 'splitdns add domain <name>' or fix the fqdn.", strings.Join(doms, ", "))
 		} else {
-			hint("No domains defined yet — run 'mirage add domain <name>' first.")
+			hint("No domains defined yet — run 'splitdns add domain <name>' first.")
 		}
 		return 1
 	}
@@ -297,7 +297,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 // blockers — only repo-wide preconditions are.
 func syncBlockedReason(cfg *config.Config) string {
 	if len(cfg.Services) > 0 && cfg.Defaults.DNSHost == "" {
-		return "no dns_host is set, so DNS records can't be routed. Set the resolver with: mirage set dns-host <name>"
+		return "no dns_host is set, so DNS records can't be routed. Set the resolver with: splitdns set dns-host <name>"
 	}
 	return ""
 }
@@ -306,7 +306,7 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	name, args, ok := leadingName(args)
 	if !ok {
 		errf("Missing the <service> name.")
-		hint("Usage: mirage update service <name> [--fqdn ...] [--host ...] [--backend ...]")
+		hint("Usage: splitdns update service <name> [--fqdn ...] [--host ...] [--backend ...]")
 		return 2
 	}
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
@@ -358,7 +358,7 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 func cmdRemove(repoRoot, cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <service> name.")
-		hint("Usage: mirage remove service <name>")
+		hint("Usage: splitdns remove service <name>")
 		return 2
 	}
 	name := args[0]
@@ -404,7 +404,7 @@ func cmdEnableDisable(repoRoot, cfgPath string, args []string, disable bool) int
 	}
 	if len(args) < 1 {
 		errf("Missing the <service> name.")
-		hint("Usage: mirage %s service <name>", verb)
+		hint("Usage: splitdns %s service <name>", verb)
 		return 2
 	}
 	name := args[0]
@@ -463,13 +463,13 @@ func cmdEnableDisable(repoRoot, cfgPath string, args []string, disable bool) int
 // write wouldn't overwrite). remove-service and every host/domain/dns-host
 // mutation use Complete, because they can leave orphaned files (a removed
 // service's records, or a host/domain's now-dead cross-product of TLS
-// snippets) that must be GC'd so the repo is left clean and `mirage apply` won't
+// snippets) that must be GC'd so the repo is left clean and `splitdns apply` won't
 // refuse on drift.
 func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 	// Pre-flight: refuse before writing when a repo-wide precondition isn't met.
 	if reason := syncBlockedReason(cfg); reason != "" {
 		fmt.Fprintf(os.Stderr, cross+" Not synced: %s\n", reason)
-		hint("  The change is saved in services.yaml. Run 'mirage doctor --fix' once that's resolved.")
+		hint("  The change is saved in services.yaml. Run 'splitdns doctor --fix' once that's resolved.")
 		return 1
 	}
 
@@ -495,10 +495,10 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 	// Surface an incomplete bootstrap so a no-op/partial sync explains itself,
 	// rather than leaving the user wondering why nothing happened.
 	if cfg.Defaults.DNSHost == "" {
-		fmt.Println("Note: no dns_host set — run 'mirage set dns-host <name>' (records can't be routed without it).")
+		fmt.Println("Note: no dns_host set — run 'splitdns set dns-host <name>' (records can't be routed without it).")
 	}
 	if len(cfg.Domains) == 0 {
-		fmt.Println("Note: no domains defined — run 'mirage add domain <name>' (a service's fqdn must match a domain).")
+		fmt.Println("Note: no domains defined — run 'splitdns add domain <name>' (a service's fqdn must match a domain).")
 	}
 
 	{
@@ -529,7 +529,7 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 
 	// Report (but don't fix) any residual drift — chiefly orphaned files, since
 	// the incremental reconcile above never deletes. Points the user at
-	// 'mirage doctor --fix'. add/update/remove proceed regardless (report-but-proceed).
+	// 'splitdns doctor --fix'. add/update/remove proceed regardless (report-but-proceed).
 	reportDrift(detectDrift(repoRoot, cfg, mf))
 	return 0
 }
@@ -567,7 +567,7 @@ func printNextSteps(cfg *config.Config, res *syncpkg.Result) {
 
 	self := localHost(cfg)
 
-	// Collect the set of hosts that need `mirage apply` run on them: the DNS host
+	// Collect the set of hosts that need `splitdns apply` run on them: the DNS host
 	// (if its records changed) plus every caddy host whose files changed.
 	needApply := map[string]bool{}
 	if dnsDirty {
@@ -577,12 +577,12 @@ func printNextSteps(cfg *config.Config, res *syncpkg.Result) {
 		needApply[name] = true
 	}
 
-	fmt.Println("\nTo make changes live, run 'mirage apply' on each host:")
+	fmt.Println("\nTo make changes live, run 'splitdns apply' on each host:")
 	for _, name := range sortedKeysOf(needApply) {
 		if name == self {
-			fmt.Println("  mirage apply  # here")
+			fmt.Println("  splitdns apply  # here")
 		} else {
-			fmt.Printf("  on %s:  mirage apply\n", name)
+			fmt.Printf("  on %s:  splitdns apply\n", name)
 		}
 	}
 }
@@ -664,7 +664,7 @@ func loadExisting(cfgPath, command string) (*config.Config, int) {
 		errf("No %s in this directory — nothing to %s.", configName, command)
 		fmt.Fprintln(os.Stderr)
 		hint("To create your first service:")
-		hint("  mirage add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
+		hint("  splitdns add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		fmt.Fprintln(os.Stderr)
 		hint("Or run from the repo root, or pass -C <dir>.")
 		return nil, 1
@@ -682,7 +682,7 @@ func leadingName(args []string) (name string, rest []string, ok bool) {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `mirage — Split-Horizon DNS (Manager)
+	fmt.Fprint(os.Stderr, `splitdns — Split-Horizon DNS (Manager)
 
 Generates split-horizon DNS records and Caddy site blocks from a declarative
 services.yaml. Operates on the file in the current directory by default.
@@ -690,37 +690,37 @@ services.yaml. Operates on the file in the current directory by default.
 Commands are verb-first: <verb> <noun> <args>.
 
 Services (an app reached at an fqdn, on a host, under a domain):
-  mirage add     service <name> --fqdn <f> --host <h> --backend <b>
-  mirage update  service <name> [--fqdn ...] [--host ...] [--backend ...]
-  mirage remove  service <name>
-  mirage disable service <name>   Stop generating DNS/Caddy config for a service (keeps it in services.yaml).
-  mirage enable  service <name>   Re-enable a disabled service (regenerates its files).
+  splitdns add     service <name> --fqdn <f> --host <h> --backend <b>
+  splitdns update  service <name> [--fqdn ...] [--host ...] [--backend ...]
+  splitdns remove  service <name>
+  splitdns disable service <name>   Stop generating DNS/Caddy config for a service (keeps it in services.yaml).
+  splitdns enable  service <name>   Re-enable a disabled service (regenerates its files).
 
 Building blocks (a service references a host and a domain):
-  mirage add    host   <name> <ip>
-  mirage remove host   <name>
-  mirage add    domain <name>
-  mirage remove domain <name>
-  mirage set    dns-host <name>    Set the default resolver host for DNS records.
+  splitdns add    host   <name> <ip>
+  splitdns remove host   <name>
+  splitdns add    domain <name>
+  splitdns remove domain <name>
+  splitdns set    dns-host <name>    Set the default resolver host for DNS records.
 
 Other:
-  mirage apply                    Make config live on THIS host: restart pihole / validate+reload caddy. Run on each host. Refuses if the repo has drift.
-  mirage list                     Show current hosts, domains, and services (with validity).
-  mirage verify                   Check live DNS resolution per service (run on the resolver host; needs docker).
-  mirage measure [--compare] <service|fqdn>  Time the request breakdown (dns/connect/tls/ttfb). --compare A/Bs split-horizon vs public read-only (dns-host only).
-  mirage doctor [--fix]           Audit the repo (gitignored files, Caddyfile imports, generated-file drift); --fix reconciles files and .gitignore.
-  mirage version
-  mirage help
+  splitdns apply                    Make config live on THIS host: restart pihole / validate+reload caddy. Run on each host. Refuses if the repo has drift.
+  splitdns list                     Show current hosts, domains, and services (with validity).
+  splitdns verify                   Check live DNS resolution per service (run on the resolver host; needs docker).
+  splitdns measure [--compare] <service|fqdn>  Time the request breakdown (dns/connect/tls/ttfb). --compare A/Bs split-horizon vs public read-only (dns-host only).
+  splitdns doctor [--fix]           Audit the repo (gitignored files, Caddyfile imports, generated-file drift); --fix reconciles files and .gitignore.
+  splitdns version
+  splitdns help
 
 Global flags:
-  -C <dir>   Run as if mirage were started in <dir> (default: current directory).
+  -C <dir>   Run as if splitdns were started in <dir> (default: current directory).
 
 Notes:
   - A host's name is its repo directory (e.g. host "pi" -> ./pi/), which must already exist.
   - Each domain gets a TLS snippet generated on every host, deriving cert paths from
     the convention caddy/data/certs/<domain>/{fullchain.cer,privkey.key}.
   - Config edits (add/update/remove/enable/disable) regenerate files automatically, then
-    print which hosts to run 'mirage apply' on to make the change live.
+    print which hosts to run 'splitdns apply' on to make the change live.
   - Removing a host or domain is refused while any service still references it.
 `)
 }

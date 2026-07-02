@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"mirage/internal/config"
+	"splitdns/internal/config"
 )
 
 // base returns a valid config with one service we can mutate per test.

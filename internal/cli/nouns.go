@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"mirage/internal/config"
-	syncpkg "mirage/internal/sync"
+	"splitdns/internal/config"
+	syncpkg "splitdns/internal/sync"
 )
 
 // host/domain/dns-host mutate the YAML then reconcile (Complete mode) so the
 // generated files — chiefly the per-(host × domain) TLS snippets and DNS
 // records — are regenerated and any orphans GC'd immediately, leaving the repo
-// clean (no drift for `mirage apply` to refuse on). The schema key `hosts:` matches
+// clean (no drift for `splitdns apply` to refuse on). The schema key `hosts:` matches
 // the `host` noun. Routing of the verb/noun grammar lives in dispatchNoun
 // (cli.go); these are the leaf handlers.
 
@@ -23,12 +23,12 @@ func hostAdd(cfgPath string, args []string) int {
 	// and isn't derivable from anything else.
 	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: mirage add host <name> <ip>")
+		hint("Usage: splitdns add host <name> <ip>")
 		return 2
 	}
 	if len(args) < 2 {
 		errf("Missing the <ip> for host %q.", args[0])
-		hint("Usage: mirage add host <name> <ip>")
+		hint("Usage: splitdns add host <name> <ip>")
 		return 2
 	}
 	name, ip := args[0], args[1]
@@ -39,7 +39,7 @@ func hostAdd(cfgPath string, args []string) int {
 	}
 
 	// A host's name IS its repo directory (where its compose and config already
-	// live). mirage only adds DNS/Caddy artifacts to a real, already-present host,
+	// live). splitdns only adds DNS/Caddy artifacts to a real, already-present host,
 	// so a name with no matching directory is a typo — refuse it.
 	repoRoot := filepath.Dir(cfgPath)
 	if info, err := os.Stat(filepath.Join(repoRoot, name)); err != nil || !info.IsDir() {
@@ -72,7 +72,7 @@ func hostAdd(cfgPath string, args []string) int {
 	}
 	fmt.Printf("Added host %q (%s).\n", name, ip)
 	// Regenerate so the new host gets its per-domain TLS snippets right away,
-	// leaving the repo clean (no drift cliff before `mirage apply`). Complete also
+	// leaving the repo clean (no drift cliff before `splitdns apply`). Complete also
 	// GCs, which is a harmless no-op for a pure add.
 	return runSync(repoRoot, cfg, syncpkg.Complete)
 }
@@ -112,7 +112,7 @@ func hostRemove(cfgPath string, args []string) int {
 func domainAdd(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: mirage add domain <name>")
+		hint("Usage: splitdns add domain <name>")
 		return 2
 	}
 	name := args[0]
@@ -133,7 +133,7 @@ func domainAdd(cfgPath string, args []string) int {
 	}
 	fmt.Printf("Added domain %q.\n", name)
 	// Regenerate so the new domain's per-host TLS snippets exist right away,
-	// leaving the repo clean (no drift cliff before `mirage apply`).
+	// leaving the repo clean (no drift cliff before `splitdns apply`).
 	return runSync(filepath.Dir(cfgPath), cfg, syncpkg.Complete)
 }
 
@@ -173,7 +173,7 @@ func domainRemove(cfgPath string, args []string) int {
 func cmdSetDNSHost(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: mirage set dns-host <name>")
+		hint("Usage: splitdns set dns-host <name>")
 		return 2
 	}
 	name := args[0]
@@ -183,7 +183,7 @@ func cmdSetDNSHost(cfgPath string, args []string) int {
 		return code
 	}
 	if _, exists := cfg.Hosts[name]; !exists {
-		errf("Host %q does not exist — add it first with: mirage add host %s <ip>", name, name)
+		errf("Host %q does not exist — add it first with: splitdns add host %s <ip>", name, name)
 		return 1
 	}
 	cfg.Defaults.DNSHost = name

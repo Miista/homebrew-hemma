@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	"mirage/internal/config"
-	"mirage/internal/manifest"
-	"mirage/internal/plan"
+	"splitdns/internal/config"
+	"splitdns/internal/manifest"
+	"splitdns/internal/plan"
 )
 
 // Drift is the difference between what services.yaml/manifest say the generated
@@ -20,7 +20,7 @@ import (
 //     would write (e.g. hand-edited).
 //   - Orphaned: a manifest-tracked file no longer desired by the current plan
 //     (e.g. a service/host/domain was removed but its files linger). This is the
-//     GC target that only `mirage sync --complete` used to catch.
+//     GC target that only `splitdns sync --complete` used to catch.
 type Drift struct {
 	Missing  []string
 	Modified []string
@@ -82,7 +82,7 @@ func reportDrift(d Drift) {
 	if !d.Any() {
 		return
 	}
-	fmt.Printf("\n%s Repo drift: %d %s out of sync with services.yaml — run 'mirage doctor --fix'.\n",
+	fmt.Printf("\n%s Repo drift: %d %s out of sync with services.yaml — run 'splitdns doctor --fix'.\n",
 		warn, d.Count(), plural(d.Count(), "generated file"))
 	printDriftDetail(d)
 }

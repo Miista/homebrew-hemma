@@ -1,10 +1,10 @@
-# mirage — Split-Horizon DNS (Manager)
+# splitdns — Split-Horizon DNS (Manager)
 
 A small Go CLI that generates **split-horizon DNS records** (Pi-hole / dnsmasq) and
 **reverse-proxy site blocks** (Caddy) for a homelab, from a single declarative `services.yaml`
 committed to the homelab git repository.
 
-`mirage` is **reconcile-and-report**, Terraform/`make` style: every `sync` re-derives all output
+`splitdns` is **reconcile-and-report**, Terraform/`make` style: every `sync` re-derives all output
 from the YAML so the generated files match the declared state. It does **not** deploy, reload
 services, or SSH anywhere — it only writes files into your repo checkout. Deployment stays
 `git pull && docker compose up -d` per machine.
@@ -18,7 +18,7 @@ A homelab service's artifacts fan out across two machine directories:
 - its **DNS record** lives on the resolver host (the Pi),
 - its **Caddy site block** lives on the host that actually runs the service.
 
-Hand-maintaining both, in sync, across a monorepo is error-prone. `mirage` makes one YAML file
+Hand-maintaining both, in sync, across a monorepo is error-prone. `splitdns` makes one YAML file
 the source of truth and generates both sides from it.
 
 ## Install
@@ -27,7 +27,7 @@ the source of truth and generates both sides from it.
 
 ```sh
 brew tap Miista/sd
-brew install mirage
+brew install splitdns
 ```
 
 (The tap repo is [`Miista/homebrew-sd`](https://github.com/Miista/homebrew-sd); Homebrew strips
@@ -37,7 +37,7 @@ the `homebrew-` prefix.)
 
 ```sh
 curl -fsSL https://miista.github.io/homebrew-sd/setup.sh | sudo sh
-sudo apt install mirage
+sudo apt install splitdns
 ```
 
 Or, if you'd rather not pipe scripts into a root shell, do the one-time repo
@@ -45,11 +45,11 @@ setup explicitly:
 
 ```sh
 sudo install -d /etc/apt/keyrings
-curl -fsSL https://miista.github.io/homebrew-sd/mirage-archive-keyring.asc \
-  | sudo gpg --dearmor -o /etc/apt/keyrings/mirage-archive-keyring.gpg
-echo "deb [signed-by=/etc/apt/keyrings/mirage-archive-keyring.gpg] https://miista.github.io/homebrew-sd stable main" \
-  | sudo tee /etc/apt/sources.list.d/mirage.list
-sudo apt update && sudo apt install mirage
+curl -fsSL https://miista.github.io/homebrew-sd/splitdns-archive-keyring.asc \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/splitdns-archive-keyring.gpg
+echo "deb [signed-by=/etc/apt/keyrings/splitdns-archive-keyring.gpg] https://miista.github.io/homebrew-sd stable main" \
+  | sudo tee /etc/apt/sources.list.d/splitdns.list
+sudo apt update && sudo apt install splitdns
 ```
 
 After that, updates arrive via regular `apt upgrade`. The apt repo serves only
@@ -61,11 +61,11 @@ the latest version; older `.deb`s are on the
 Requires Go 1.26+.
 
 ```sh
-go build -o mirage .   # or: go install .
+go build -o splitdns .   # or: go install .
 ```
 
 The tool operates on `services.yaml` in the **current directory** (or `-C <dir>`); there is no
-environment variable to configure. Check the version with `mirage version`.
+environment variable to configure. Check the version with `splitdns version`.
 
 ## Quick start
 
@@ -75,21 +75,21 @@ Bootstrap a usable `services.yaml` entirely from the CLI — no hand-editing req
 cd ~/homelab            # your monorepo checkout
 
 # 1. Declare the hosts (a host's name IS its repo directory, which must exist)
-mirage add host resolver 192.0.2.1
-mirage add host appbox   192.0.2.2
+splitdns add host resolver 192.0.2.1
+splitdns add host appbox   192.0.2.2
 
 # 2. Choose the default resolver host (whose dnsmasq receives the records)
-mirage set dns-host resolver
+splitdns set dns-host resolver
 
-# 3. Declare the domains (mirage generates each one's TLS snippet on sync)
-mirage add domain example.com
-mirage add domain example.net
+# 3. Declare the domains (splitdns generates each one's TLS snippet on sync)
+splitdns add domain example.com
+splitdns add domain example.net
 
 # 4. Add a service (mutates YAML, then syncs)
-mirage add service docs --fqdn docs.example.com --host appbox --backend paperless:8000
+splitdns add service docs --fqdn docs.example.com --host appbox --backend paperless:8000
 
 # 5. Re-generate everything any time (e.g. after a git pull)
-mirage sync
+splitdns sync
 ```
 
 This generates, for `docs`:
@@ -117,22 +117,22 @@ AAAA record so IPv6-preferring clients can't bypass split-horizon.
 ## Commands
 
 ```
-mirage [-C <dir>] add    service <name> --fqdn <f> --host <h> --backend <b>
-mirage [-C <dir>] update service <name> [--fqdn ...] [--host ...] [--backend ...]
-mirage [-C <dir>] remove service <name>
-mirage [-C <dir>] sync   [--incremental | --complete]
+splitdns [-C <dir>] add    service <name> --fqdn <f> --host <h> --backend <b>
+splitdns [-C <dir>] update service <name> [--fqdn ...] [--host ...] [--backend ...]
+splitdns [-C <dir>] remove service <name>
+splitdns [-C <dir>] sync   [--incremental | --complete]
 
-mirage [-C <dir>] add    host   <name> <ip>
-mirage [-C <dir>] remove host   <name>
-mirage [-C <dir>] add    domain <name>
-mirage [-C <dir>] remove domain <name>
-mirage [-C <dir>] set    dns-host <name>
+splitdns [-C <dir>] add    host   <name> <ip>
+splitdns [-C <dir>] remove host   <name>
+splitdns [-C <dir>] add    domain <name>
+splitdns [-C <dir>] remove domain <name>
+splitdns [-C <dir>] set    dns-host <name>
 
-mirage [-C <dir>] list
-mirage [-C <dir>] verify
-mirage [-C <dir>] version
+splitdns [-C <dir>] list
+splitdns [-C <dir>] verify
+splitdns [-C <dir>] version
 
-  -C <dir>   run as if mirage were started in <dir> (default: current directory)
+  -C <dir>   run as if splitdns were started in <dir> (default: current directory)
 ```
 
 | Command | Behavior |
@@ -142,7 +142,7 @@ mirage [-C <dir>] version
 | `remove` | Drop the service from YAML, delete its tracked files, drop it from the manifest. |
 | `sync --incremental` *(default)* | Write/update files for every valid entry. **Never deletes.** |
 | `sync --complete` | Incremental **plus GC**: delete tracked files whose service is gone. Never touches non-manifest files. |
-| `add host` / `add domain` | Declare a host / domain. `add host <name> <ip>` (the name is its repo directory, which must already exist; the IP must be unique). `add domain <name>` — mirage generates the domain's TLS snippet on sync. |
+| `add host` / `add domain` | Declare a host / domain. `add host <name> <ip>` (the name is its repo directory, which must already exist; the IP must be unique). `add domain <name>` — splitdns generates the domain's TLS snippet on sync. |
 | `remove host` / `remove domain` | **Refuses** while any service still references it (and lists the blockers). Idempotent otherwise. |
 | `set dns-host <name>` | Set the default resolver host (the one whose dnsmasq receives records). |
 | `list` | Show current hosts, domains, and services with per-service validity (✓/✗). Read-only; exits non-zero if any service is invalid. |
@@ -157,7 +157,7 @@ All commands are **verb-first**: `<verb> <noun> <args>` (e.g. `add domain exampl
 
 ## Source of truth: `services.yaml`
 
-`mirage` **owns** this file and rewrites it wholesale on mutation. Ordering and human comments
+`splitdns` **owns** this file and rewrites it wholesale on mutation. Ordering and human comments
 are not preserved — document intent in this README, not in the YAML.
 
 ```yaml
@@ -170,7 +170,7 @@ domains:
   example.net: {}
 
 defaults:
-  dns_host: resolver          # the single resolver host (set via: mirage set dns-host)
+  dns_host: resolver          # the single resolver host (set via: splitdns set dns-host)
 
 services:
   docs:
@@ -203,7 +203,7 @@ synced 11/12 services; 1 skipped: docs (unknown host 'appbx' — defined hosts: 
 
 ## Prerequisites (one-time, manual)
 
-`mirage` writes only into its own `sites/` and `tls/` directories; it never edits a host's main
+`splitdns` writes only into its own `sites/` and `tls/` directories; it never edits a host's main
 `Caddyfile`. Each host's `Caddyfile` must therefore include both:
 
 ```
@@ -211,16 +211,16 @@ import tls/*.caddy
 import sites/*.caddy
 ```
 
-`mirage` generates the `(tls_<domain>)` snippets into `tls/` (deriving cert paths from the
+`splitdns` generates the `(tls_<domain>)` snippets into `tls/` (deriving cert paths from the
 convention `caddy/data/certs/<domain>/`), so you no longer hand-write them. Caddy serves the
-wildcard certs from an external acme.sh pipeline — `mirage` never touches certs or ACME.
+wildcard certs from an external acme.sh pipeline — `splitdns` never touches certs or ACME.
 
 ### .gitignore and the `data/` directory
 
-`mirage`'s generated files live under `data/` directories (`caddy/data/sites/`, etc.). If your repo
+`splitdns`'s generated files live under `data/` directories (`caddy/data/sites/`, etc.). If your repo
 ignores runtime data with a broad rule like `**/data/**`, those generated files are **silently
-ignored by git** — they generate fine but never commit or deploy. `mirage` detects this and warns on
-`sync` (and via `mirage doctor`), printing the exact per-host `.gitignore` negation lines to add,
+ignored by git** — they generate fine but never commit or deploy. `splitdns` detects this and warns on
+`sync` (and via `splitdns doctor`), printing the exact per-host `.gitignore` negation lines to add,
 e.g. in `pi/.gitignore`:
 
 ```
@@ -230,9 +230,9 @@ e.g. in `pi/.gitignore`:
 !pihole/data/dnsmasq.d/generated/**
 ```
 
-`mirage doctor` reports the problem and the exact lines; **`mirage doctor --fix`** writes them for you,
+`splitdns doctor` reports the problem and the exact lines; **`splitdns doctor --fix`** writes them for you,
 into a managed block in each `<host>/.gitignore` (preserving your other rules), then re-verifies.
-`mirage` only touches `.gitignore` when you explicitly run `doctor --fix`. Runtime data stays ignored.
+`splitdns` only touches `.gitignore` when you explicitly run `doctor --fix`. Runtime data stays ignored.
 
 ## After a sync (deploy concern, not this tool)
 

@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"mirage/internal/config"
-	"mirage/internal/render"
+	"splitdns/internal/config"
+	"splitdns/internal/render"
 )
 
 // File is one desired output file.
@@ -176,7 +176,7 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 	// The single resolver host (defaults.dns_host) receives every DNS record.
 	dnsHostName := c.DNSHost()
 	if dnsHostName == "" {
-		return nil, "no dns_host set — run 'mirage set dns-host <name>'"
+		return nil, "no dns_host set — run 'splitdns set dns-host <name>'"
 	}
 	dnsM, ok := c.Hosts[dnsHostName]
 	if !ok {

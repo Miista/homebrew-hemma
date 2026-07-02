@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"mirage/internal/config"
-	"mirage/internal/plan"
+	"splitdns/internal/config"
+	"splitdns/internal/plan"
 )
 
 // Container names are the homelab convention.
@@ -20,7 +20,7 @@ const (
 
 // cmdVerify checks that a service actually resolves and is served, live.
 //
-//	mirage verify [<fqdn>]
+//	splitdns verify [<fqdn>]
 //
 // Verification is split across hosts: the DNS half can only be checked on the
 // resolver (the pihole host), the Caddy half only on the host that runs the

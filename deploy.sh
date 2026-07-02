@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Build mirage for each host's arch and deploy to /usr/local/bin/mirage over ssh.
+# Build splitdns for each host's arch and deploy to /usr/local/bin/splitdns over ssh.
 #
-# Both hosts' /usr/local/bin/mirage are user-writable (the file, not the dir), so no
+# Both hosts' /usr/local/bin/splitdns are user-writable (the file, not the dir), so no
 # sudo is needed. We overwrite the file in place with `cat >` rather than mv:
 # /usr/local/bin is root-owned, so a cross-device mv (from /tmp) can't unlink the
 # target, but writing through the existing writable file works. Version is
-# stamped from `git describe` so `mirage version` is meaningful.
+# stamped from `git describe` so `splitdns version` is meaningful.
 #
 # Usage: ./deploy.sh [host ...]     (default: all hosts below)
 #
@@ -25,7 +25,7 @@ archfor() {
 }
 
 VER="$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD)"
-LDFLAGS="-X mirage/internal/cli.Version=$VER"
+LDFLAGS="-X splitdns/internal/cli.Version=$VER"
 
 # Targets: args if given, else every host in FLEET.
 if [ "$#" -gt 0 ]; then
@@ -44,10 +44,10 @@ for host in $targets; do
     bin="$(mktemp)"
     GOOS=linux GOARCH="$arch" go build -ldflags "$LDFLAGS" -o "$bin" ./
 
-    echo "==> deploying to $host:/usr/local/bin/mirage"
+    echo "==> deploying to $host:/usr/local/bin/splitdns"
     # Overwrite in place (dir is root-owned; the file is writable). Piping over
     # ssh avoids a temp file and the cross-device mv problem.
-    ssh "$host" 'cat > /usr/local/bin/mirage && chmod 755 /usr/local/bin/mirage && echo "    $(hostname): $(mirage version)"' < "$bin"
+    ssh "$host" 'cat > /usr/local/bin/splitdns && chmod 755 /usr/local/bin/splitdns && echo "    $(hostname): $(splitdns version)"' < "$bin"
     rm -f "$bin"
 done
 

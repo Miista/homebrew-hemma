@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"mirage/internal/manifest"
-	"mirage/internal/plan"
+	"splitdns/internal/manifest"
+	"splitdns/internal/plan"
 )
 
 func newEngine(t *testing.T) (*Engine, string) {

@@ -1,19 +1,19 @@
 version: 2
 
-project_name: mirage
+project_name: splitdns
 
 builds:
-  - id: mirage
+  - id: splitdns
     main: .
-    binary: mirage
+    binary: splitdns
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     ldflags:
-      - -s -w -X mirage/internal/cli.Version={{.Version}}
+      - -s -w -X splitdns/internal/cli.Version={{.Version}}
 
 archives:
   - id: default
-    ids: [mirage]
+    ids: [splitdns]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
@@ -21,9 +21,9 @@ archives:
       - README.md
 
 nfpms:
-  - id: mirage
-    ids: [mirage]
-    package_name: mirage
+  - id: splitdns
+    ids: [splitdns]
+    package_name: splitdns
     vendor: Miista
     homepage: https://github.com/Miista/homebrew-sd
     maintainer: Miista <noreply@users.noreply.github.com>
@@ -31,7 +31,7 @@ nfpms:
     license: MIT
     formats: [deb]
     bindir: /usr/bin
-    # curl is used by `mirage measure` (shells out to the embedded measure.sh).
+    # curl is used by `splitdns measure` (shells out to the embedded measure.sh).
     recommends:
       - curl
 
@@ -39,7 +39,7 @@ checksum:
   name_template: checksums.txt
 
 brews:
-  - name: mirage
+  - name: splitdns
     repository:
       owner: Miista
       name: homebrew-sd
@@ -52,6 +52,6 @@ brews:
     description: Generate split-horizon DNS (Pi-hole/dnsmasq) and Caddy site blocks from a declarative services.yaml
     license: MIT
     install: |
-      bin.install "mirage"
+      bin.install "splitdns"
     test: |
-      assert_match "mirage", shell_output("#{bin}/mirage version")
+      assert_match "splitdns", shell_output("#{bin}/splitdns version")

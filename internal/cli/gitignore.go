@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"mirage/internal/config"
-	"mirage/internal/plan"
-	syncpkg "mirage/internal/sync"
+	"splitdns/internal/config"
+	"splitdns/internal/plan"
+	syncpkg "splitdns/internal/sync"
 )
 
 // planPaths returns the unique repo-relative paths a plan would write.
@@ -32,7 +32,7 @@ func planPaths(p *plan.Plan) []string {
 // warnIfIgnored prints a SHORT one-line warning to stderr if any of the plan's
 // output paths are gitignored (they'd generate but never commit/deploy). It
 // fires every run while the problem persists — a standing deploy hazard should
-// stay visible — and points at `mirage doctor` for the full file list + fix.
+// stay visible — and points at `splitdns doctor` for the full file list + fix.
 // Silent when nothing is ignored or the check can't run (git absent / no repo).
 func warnIfIgnored(repoRoot string, p *plan.Plan) {
 	ignored, ok := ignoredPaths(repoRoot, planPaths(p))
@@ -45,26 +45,26 @@ func warnIfIgnored(repoRoot string, p *plan.Plan) {
 		verb = "are"
 	}
 	fmt.Fprintf(os.Stderr,
-		warn+" %d generated %s %s gitignored and won't deploy. Run 'mirage doctor --fix'.\n",
+		warn+" %d generated %s %s gitignored and won't deploy. Run 'splitdns doctor --fix'.\n",
 		len(ignored), noun, verb)
 }
 
 // printIgnoreDetail prints the full report: the ignored paths and the per-host
-// .gitignore negation lines to add. Used by `mirage doctor`.
+// .gitignore negation lines to add. Used by `splitdns doctor`.
 func printIgnoreDetail(ignored []string) {
 	fmt.Printf("%d generated %s ignored by git — they won't be committed or deployed:\n",
 		len(ignored), plural(len(ignored), "file"))
 	for _, p := range ignored {
 		fmt.Printf("  %s\n", p)
 	}
-	fmt.Println("\nAdd to .gitignore to un-ignore them (or run 'mirage doctor --fix'):")
+	fmt.Println("\nAdd to .gitignore to un-ignore them (or run 'splitdns doctor --fix'):")
 	for _, rule := range unignoreRules() {
 		fmt.Printf("  %s\n", rule)
 	}
 }
 
-// cmdDoctor audits the repo for problems mirage can detect. Read-only by default;
-// `mirage doctor --fix` applies the .gitignore negations (the one fix mirage can make
+// cmdDoctor audits the repo for problems splitdns can detect. Read-only by default;
+// `splitdns doctor --fix` applies the .gitignore negations (the one fix splitdns can make
 // safely). Exits non-zero if problems remain.
 func cmdDoctor(cfgPath string, args []string) int {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
@@ -113,7 +113,7 @@ func cmdDoctor(cfgPath string, args []string) int {
 			}
 		} else {
 			printIgnoreDetail(ignored)
-			fmt.Println("\nRun 'mirage doctor --fix' to add these entries automatically.")
+			fmt.Println("\nRun 'splitdns doctor --fix' to add these entries automatically.")
 		}
 	}
 
@@ -144,7 +144,7 @@ func checkDrift(repoRoot string, cfg *config.Config, fix bool) int {
 	if !fix {
 		fmt.Printf(cross+" %d generated %s out of sync with services.yaml:\n", d.Count(), plural(d.Count(), "file"))
 		printDriftDetail(d)
-		fmt.Println("\nRun 'mirage doctor --fix' to reconcile (regenerate missing/modified, remove orphaned).")
+		fmt.Println("\nRun 'splitdns doctor --fix' to reconcile (regenerate missing/modified, remove orphaned).")
 		return 1
 	}
 
@@ -227,7 +227,7 @@ func writeManagedBlock(path string, rules []string) error {
 
 	block := giBlockStart + "\n" +
 		"# sd-generated config under data/ dirs the repo otherwise ignores.\n" +
-		"# Managed by 'mirage doctor --fix'; edit outside these markers.\n" +
+		"# Managed by 'splitdns doctor --fix'; edit outside these markers.\n" +
 		strings.Join(rules, "\n") + "\n" +
 		giBlockEnd + "\n"
 
@@ -282,10 +282,10 @@ func ignoredPaths(repoRoot string, relPaths []string) (ignored []string, ok bool
 }
 
 // unignoreRules returns the repo-root .gitignore negation block that
-// re-includes mirage's generated files when a broad rule like **/data/** would
+// re-includes splitdns's generated files when a broad rule like **/data/** would
 // otherwise ignore them. Git won't re-include a file under an excluded
 // directory, so the directories must be un-ignored first (lines 1–2); then
-// only mirage's file types are re-included (lines 3–4) — runtime data (.db,
+// only splitdns's file types are re-included (lines 3–4) — runtime data (.db,
 // caches, certs, …) stays ignored. Host-agnostic; one block at the repo root.
 func unignoreRules() []string {
 	return []string{

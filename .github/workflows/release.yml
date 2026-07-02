@@ -38,7 +38,7 @@ jobs:
           if-no-files-found: error
 
   # Build a signed APT repository and publish it to GitHub Pages, so managed
-  # hosts can `apt install mirage` from https://miista.github.io/homebrew-sd/.
+  # hosts can `apt install splitdns` from https://miista.github.io/homebrew-sd/.
   apt-repo:
     needs: release
     runs-on: ubuntu-latest
@@ -89,12 +89,12 @@ jobs:
           # Release file over the whole dists/stable tree.
           cat > /tmp/apt-release.conf <<'EOF'
           APT::FTPArchive::Release::Origin "Miista";
-          APT::FTPArchive::Release::Label "mirage";
+          APT::FTPArchive::Release::Label "splitdns";
           APT::FTPArchive::Release::Suite "stable";
           APT::FTPArchive::Release::Codename "stable";
           APT::FTPArchive::Release::Architectures "amd64 arm64";
           APT::FTPArchive::Release::Components "main";
-          APT::FTPArchive::Release::Description "mirage apt repository";
+          APT::FTPArchive::Release::Description "splitdns apt repository";
           EOF
           apt-ftparchive -c /tmp/apt-release.conf release "$ROOT/dists/stable" > "$ROOT/dists/stable/Release"
 
@@ -105,7 +105,7 @@ jobs:
             --clearsign -o "$ROOT/dists/stable/InRelease" "$ROOT/dists/stable/Release"
 
           # Public key + install docs served alongside the repo.
-          cp mirage-archive-keyring.asc "$ROOT/"
+          cp splitdns-archive-keyring.asc "$ROOT/"
           cp .github/apt/index.html "$ROOT/index.html"
           cp .github/apt/setup.sh "$ROOT/setup.sh"
 

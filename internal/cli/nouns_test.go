@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"mirage/internal/config"
+	"splitdns/internal/config"
 )
 
 func load(t *testing.T, dir string) *config.Config {
@@ -253,7 +253,7 @@ func TestServiceRemove_NonexistentIsIdempotent(t *testing.T) {
 // reconcile automatically (Complete mode), so `add domain` materializes every
 // host's snippet and `remove host` GCs that host's now-orphaned snippet — no
 // explicit reconcile step, and no drift left behind (the drift cliff before
-// `mirage apply`). The surviving owner's other snippets must not be shrunk away.
+// `splitdns apply`). The surviving owner's other snippets must not be shrunk away.
 func TestHostRemoval_AutoGCsTLS(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver", "appbox", "spare")

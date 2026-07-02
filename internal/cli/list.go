@@ -19,7 +19,7 @@ func cmdList(cfgPath string, args []string) int {
 	// Big fat warning first: without a dns_host, nothing can sync.
 	if cfg.Defaults.DNSHost == "" {
 		fmt.Println(warn + " No dns_host set — services cannot sync.")
-		fmt.Println("   Set the resolver host:  mirage set dns-host <name>")
+		fmt.Println("   Set the resolver host:  splitdns set dns-host <name>")
 		fmt.Println()
 	}
 

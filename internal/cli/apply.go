@@ -5,12 +5,12 @@ import (
 	"os"
 	"os/exec"
 
-	"mirage/internal/config"
+	"splitdns/internal/config"
 )
 
 // cmdApply makes the synced config live ON THE HOST IT RUNS ON.
 //
-//	mirage apply
+//	splitdns apply
 //
 // Like verify, apply is host-split: the DNS half (restart pihole) can only run
 // on the resolver, the Caddy half (validate + reload) only on a host that runs
@@ -40,7 +40,7 @@ func cmdApply(repoRoot, cfgPath string, args []string) int {
 			d.Count(), plural(d.Count(), "generated file"))
 		printDriftDetail(d)
 		fmt.Fprintln(os.Stderr)
-		hint("Run 'mirage doctor --fix' to reconcile the repo, then 'mirage apply' again.")
+		hint("Run 'splitdns doctor --fix' to reconcile the repo, then 'splitdns apply' again.")
 		return 1
 	}
 

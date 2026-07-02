@@ -11,8 +11,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"mirage/internal/config"
-	"mirage/internal/plan"
+	"splitdns/internal/config"
+	"splitdns/internal/plan"
 )
 
 // Manifest maps service name -> the file paths it generated.

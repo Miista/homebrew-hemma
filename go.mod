@@ -1,4 +1,4 @@
-module mirage
+module splitdns
 
 go 1.26.4
 

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"mirage/internal/cli"
+	"splitdns/internal/cli"
 )
 
 func main() {

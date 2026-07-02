@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 
-	"mirage/internal/config"
-	"mirage/internal/manifest"
-	"mirage/internal/plan"
+	"splitdns/internal/config"
+	"splitdns/internal/manifest"
+	"splitdns/internal/plan"
 )
 
 // Mode selects reconcile behavior.
