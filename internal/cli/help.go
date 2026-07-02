@@ -1,0 +1,154 @@
+package cli
+
+import (
+	"fmt"
+	"os"
+	"strings"
+)
+
+// HelpTopic is one command's help text. HelpTopics is the single source of
+// truth: `-h/--help` prints from it, and tools/genman compiles it into the
+// man page — edit here and both stay in sync.
+type HelpTopic struct {
+	Cmd  string // e.g. "measure", "add service"
+	Text string // shown verbatim; first line is the one-line summary
+}
+
+var HelpTopics = []HelpTopic{
+	{"add service", `splitdns add service — declare a service and generate its DNS/Caddy config
+
+Usage: splitdns add service <name> --fqdn <fqdn> --host <host> --backend <name:port>
+
+Flags:
+  -f, --fqdn <fqdn>       Public name the service is reached at (must match a declared domain).
+  -H, --host <host>       Host (repo directory) that runs the service.
+  -b, --backend <n:port>  reverse_proxy upstream, e.g. mealie:9000.
+
+Regenerates files immediately, then prints which hosts need 'splitdns apply'.`},
+
+	{"update service", `splitdns update service — change a service's fqdn, host, or backend
+
+Usage: splitdns update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>]
+
+Flags:
+  -f, --fqdn <fqdn>       New public name (must match a declared domain).
+  -H, --host <host>       New host (repo directory).
+  -b, --backend <n:port>  New reverse_proxy upstream.
+
+Only the given flags change; regenerated files and apply-hints follow.`},
+
+	{"remove service", `splitdns remove service — remove a service and its generated files
+
+Usage: splitdns remove service <name>`},
+
+	{"enable service", `splitdns enable service — re-enable a disabled service (regenerates its files)
+
+Usage: splitdns enable service <name>`},
+
+	{"disable service", `splitdns disable service — stop generating config for a service (kept in services.yaml)
+
+Usage: splitdns disable service <name>`},
+
+	{"add host", `splitdns add host — declare a host (its name is its repo directory)
+
+Usage: splitdns add host <name> <ip>
+
+The directory ./<name>/ must already exist in the repo.`},
+
+	{"remove host", `splitdns remove host — remove a host (refused while services reference it)
+
+Usage: splitdns remove host <name>`},
+
+	{"add domain", `splitdns add domain — declare a domain (generates a TLS snippet per host)
+
+Usage: splitdns add domain <name>
+
+Cert paths derive from caddy/data/certs/<domain>/{fullchain.cer,privkey.key}.`},
+
+	{"remove domain", `splitdns remove domain — remove a domain (refused while services reference it)
+
+Usage: splitdns remove domain <name>`},
+
+	{"set dns-host", `splitdns set dns-host — set the default resolver host for DNS records
+
+Usage: splitdns set dns-host <name>`},
+
+	{"list", `splitdns list — show hosts, domains, and services (with validity)
+
+Usage: splitdns list`},
+
+	{"verify", `splitdns verify — check live DNS resolution per service
+
+Usage: splitdns verify
+
+Run on the resolver host; needs docker (queries pihole in-container).`},
+
+	{"apply", `splitdns apply — make config live on THIS host
+
+Usage: splitdns apply
+
+Restarts pihole / validates+reloads caddy for this host's generated files.
+Run it on each host after config changes. Refuses if the repo has drift.`},
+
+	{"doctor", `splitdns doctor — audit the repo (gitignore, Caddyfile imports, drift)
+
+Usage: splitdns doctor [--fix]
+
+Flags:
+  -f, --fix   Apply fixes: reconcile generated files and .gitignore entries.`},
+
+	{"measure", `splitdns measure — time the HTTPS request breakdown (dns/connect/tls/ttfb)
+
+Usage: splitdns measure [--compare] <service|fqdn|url>
+
+Flags:
+  -c, --compare   A/B the split-horizon path vs the public path, both pinned by
+                  IP (read-only; dns-host only, configured services only).
+
+The target may be a configured service, a bare hostname, or any http(s) URL —
+the latter two need no services.yaml. Requires bash, curl, awk.`},
+
+	{"version", `splitdns version — print the version
+
+Usage: splitdns version   (aliases: --version, -v)`},
+}
+
+// helpFor returns the help text for a topic like "measure" or "add service".
+func helpFor(topic string) (string, bool) {
+	for _, t := range HelpTopics {
+		if t.Cmd == topic {
+			return t.Text, true
+		}
+	}
+	return "", false
+}
+
+// maybeHelp handles -h/--help anywhere in a command's args, and `help <cmd>`.
+// Returns true (after printing) if help was requested.
+func maybeHelp(cmd string, rest []string) bool {
+	want := false
+	if cmd == "help" && len(rest) > 0 {
+		want = true
+		cmd, rest = rest[0], rest[1:]
+	}
+	for _, a := range rest {
+		if a == "-h" || a == "--help" {
+			want = true
+		}
+	}
+	if !want {
+		return false
+	}
+	topic := cmd
+	if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
+		if _, ok := helpFor(cmd + " " + rest[0]); ok {
+			topic = cmd + " " + rest[0]
+		}
+	}
+	if text, ok := helpFor(topic); ok {
+		fmt.Fprintln(os.Stderr, text)
+	} else {
+		usage()
+	}
+	return true
+}

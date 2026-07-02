@@ -70,6 +70,7 @@ func printIgnoreDetail(ignored []string) {
 func cmdDoctor(cfgPath string, args []string) int {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	fixFlag := fs.Bool("fix", false, "apply fixes (write .gitignore entries)")
+	fs.BoolVar(fixFlag, "f", false, "alias for --fix")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}

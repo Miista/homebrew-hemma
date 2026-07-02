@@ -41,6 +41,7 @@ var measureScript string
 func cmdMeasure(cfgPath string, args []string) int {
 	fs := flag.NewFlagSet("measure", flag.ContinueOnError)
 	compare := fs.Bool("compare", false, "A/B split-horizon vs public via --resolve (dns-host only; read-only)")
+	fs.BoolVar(compare, "c", false, "alias for --compare")
 	fs.BoolVar(compare, "ab", false, "alias for --compare")
 	// Accept the target on either side of the flags — `measure mealie --compare`
 	// and `measure --compare mealie` both work (flag.Parse alone would silently

@@ -94,9 +94,9 @@ func Run(args []string) int {
 	if home, err := os.UserHomeDir(); err == nil {
 		repoRoot = filepath.Join(home, "docker")
 	}
-	if args[0] == "-C" {
+	if args[0] == "-C" || args[0] == "--chdir" {
 		if len(args) < 2 {
-			errf("The -C flag requires a directory argument.")
+			errf("The %s flag requires a directory argument.", args[0])
 			return 2
 		}
 		repoRoot = args[1]
@@ -110,6 +110,11 @@ func Run(args []string) int {
 
 	cmd := args[0]
 	rest := args[1:]
+
+	// -h/--help after any command, and `help <cmd>`, print that command's help.
+	if maybeHelp(cmd, rest) {
+		return 0
+	}
 
 	switch cmd {
 	case "version", "--version", "-v":
@@ -230,8 +235,11 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	}
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	fqdn := fs.String("fqdn", "", "service fqdn")
+	fs.StringVar(fqdn, "f", "", "alias for --fqdn")
 	host := fs.String("host", "", "host that runs the service")
+	fs.StringVar(host, "H", "", "alias for --host")
 	backend := fs.String("backend", "", "reverse_proxy upstream name:port")
+	fs.StringVar(backend, "b", "", "alias for --backend")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -312,8 +320,11 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	}
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fqdn := fs.String("fqdn", "", "service fqdn")
+	fs.StringVar(fqdn, "f", "", "alias for --fqdn")
 	host := fs.String("host", "", "host that runs the service")
+	fs.StringVar(host, "H", "", "alias for --host")
 	backend := fs.String("backend", "", "reverse_proxy upstream name:port")
+	fs.StringVar(backend, "b", "", "alias for --backend")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -697,7 +708,12 @@ func leadingName(args []string) (name string, rest []string, ok bool) {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `splitdns — Split-Horizon DNS (Manager)
+	fmt.Fprint(os.Stderr, UsageText)
+}
+
+// UsageText is the top-level help, also compiled into the man page by
+// tools/genman.
+const UsageText = `splitdns — Split-Horizon DNS (Manager)
 
 Generates split-horizon DNS records and Caddy site blocks from a declarative
 services.yaml. Operates on ~/docker by default; -C <dir> overrides.
@@ -725,10 +741,10 @@ Other:
   splitdns measure [--compare] <service|fqdn|url>  Time the request breakdown (dns/connect/tls/ttfb) for a service or any URL. --compare A/Bs split-horizon vs public read-only (dns-host only, services only).
   splitdns doctor [--fix]           Audit the repo (gitignored files, Caddyfile imports, generated-file drift); --fix reconciles files and .gitignore.
   splitdns version
-  splitdns help
+  splitdns help [<command>]         Show this text, or a command's help (same as <command> --help).
 
 Global flags:
-  -C <dir>   Operate on <dir> instead of the default ~/docker.
+  -C, --chdir <dir>   Operate on <dir> instead of the default ~/docker.
 
 Notes:
   - A host's name is its repo directory (e.g. host "pi" -> ./pi/), which must already exist.
@@ -737,5 +753,4 @@ Notes:
   - Config edits (add/update/remove/enable/disable) regenerate files automatically, then
     print which hosts to run 'splitdns apply' on to make the change live.
   - Removing a host or domain is refused while any service still references it.
-`)
-}
+`
