@@ -137,7 +137,7 @@ func Build(c *config.Config) *Plan {
 		}
 	}
 
-	// sd.generated.caddy is written to every host's caddy/data/ dir. It
+	// splitdns.generated.caddy is written to every host's caddy/data/ dir. It
 	// contains the two import lines the Caddyfile must import. Owned under a
 	// synthetic key so GC tracks it independently of services/domains.
 	const caddyImportOwner = caddyImportKey
@@ -201,7 +201,7 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 const domainOwnerPrefix = "@domain:"
 
 // caddyImportKey is the synthetic plan/manifest key for the per-host
-// sd.generated.caddy import file.
+// splitdns.generated.caddy import file.
 const caddyImportKey = "@caddy-import"
 
 // IsSyntheticOwner reports whether a plan/manifest key is synthetic (not a

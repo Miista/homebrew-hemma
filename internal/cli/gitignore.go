@@ -11,6 +11,7 @@ import (
 
 	"splitdns/internal/config"
 	"splitdns/internal/plan"
+	"splitdns/internal/render"
 	syncpkg "splitdns/internal/sync"
 )
 
@@ -169,9 +170,12 @@ func checkDrift(repoRoot string, cfg *config.Config, fix bool) int {
 }
 
 // checkCaddyfileImports checks that each host's Caddyfile contains the line
-// `import sd.generated.caddy`. If fix is true, appends the line when missing.
+// `import splitdns.generated.caddy`. If fix is true, appends the line when
+// missing — or rewrites the pre-rename `import sd.generated.caddy` line in
+// place, since leaving it would break caddy once GC removes the old file.
 func checkCaddyfileImports(repoRoot string, cfg *config.Config, fix bool) int {
-	const importLine = "import sd.generated.caddy"
+	const importLine = "import " + render.CaddyImportFilename
+	const legacyImportLine = "import sd.generated.caddy"
 	problems := 0
 	for hostName, h := range cfg.Hosts {
 		cfPath := filepath.Join(repoRoot, h.ResolvedDir(hostName), config.DefaultCaddyDataDir, "Caddyfile")
@@ -186,37 +190,55 @@ func checkCaddyfileImports(repoRoot string, cfg *config.Config, fix bool) int {
 			continue
 		}
 		if strings.Contains(string(data), importLine) {
-			fmt.Printf(tick+" %s: Caddyfile imports sd.generated.caddy\n", hostName)
+			fmt.Printf(tick+" %s: Caddyfile imports %s\n", hostName, render.CaddyImportFilename)
 			continue
 		}
 		problems++
+		legacy := strings.Contains(string(data), legacyImportLine)
 		if !fix {
-			fmt.Printf(cross+" %s: Caddyfile missing `%s`\n", hostName, importLine)
+			if legacy {
+				fmt.Printf(cross+" %s: Caddyfile has outdated `%s`\n", hostName, legacyImportLine)
+			} else {
+				fmt.Printf(cross+" %s: Caddyfile missing `%s`\n", hostName, importLine)
+			}
 			continue
 		}
-		// Append the import line, ensuring a trailing newline before it.
 		content := string(data)
-		if !strings.HasSuffix(content, "\n") {
-			content += "\n"
+		if legacy {
+			content = strings.ReplaceAll(content, legacyImportLine, importLine)
+		} else {
+			// Append the import line, ensuring a trailing newline before it.
+			if !strings.HasSuffix(content, "\n") {
+				content += "\n"
+			}
+			content += "\n" + importLine + "\n"
 		}
-		content += "\n" + importLine + "\n"
 		if err := config.AtomicWrite(cfPath, []byte(content)); err != nil {
 			fmt.Printf(cross+" %s: could not fix Caddyfile: %v\n", hostName, err)
 			continue
 		}
-		fmt.Printf(tick+" %s: added `%s` to Caddyfile\n", hostName, importLine)
+		if legacy {
+			fmt.Printf(tick+" %s: rewrote `%s` -> `%s`\n", hostName, legacyImportLine, importLine)
+		} else {
+			fmt.Printf(tick+" %s: added `%s` to Caddyfile\n", hostName, importLine)
+		}
 		problems--
 	}
 	return problems
 }
 
 const (
-	giBlockStart = "# >>> sd managed >>>"
-	giBlockEnd   = "# <<< sd managed <<<"
+	giBlockStart = "# >>> splitdns managed >>>"
+	giBlockEnd   = "# <<< splitdns managed <<<"
+	// Pre-rename markers; rewritten to the new ones on the next write so the
+	// old block is replaced in place instead of a duplicate being appended.
+	legacyGiBlockStart = "# >>> sd managed >>>"
+	legacyGiBlockEnd   = "# <<< sd managed <<<"
 )
 
-// writeManagedBlock writes rules into path inside a marked sd block, creating
-// the file if absent and preserving any content outside the markers. Idempotent.
+// writeManagedBlock writes rules into path inside a marked splitdns block,
+// creating the file if absent and preserving any content outside the markers.
+// Idempotent.
 func writeManagedBlock(path string, rules []string) error {
 	var existing string
 	if b, err := os.ReadFile(path); err == nil {
@@ -224,9 +246,12 @@ func writeManagedBlock(path string, rules []string) error {
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
+	// Migrate pre-rename markers so the block below replaces the old block.
+	existing = strings.ReplaceAll(existing, legacyGiBlockStart, giBlockStart)
+	existing = strings.ReplaceAll(existing, legacyGiBlockEnd, giBlockEnd)
 
 	block := giBlockStart + "\n" +
-		"# sd-generated config under data/ dirs the repo otherwise ignores.\n" +
+		"# splitdns-generated config under data/ dirs the repo otherwise ignores.\n" +
 		"# Managed by 'splitdns doctor --fix'; edit outside these markers.\n" +
 		strings.Join(rules, "\n") + "\n" +
 		giBlockEnd + "\n"
