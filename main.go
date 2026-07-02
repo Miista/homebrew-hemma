@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"sd/internal/cli"
+	"mirage/internal/cli"
 )
 
 func main() {

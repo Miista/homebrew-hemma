@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 
-	"sd/internal/config"
-	"sd/internal/manifest"
-	"sd/internal/plan"
+	"mirage/internal/config"
+	"mirage/internal/manifest"
+	"mirage/internal/plan"
 )
 
 // Mode selects reconcile behavior.

@@ -43,7 +43,7 @@ func (m Host) ResolvedDir(name string) string {
 	return name
 }
 
-// Domain is a registrable domain sd manages. The TLS snippet name and cert
+// Domain is a registrable domain mirage manages. The TLS snippet name and cert
 // paths are derived from the domain (see render.TLSSnippetName / TLSSnippet),
 // so no per-domain configuration is needed.
 type Domain struct{}

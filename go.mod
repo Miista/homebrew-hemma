@@ -1,4 +1,4 @@
-module sd
+module mirage
 
 go 1.26.4
 

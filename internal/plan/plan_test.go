@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"sd/internal/config"
+	"mirage/internal/config"
 )
 
 // base returns a valid config with one service we can mutate per test.

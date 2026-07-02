@@ -9,12 +9,12 @@ import (
 	"os/exec"
 	"strings"
 
-	"sd/internal/config"
+	"mirage/internal/config"
 )
 
 // measureScript is the user's measure.sh (made portable: awk not bc; curl's own
 // %{remote_ip} for the resolve line; -4 to skip the suppressed-AAAA path;
-// optional $2 pin via --resolve for the A/B legs). Embedded so the single sd
+// optional $2 pin via --resolve for the A/B legs). Embedded so the single mirage
 // binary carries it. Requires bash, curl, awk (universal on the hosts).
 //
 //go:embed measure.sh
@@ -23,8 +23,8 @@ var measureScript string
 // cmdMeasure times the HTTPS request breakdown for a service via the embedded
 // measure.sh.
 //
-//	sd measure <service|fqdn>              measure the current path (full breakdown, incl. DNS)
-//	sd measure --compare <service|fqdn>    A/B split-horizon vs public (dns-host only)
+//	mirage measure <service|fqdn>              measure the current path (full breakdown, incl. DNS)
+//	mirage measure --compare <service|fqdn>    A/B split-horizon vs public (dns-host only)
 //
 // Plain measure resolves naturally — on the LAN that is the split-horizon
 // record — and includes the real DNS lookup time. Read-only.
@@ -45,7 +45,7 @@ func cmdMeasure(cfgPath string, args []string) int {
 	rest := fs.Args()
 	if len(rest) < 1 {
 		errf("Missing the <service> or <fqdn> to measure.")
-		hint("Usage: sd measure [--compare] <service|fqdn>")
+		hint("Usage: mirage measure [--compare] <service|fqdn>")
 		return 2
 	}
 
@@ -77,7 +77,7 @@ func cmdMeasure(cfgPath string, args []string) int {
 	// is only sanctioned from the resolver here).
 	if localHost(cfg) != cfg.DNSHost() {
 		errf("--compare must run on the dns-host (%s): the public-IP lookup uses DoH, which only the resolver may reach on this network.", cfg.DNSHost())
-		hint("Run 'sd measure %s' here for a single (split-horizon) measurement, or run --compare on %s.", rest[0], cfg.DNSHost())
+		hint("Run 'mirage measure %s' here for a single (split-horizon) measurement, or run --compare on %s.", rest[0], cfg.DNSHost())
 		return 1
 	}
 

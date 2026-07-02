@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Build sd for each host's arch and deploy to /usr/local/bin/sd over ssh.
+# Build mirage for each host's arch and deploy to /usr/local/bin/mirage over ssh.
 #
-# Both hosts' /usr/local/bin/sd are user-writable (the file, not the dir), so no
+# Both hosts' /usr/local/bin/mirage are user-writable (the file, not the dir), so no
 # sudo is needed. We overwrite the file in place with `cat >` rather than mv:
 # /usr/local/bin is root-owned, so a cross-device mv (from /tmp) can't unlink the
 # target, but writing through the existing writable file works. Version is
-# stamped from `git describe` so `sd version` is meaningful.
+# stamped from `git describe` so `mirage version` is meaningful.
 #
 # Usage: ./deploy.sh [host ...]     (default: all hosts below)
 #
@@ -25,7 +25,7 @@ archfor() {
 }
 
 VER="$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD)"
-LDFLAGS="-X sd/internal/cli.Version=$VER"
+LDFLAGS="-X mirage/internal/cli.Version=$VER"
 
 # Targets: args if given, else every host in FLEET.
 if [ "$#" -gt 0 ]; then
@@ -44,10 +44,10 @@ for host in $targets; do
     bin="$(mktemp)"
     GOOS=linux GOARCH="$arch" go build -ldflags "$LDFLAGS" -o "$bin" ./
 
-    echo "==> deploying to $host:/usr/local/bin/sd"
+    echo "==> deploying to $host:/usr/local/bin/mirage"
     # Overwrite in place (dir is root-owned; the file is writable). Piping over
     # ssh avoids a temp file and the cross-device mv problem.
-    ssh "$host" 'cat > /usr/local/bin/sd && chmod 755 /usr/local/bin/sd && echo "    $(hostname): $(sd version)"' < "$bin"
+    ssh "$host" 'cat > /usr/local/bin/mirage && chmod 755 /usr/local/bin/mirage && echo "    $(hostname): $(mirage version)"' < "$bin"
     rm -f "$bin"
 done
 

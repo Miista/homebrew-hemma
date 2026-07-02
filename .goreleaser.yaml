@@ -1,19 +1,19 @@
 version: 2
 
-project_name: sd
+project_name: mirage
 
 builds:
-  - id: sd
+  - id: mirage
     main: .
-    binary: sd
+    binary: mirage
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     ldflags:
-      - -s -w -X sd/internal/cli.Version={{.Version}}
+      - -s -w -X mirage/internal/cli.Version={{.Version}}
 
 archives:
   - id: default
-    ids: [sd]
+    ids: [mirage]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
@@ -21,17 +21,17 @@ archives:
       - README.md
 
 nfpms:
-  - id: sd
-    ids: [sd]
-    package_name: sd
+  - id: mirage
+    ids: [mirage]
+    package_name: mirage
     vendor: Miista
     homepage: https://github.com/Miista/homebrew-sd
     maintainer: Miista <noreply@users.noreply.github.com>
     description: Generate split-horizon DNS (Pi-hole/dnsmasq) and Caddy site blocks from a declarative services.yaml
     license: MIT
     formats: [deb]
-    bindir: /usr/local/bin
-    # curl is used by `sd measure` (shells out to the embedded measure.sh).
+    bindir: /usr/bin
+    # curl is used by `mirage measure` (shells out to the embedded measure.sh).
     recommends:
       - curl
 
@@ -39,7 +39,7 @@ checksum:
   name_template: checksums.txt
 
 brews:
-  - name: sd
+  - name: mirage
     repository:
       owner: Miista
       name: homebrew-sd
@@ -52,6 +52,6 @@ brews:
     description: Generate split-horizon DNS (Pi-hole/dnsmasq) and Caddy site blocks from a declarative services.yaml
     license: MIT
     install: |
-      bin.install "sd"
+      bin.install "mirage"
     test: |
-      assert_match "sd", shell_output("#{bin}/sd version")
+      assert_match "mirage", shell_output("#{bin}/mirage version")
