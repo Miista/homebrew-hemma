@@ -27,7 +27,7 @@ jobs:
           version: "~> v2"
           args: release --clean
         env:
-          # The repo IS the Homebrew tap (Miista/homebrew-sd), so GoReleaser
+          # The repo IS the Homebrew tap (Miista/homebrew-splitdns), so GoReleaser
           # self-publishes Formula/ back into this same repo — the default
           # GITHUB_TOKEN suffices, no PAT needed.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -35,7 +35,7 @@ jobs:
   # Rebuild the shared apt repo (docker-pin + splitdns, latest release of each)
   # and deploy it to Cloudflare Pages (apt.guldmund.dk). Stateless: the GitHub
   # releases are the source of truth; each publish is a full fresh tree.
-  # The same job exists in Miista/homebrew-sd — keep them in sync.
+  # The same job exists in Miista/homebrew-splitdns — keep them in sync.
   apt-repo:
     needs: release
     if: always() && !cancelled() && !failure()
@@ -54,7 +54,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release download --repo Miista/homebrew-docker-pin --pattern '*.deb' --dir /tmp/debs
-          gh release download --repo Miista/homebrew-sd --pattern '*.deb' --dir /tmp/debs
+          gh release download --repo Miista/homebrew-splitdns --pattern '*.deb' --dir /tmp/debs
 
       - name: Build apt repository
         run: |
@@ -93,7 +93,7 @@ jobs:
           <p>Signed apt repository for guldmund.dk tools:</p>
           <ul>
           <li><a href="https://github.com/Miista/homebrew-docker-pin">docker-pin</a> — pin Docker Compose images to tag + digest</li>
-          <li><a href="https://github.com/Miista/homebrew-sd">splitdns</a> — split-horizon DNS + Caddy config from services.yaml</li>
+          <li><a href="https://github.com/Miista/homebrew-splitdns">splitdns</a> — split-horizon DNS + Caddy config from services.yaml</li>
           </ul>
           <h2>Install (Debian/Ubuntu)</h2>
           <pre>curl -fsSL https://apt.guldmund.dk/setup.sh | sudo sh

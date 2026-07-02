@@ -26,11 +26,11 @@ the source of truth and generates both sides from it.
 ### Homebrew
 
 ```sh
-brew tap Miista/sd
+brew tap Miista/splitdns
 brew install splitdns
 ```
 
-(The tap repo is [`Miista/homebrew-sd`](https://github.com/Miista/homebrew-sd); Homebrew strips
+(The tap repo is [`Miista/homebrew-splitdns`](https://github.com/Miista/homebrew-splitdns); Homebrew strips
 the `homebrew-` prefix.)
 
 ### Debian / Ubuntu (apt)
@@ -54,7 +54,7 @@ sudo apt update && sudo apt install splitdns
 
 After that, updates arrive via regular `apt upgrade`. The apt repo serves only
 the latest version; older `.deb`s are on the
-[releases page](https://github.com/Miista/homebrew-sd/releases).
+[releases page](https://github.com/Miista/homebrew-splitdns/releases).
 
 ### From source
 

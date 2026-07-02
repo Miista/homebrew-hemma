@@ -25,7 +25,7 @@ nfpms:
     ids: [splitdns]
     package_name: splitdns
     vendor: Miista
-    homepage: https://github.com/Miista/homebrew-sd
+    homepage: https://github.com/Miista/homebrew-splitdns
     maintainer: Miista <noreply@users.noreply.github.com>
     description: Generate split-horizon DNS (Pi-hole/dnsmasq) and Caddy site blocks from a declarative services.yaml
     license: MIT
@@ -42,13 +42,13 @@ brews:
   - name: splitdns
     repository:
       owner: Miista
-      name: homebrew-sd
+      name: homebrew-splitdns
       token: "{{ .Env.GITHUB_TOKEN }}"
     directory: Formula
     commit_author:
       name: goreleaser-bot
       email: bot@goreleaser.com
-    homepage: https://github.com/Miista/homebrew-sd
+    homepage: https://github.com/Miista/homebrew-splitdns
     description: Generate split-horizon DNS (Pi-hole/dnsmasq) and Caddy site blocks from a declarative services.yaml
     license: MIT
     install: |
