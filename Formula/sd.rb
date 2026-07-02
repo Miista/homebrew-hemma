@@ -5,21 +5,21 @@
 class Sd < Formula
   desc "Generate split-horizon DNS (Pi-hole/dnsmasq) and Caddy site blocks from a declarative services.yaml"
   homepage "https://github.com/Miista/homebrew-sd"
-  version "0.9.1"
+  version "0.9.2"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/Miista/homebrew-sd/releases/download/v0.9.1/sd_0.9.1_darwin_amd64.tar.gz"
-      sha256 "0dab8562ac247c245cfa8261eb4d11fb5be4c0161800b42a6487a4f88852edec"
+      url "https://github.com/Miista/homebrew-sd/releases/download/v0.9.2/sd_0.9.2_darwin_amd64.tar.gz"
+      sha256 "0e735fc40bfd1d88a121a72ca966e37448163b8dbd504bc846fb2f34e8ffaaea"
 
       define_method(:install) do
         bin.install "sd"
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/Miista/homebrew-sd/releases/download/v0.9.1/sd_0.9.1_darwin_arm64.tar.gz"
-      sha256 "2ee15b34a24388168ad25ec8c3502a1b9e9fecfad6387df18082b4bc94b21d20"
+      url "https://github.com/Miista/homebrew-sd/releases/download/v0.9.2/sd_0.9.2_darwin_arm64.tar.gz"
+      sha256 "e8b394899e41c75fd2906806325e2359c3b322f2e2fcc6d8c06a6aa7daa904dc"
 
       define_method(:install) do
         bin.install "sd"
@@ -29,15 +29,15 @@ class Sd < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/Miista/homebrew-sd/releases/download/v0.9.1/sd_0.9.1_linux_amd64.tar.gz"
-      sha256 "581b43e69b1a96ef32021ee85ed2f8138fd90739ddc71d8b45c651a784a5bc27"
+      url "https://github.com/Miista/homebrew-sd/releases/download/v0.9.2/sd_0.9.2_linux_amd64.tar.gz"
+      sha256 "29da24b63ffb44aa9e521831a0d95bc028cfb1f4d6f14bda1d0bfe5342e8a2e0"
       define_method(:install) do
         bin.install "sd"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/Miista/homebrew-sd/releases/download/v0.9.1/sd_0.9.1_linux_arm64.tar.gz"
-      sha256 "06da5b3e580317468b746be3352cddb3c9525675db91bb6cad4fb3f1dcf9d947"
+      url "https://github.com/Miista/homebrew-sd/releases/download/v0.9.2/sd_0.9.2_linux_arm64.tar.gz"
+      sha256 "b333021920af5f116d02a9ab6c3806378bd48161f00dddf112fa663a99f5b6f0"
       define_method(:install) do
         bin.install "sd"
       end
