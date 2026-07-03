@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"splitdns/internal/config"
 )
@@ -20,9 +21,10 @@ import (
 //
 // The Caddy half runs `caddy validate` BEFORE `caddy reload`: validate provisions
 // the TLS app, which loads cert files from disk, so a missing/wrong cert aborts
-// here with a clear error instead of failing mid-reload. reload is idempotent, so
-// apply acts unconditionally on whatever this host owns (there is no "changed
-// this run" notion outside sync).
+// here with a clear error instead of failing mid-reload. Command output (docker,
+// caddy) is captured and shown only on failure — success prints just the ticks.
+// reload is idempotent, so apply acts unconditionally on whatever this host owns
+// (there is no "changed this run" notion outside sync).
 func cmdApply(repoRoot, cfgPath string, args []string) int {
 	cfg, code := loadExisting(cfgPath, "apply")
 	if cfg == nil {
@@ -64,7 +66,7 @@ func cmdApply(repoRoot, cfgPath string, args []string) int {
 	if isDNS {
 		fmt.Printf("\n%s== DNS (%s) ==%s\n", boldOn, self, boldOff)
 		// pihole v6 does not reload conf-dir on reloaddns; a restart is required.
-		if runLive("docker", "restart", piholeContainer) {
+		if runQuiet("docker", "restart", piholeContainer) {
 			fmt.Printf("  "+tick+" restarted %s\n", piholeContainer)
 		} else {
 			fmt.Printf("  "+cross+" failed to restart %s\n", piholeContainer)
@@ -77,12 +79,12 @@ func cmdApply(repoRoot, cfgPath string, args []string) int {
 		const cf = "/etc/caddy/Caddyfile"
 		// Validate first — provisions the TLS app, so a missing cert fails HERE
 		// rather than during the reload (verified: caddy v2.11 validate exit 1).
-		if !runLive("docker", "exec", caddyContainer, "caddy", "validate", "--config", cf, "--adapter", "caddyfile") {
+		if !runQuiet("docker", "exec", caddyContainer, "caddy", "validate", "--config", cf, "--adapter", "caddyfile") {
 			fmt.Println("  " + cross + " caddy validate FAILED — not reloading (missing cert or bad config?)")
 			failed++
 		} else {
 			fmt.Println("  " + tick + " caddy validate passes")
-			if runLive("docker", "exec", caddyContainer, "caddy", "reload", "--config", cf) {
+			if runQuiet("docker", "exec", caddyContainer, "caddy", "reload", "--config", cf) {
 				fmt.Println("  " + tick + " caddy reloaded")
 			} else {
 				fmt.Println("  " + cross + " caddy reload FAILED")
@@ -111,12 +113,18 @@ func hostRunsCaddy(cfg *config.Config, host string) bool {
 	return false
 }
 
-// runLive runs a command with its output streamed to the user's terminal and
-// reports success. Used for the docker restart/validate/reload steps so the
-// user sees caddy's own diagnostics (notably the missing-cert error).
-func runLive(name string, args ...string) bool {
+// runQuiet runs a command with its output captured, printing it (indented)
+// only when the command fails. The happy path stays clean; on failure the
+// user still sees the tool's own diagnostics (notably caddy's missing-cert
+// error, which is why apply used to stream everything live).
+func runQuiet(name string, args ...string) bool {
 	cmd := exec.Command(name, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run() == nil
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return true
+	}
+	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		fmt.Fprintf(os.Stderr, "    %s\n", line)
+	}
+	return false
 }
