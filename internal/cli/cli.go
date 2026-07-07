@@ -208,18 +208,20 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 	return 2
 }
 
-// dispatchSet routes `set <thing> <args>`; currently only `set dns-host`.
+// dispatchSet routes `set <thing> <args>`: `set dns-host` and `set auth-snippet`.
 func dispatchSet(cfgPath string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing what to set — expected dns-host.")
-		hint("Usage: splitdns set dns-host <name>")
+		errf("Missing what to set — expected dns-host or auth-snippet.")
+		hint("Usage: splitdns set dns-host <name>  |  splitdns set auth-snippet <path>")
 		return 2
 	}
 	switch args[0] {
 	case "dns-host":
 		return cmdSetDNSHost(cfgPath, args[1:])
+	case "auth-snippet":
+		return cmdSetAuthSnippet(cfgPath, args[1:])
 	default:
-		errf("Unknown setting %q — expected dns-host.", args[0])
+		errf("Unknown setting %q — expected dns-host or auth-snippet.", args[0])
 		return 2
 	}
 }
@@ -240,6 +242,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	fs.StringVar(host, "H", "", "alias for --host")
 	backend := fs.String("backend", "", "reverse_proxy upstream name:port")
 	fs.StringVar(backend, "b", "", "alias for --backend")
+	auth := fs.Bool("auth", false, "put this service behind the forward-auth (auth) snippet")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -292,7 +295,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 		errf("Unknown host %q — defined hosts: %s.", *host, strings.Join(sortedKeysOf(cfg.Hosts), ", "))
 		return 1
 	}
-	cfg.Services[name] = config.Service{FQDN: *fqdn, Host: *host, Backend: *backend}
+	cfg.Services[name] = config.Service{FQDN: *fqdn, Host: *host, Backend: *backend, Auth: *auth}
 	if err := cfg.Save(); err != nil {
 		errf("%v", err)
 		return 1
@@ -325,6 +328,7 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	fs.StringVar(host, "H", "", "alias for --host")
 	backend := fs.String("backend", "", "reverse_proxy upstream name:port")
 	fs.StringVar(backend, "b", "", "alias for --backend")
+	auth := fs.Bool("auth", false, "put this service behind the forward-auth (auth) snippet")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -356,6 +360,8 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 			svc.Host = *host
 		case "backend":
 			svc.Backend = *backend
+		case "auth":
+			svc.Auth = *auth
 		}
 	})
 	cfg.Services[name] = svc
@@ -485,7 +491,17 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 		return 1
 	}
 
+	// Read the forward-auth snippet source (if configured). On failure, keep the
+	// last-good generated snippet: refuse to regenerate the auth file rather than
+	// silently reset it to the empty stub, which would drop auth on every
+	// protected service fleet-wide. The rest of the sync proceeds.
+	authErr := cfg.LoadAuthSnippet(repoRoot)
+
 	p := plan.Build(cfg)
+	if authErr != nil {
+		errf("auth_snippet unreadable — keeping the existing generated auth snippet: %v", authErr)
+		plan.PinAuthSnippetToDisk(p, repoRoot)
+	}
 
 	// Before writing, warn if any output path would be gitignored — those
 	// files would generate fine but never commit/deploy (the repo's
@@ -721,8 +737,8 @@ services.yaml. Operates on ~/docker by default; -C <dir> overrides.
 Commands are verb-first: <verb> <noun> <args>.
 
 Services (an app reached at an fqdn, on a host, under a domain):
-  splitdns add     service <name> --fqdn <f> --host <h> --backend <b>
-  splitdns update  service <name> [--fqdn ...] [--host ...] [--backend ...]
+  splitdns add     service <name> --fqdn <f> --host <h> --backend <b> [--auth]
+  splitdns update  service <name> [--fqdn ...] [--host ...] [--backend ...] [--auth[=false]]
   splitdns remove  service <name>
   splitdns disable service <name>   Stop generating DNS/Caddy config for a service (keeps it in services.yaml).
   splitdns enable  service <name>   Re-enable a disabled service (regenerates its files).
@@ -732,7 +748,8 @@ Building blocks (a service references a host and a domain):
   splitdns remove host   <name>
   splitdns add    domain <name>
   splitdns remove domain <name>
-  splitdns set    dns-host <name>    Set the default resolver host for DNS records.
+  splitdns set    dns-host <name>       Set the default resolver host for DNS records.
+  splitdns set    auth-snippet <path>   Set the forward-auth (auth) snippet source ('-' clears). Services opt in with --auth.
 
 Other:
   splitdns apply                    Make config live on THIS host: restart pihole / validate+reload caddy. Run on each host. Refuses if the repo has drift.

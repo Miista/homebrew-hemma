@@ -51,6 +51,11 @@ type Domain struct{}
 // Defaults holds repo-wide defaults.
 type Defaults struct {
 	DNSHost string `yaml:"dns_host"`
+	// AuthSnippet is an optional repo-relative path to a Caddy file whose
+	// contents are the forward-auth block copied into the generated (auth)
+	// snippet on every host. Empty means an empty (auth) {} stub is generated
+	// (no-op), so services that `import auth` remain valid but unprotected.
+	AuthSnippet string `yaml:"auth_snippet,omitempty"`
 }
 
 // Service is one declared service entry. There is no per-service dns_host:
@@ -60,6 +65,10 @@ type Service struct {
 	Host     string `yaml:"host"`
 	Backend  string `yaml:"backend"`
 	Disabled bool   `yaml:"disabled,omitempty"`
+	// Auth opts this service into forward auth: its site block imports the
+	// (auth) snippet before proxying. The snippet's content is repo-global
+	// (defaults.auth_snippet); Auth only decides which services reference it.
+	Auth bool `yaml:"auth,omitempty"`
 }
 
 // Config is the in-memory representation of services.yaml.
@@ -73,6 +82,11 @@ type Config struct {
 	// Missing (Exists=false) is distinct from present-but-empty: add creates
 	// the file, but sync/update/remove should refuse and guide the user (§8).
 	Exists bool `yaml:"-"`
+
+	// AuthSnippetBody is the content read from defaults.auth_snippet, used as
+	// the body of the generated (auth) snippet. Empty when no auth_snippet is
+	// configured. Populated by LoadAuthSnippet, not from services.yaml itself.
+	AuthSnippetBody string `yaml:"-"`
 
 	path string `yaml:"-"`
 }
@@ -148,6 +162,29 @@ func (c *Config) Save() error {
 // DNSHost returns the single resolver host for all records (defaults.dns_host).
 func (c *Config) DNSHost() string {
 	return c.Defaults.DNSHost
+}
+
+// LoadAuthSnippet reads the file referenced by defaults.auth_snippet (resolved
+// relative to repoRoot) into AuthSnippetBody. It is a no-op when no auth_snippet
+// is set. On a read error it returns the error WITHOUT clearing AuthSnippetBody,
+// so callers can keep the last-good generated snippet in place rather than
+// silently reverting every service to unprotected — a path typo must never
+// disable auth fleet-wide (report-but-proceed, design §8).
+func (c *Config) LoadAuthSnippet(repoRoot string) error {
+	if c.Defaults.AuthSnippet == "" {
+		c.AuthSnippetBody = ""
+		return nil
+	}
+	path := c.Defaults.AuthSnippet
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(repoRoot, path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read auth_snippet %s: %w", c.Defaults.AuthSnippet, err)
+	}
+	c.AuthSnippetBody = string(data)
+	return nil
 }
 
 // MatchDomain returns the longest registrable domain in the domains map that

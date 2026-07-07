@@ -40,7 +40,16 @@ func (d Drift) Count() int {
 // detectDrift compares the plan built from cfg (and the manifest) against files
 // on disk under repoRoot. Paths returned are repo-relative, sorted.
 func detectDrift(repoRoot string, cfg *config.Config, mf *manifest.Manifest) Drift {
+	// Populate the auth snippet body so the planned (auth) file's content
+	// reflects the live source — this is what makes drift detection catch "the
+	// auth_snippet source changed but wasn't synced". If the source is
+	// unreadable, pin the planned content to disk so we don't falsely report the
+	// last-good file as modified (consistent with runSync's keep-last-good).
+	authErr := cfg.LoadAuthSnippet(repoRoot)
 	p := plan.Build(cfg)
+	if authErr != nil {
+		plan.PinAuthSnippetToDisk(p, repoRoot)
+	}
 
 	desired := map[string]bool{}
 	var d Drift

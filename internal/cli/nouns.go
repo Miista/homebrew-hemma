@@ -196,3 +196,49 @@ func cmdSetDNSHost(cfgPath string, args []string) int {
 	// records from a previously-set resolver host, leaving the repo clean.
 	return runSync(filepath.Dir(cfgPath), cfg, syncpkg.Complete)
 }
+
+// cmdSetAuthSnippet sets (or clears) defaults.auth_snippet — the repo-relative
+// path to the Caddy file whose contents become the (auth) forward-auth snippet
+// on every host. Pass an empty path (or "-") to clear it, which regenerates the
+// empty (auth) {} stub everywhere (services stay valid but unprotected).
+func cmdSetAuthSnippet(cfgPath string, args []string) int {
+	if len(args) < 1 {
+		errf("Missing the <path>.")
+		hint("Usage: splitdns set auth-snippet <path>   (use '-' to clear)")
+		return 2
+	}
+	path := args[0]
+
+	cfg, code := loadExisting(cfgPath, "set the auth-snippet in")
+	if cfg == nil {
+		return code
+	}
+	repoRoot := filepath.Dir(cfgPath)
+	if path == "-" || path == "" {
+		cfg.Defaults.AuthSnippet = ""
+		if err := cfg.Save(); err != nil {
+			errf("%v", err)
+			return 1
+		}
+		fmt.Println("Cleared auth_snippet — the generated (auth) snippet is now an empty no-op stub.")
+		return runSync(repoRoot, cfg, syncpkg.Complete)
+	}
+	// Validate the source exists before persisting, so a typo is caught here
+	// rather than as a keep-last-good warning at every future sync.
+	abs := path
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(repoRoot, abs)
+	}
+	if _, err := os.Stat(abs); err != nil {
+		errf("auth_snippet %q is not readable: %v", path, err)
+		return 1
+	}
+	cfg.Defaults.AuthSnippet = path
+	if err := cfg.Save(); err != nil {
+		errf("%v", err)
+		return 1
+	}
+	fmt.Printf("Set auth_snippet to %q.\n", path)
+	// The snippet content changed for every host, so regenerate all auth files.
+	return runSync(repoRoot, cfg, syncpkg.Complete)
+}

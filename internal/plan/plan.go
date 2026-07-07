@@ -5,6 +5,7 @@ package plan
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -150,6 +151,23 @@ func Build(c *config.Config) *Plan {
 		p.Files[caddyImportOwner] = importFiles
 	}
 
+	// The forward-auth snippet (splitdns.auth.generated.caddy) is written to
+	// every host's caddy/data/ dir, imported before the site blocks. It is
+	// always present: its body is the configured auth_snippet content, or an
+	// empty (auth) {} stub when none is set. Because it is always planned and
+	// manifest-tracked, drift detection compares its on-disk content to the
+	// (live) source content for free — no special-casing in doctor. Owned under
+	// a synthetic key so GC tracks it independently of services/domains.
+	var authFiles []File
+	authContent := render.AuthSnippet(c.AuthSnippetBody)
+	for hostName, h := range c.Hosts {
+		path := filepath.Join(h.ResolvedDir(hostName), config.DefaultCaddyDataDir, render.AuthSnippetFilename)
+		authFiles = append(authFiles, File{Path: path, Content: authContent})
+	}
+	if len(authFiles) > 0 {
+		p.Files[authSnippetKey] = authFiles
+	}
+
 	return p
 }
 
@@ -186,13 +204,21 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 	if !backendRe.MatchString(svc.Backend) {
 		return nil, fmt.Sprintf("backend %q is not name:port shape", svc.Backend)
 	}
+	// Loop guard: a service that IS the forward-auth backend must not also be
+	// protected by it, or every auth subrequest would recurse through the auth
+	// portal. We can't parse the opaque snippet body reliably, but if the
+	// service's own fqdn appears in it, it is (almost certainly) the portal —
+	// refuse auth on it rather than generate a redirect loop.
+	if svc.Auth && c.AuthSnippetBody != "" && strings.Contains(c.AuthSnippetBody, svc.FQDN) {
+		return nil, fmt.Sprintf("auth refused: %q is referenced by the forward-auth snippet (it is the auth backend) — protecting it would create a redirect loop", svc.FQDN)
+	}
 
 	dnsPath := filepath.Join(dnsM.ResolvedDir(dnsHostName), config.DefaultDnsmasqDir, name+".generated.conf")
 	caddyPath := filepath.Join(hostM.ResolvedDir(svc.Host), config.DefaultCaddySitesDir, name+".caddy")
 
 	return []File{
 		{Path: dnsPath, Content: render.DNSRecord(svc.FQDN, hostM.IP)},
-		{Path: caddyPath, Content: render.CaddySite(svc.FQDN, tlsImport, svc.Backend)},
+		{Path: caddyPath, Content: render.CaddySite(svc.FQDN, tlsImport, svc.Backend, svc.Auth)},
 	}, ""
 }
 
@@ -204,10 +230,30 @@ const domainOwnerPrefix = "@domain:"
 // splitdns.generated.caddy import file.
 const caddyImportKey = "@caddy-import"
 
+// authSnippetKey is the synthetic plan/manifest key for the per-host
+// splitdns.auth.generated.caddy forward-auth snippet file.
+const authSnippetKey = "@auth-snippet"
+
 // IsSyntheticOwner reports whether a plan/manifest key is synthetic (not a
-// real service name). Covers both domain TLS owners and the caddy-import owner.
+// real service name). Covers domain TLS owners, the caddy-import owner, and the
+// auth-snippet owner.
 func IsSyntheticOwner(key string) bool {
-	return IsDomainOwner(key) || key == caddyImportKey
+	return IsDomainOwner(key) || key == caddyImportKey || key == authSnippetKey
+}
+
+// PinAuthSnippetToDisk rewrites the planned content of every auth-snippet file
+// to whatever is currently on disk, so a sync writes it back unchanged. Used
+// when the configured auth_snippet source is unreadable: the file stays planned
+// and manifest-tracked (GC-safe) but is NOT reset to the empty stub, preserving
+// the last-good forward-auth block rather than silently disabling auth. Files
+// not yet on disk keep their planned (stub) content — nothing to preserve.
+func PinAuthSnippetToDisk(p *Plan, repoRoot string) {
+	files := p.Files[authSnippetKey]
+	for i, f := range files {
+		if b, err := os.ReadFile(filepath.Join(repoRoot, f.Path)); err == nil {
+			files[i].Content = string(b)
+		}
+	}
 }
 
 // domainOwner returns the synthetic owner key for a domain's TLS snippets.

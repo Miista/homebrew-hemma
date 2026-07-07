@@ -65,6 +65,78 @@ func TestBuild_ValidService(t *testing.T) {
 	}
 }
 
+// The (auth) snippet file is always planned on every host, regardless of
+// whether any service opts in. Empty body → empty stub.
+func TestBuild_AuthSnippetAlwaysPresent(t *testing.T) {
+	c := base()
+	p := Build(c)
+	files := p.Files[authSnippetKey]
+	if len(files) != len(c.Hosts) {
+		t.Fatalf("expected one auth snippet per host (%d), got %d", len(c.Hosts), len(files))
+	}
+	for _, f := range files {
+		if !strings.HasSuffix(f.Path, "caddy/data/splitdns.auth.generated.caddy") {
+			t.Errorf("auth snippet path wrong: %q", f.Path)
+		}
+		if !strings.Contains(f.Content, "(auth) {\n}") {
+			t.Errorf("expected empty (auth) stub, got: %q", f.Content)
+		}
+	}
+	if !IsSyntheticOwner(authSnippetKey) {
+		t.Errorf("%q should be a synthetic owner", authSnippetKey)
+	}
+}
+
+// A service with Auth:true emits `import auth`; the snippet body flows into the
+// generated (auth) file.
+func TestBuild_ServiceAuthImportsSnippet(t *testing.T) {
+	c := base()
+	c.AuthSnippetBody = "forward_auth https://auth.example.com {\n\turi /api/authz/forward-auth\n}"
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Auth: true}
+
+	p := Build(c)
+	if len(p.Skipped) != 0 {
+		t.Fatalf("unexpected skips: %v", p.Skipped)
+	}
+	var caddy File
+	for _, f := range p.Files["docs"] {
+		if strings.HasSuffix(f.Path, ".caddy") {
+			caddy = f
+		}
+	}
+	if !strings.Contains(caddy.Content, "\timport auth\n") {
+		t.Errorf("auth service should import auth: %q", caddy.Content)
+	}
+	// Body copied into the (auth) file.
+	if !strings.Contains(p.Files[authSnippetKey][0].Content, "forward_auth https://auth.example.com") {
+		t.Errorf("auth body not in snippet: %q", p.Files[authSnippetKey][0].Content)
+	}
+}
+
+// Loop guard: a service whose own fqdn is referenced by the auth snippet (i.e.
+// it IS the auth backend) must be skipped if it sets auth:true.
+func TestBuild_AuthLoopGuard(t *testing.T) {
+	c := base()
+	c.AuthSnippetBody = "forward_auth https://auth.example.com { uri /x }"
+	c.Services["portal"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091", Auth: true}
+
+	p := Build(c)
+	reason, skipped := p.Skipped["portal"]
+	if !skipped {
+		t.Fatalf("expected portal to be skipped by loop guard")
+	}
+	if !strings.Contains(reason, "redirect loop") {
+		t.Errorf("skip reason should mention the loop: %q", reason)
+	}
+	// Same service WITHOUT auth is fine.
+	c2 := base()
+	c2.AuthSnippetBody = "forward_auth https://auth.example.com { uri /x }"
+	c2.Services["portal"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091"}
+	if _, skipped := Build(c2).Skipped["portal"]; skipped {
+		t.Errorf("portal without auth should not be skipped")
+	}
+}
+
 func TestBuild_SkipReasons(t *testing.T) {
 	tests := []struct {
 		name    string

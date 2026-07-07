@@ -17,23 +17,26 @@ type HelpTopic struct {
 var HelpTopics = []HelpTopic{
 	{"add service", `splitdns add service — declare a service and generate its DNS/Caddy config
 
-Usage: splitdns add service <name> --fqdn <fqdn> --host <host> --backend <name:port>
+Usage: splitdns add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth]
 
 Flags:
   -f, --fqdn <fqdn>       Public name the service is reached at (must match a declared domain).
   -H, --host <host>       Host (repo directory) that runs the service.
   -b, --backend <n:port>  reverse_proxy upstream, e.g. mealie:9000.
+      --auth              Put the service behind forward auth (imports the (auth) snippet).
+                          Requires 'splitdns set auth-snippet <path>' to be configured.
 
 Regenerates files immediately, then prints which hosts need 'splitdns apply'.`},
 
-	{"update service", `splitdns update service — change a service's fqdn, host, or backend
+	{"update service", `splitdns update service — change a service's fqdn, host, backend, or auth
 
-Usage: splitdns update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>]
+Usage: splitdns update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth[=false]]
 
 Flags:
   -f, --fqdn <fqdn>       New public name (must match a declared domain).
   -H, --host <host>       New host (repo directory).
   -b, --backend <n:port>  New reverse_proxy upstream.
+      --auth[=false]      Turn forward auth on (--auth) or off (--auth=false) for this service.
 
 Only the given flags change; regenerated files and apply-hints follow.`},
 
@@ -72,6 +75,17 @@ Usage: splitdns remove domain <name>`},
 	{"set dns-host", `splitdns set dns-host — set the default resolver host for DNS records
 
 Usage: splitdns set dns-host <name>`},
+
+	{"set auth-snippet", `splitdns set auth-snippet — set the forward-auth (auth) snippet source
+
+Usage: splitdns set auth-snippet <path>   (use '-' to clear)
+
+<path> is a repo-relative Caddy file whose contents become the body of the
+(auth) snippet generated on every host. Services opt in with 'add/update
+service ... --auth', which emits 'import auth' in their site block. Clearing it
+('-') regenerates an empty (auth) {} stub — services stay valid but unprotected.
+The snippet is a normal generated file, so 'splitdns doctor' reports drift if
+the source changes without a re-sync.`},
 
 	{"list", `splitdns list — show hosts, domains, and services
 
