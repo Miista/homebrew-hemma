@@ -81,6 +81,14 @@ func cmdDoctor(cfgPath string, args []string) int {
 	if cfg == nil {
 		return code
 	}
+	// Load the forward-auth snippet source so the plan below renders the real
+	// (auth) file content, not the empty stub — otherwise the gitignore check's
+	// plan is stale. On failure, warn and proceed (keep-last-good), the same way
+	// runSync handles it. detectDrift/checkDrift load it independently, so this
+	// only affects the top-level plan used for the gitignore check.
+	if authErr := cfg.LoadAuthSnippet(repoRoot); authErr != nil {
+		errf("auth_snippet unreadable — keeping the existing generated auth snippet: %v", authErr)
+	}
 	p := plan.Build(cfg)
 
 	problems := 0

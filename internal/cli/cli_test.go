@@ -271,4 +271,32 @@ func TestRun_DoctorDetectsAuthDrift(t *testing.T) {
 	}
 }
 
+// doctor runs its FULL audit (gitignore + Caddyfile + drift) cleanly right
+// after `set auth-snippet`, and flags drift once the source is edited without a
+// re-sync. Running inside a real git repo exercises the gitignore-check plan,
+// which cmdDoctor must build from the loaded auth snippet (not the empty stub).
+func TestRun_DoctorAuthSnippetCleanThenDrift(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+	mkdirs(t, dir, "resolver", "appbox")
+	seed(t, dir)
+	// Un-ignore generated files so the gitignore check passes and doctor can
+	// reach a fully-clean state after sync.
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"),
+		[]byte("**/data/**\n"+strings.Join(unignoreRules(), "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(dir, "snip.caddy"), []byte("forward_auth v1 { }\n"), 0o644)
+	Run([]string{"-C", dir, "set", "auth-snippet", "snip.caddy"})
+
+	if code := Run([]string{"-C", dir, "doctor"}); code != 0 {
+		t.Fatalf("doctor should be clean after set auth-snippet, got %d", code)
+	}
+	// Edit the source without a re-sync → the generated (auth) file is stale.
+	os.WriteFile(filepath.Join(dir, "snip.caddy"), []byte("forward_auth v2 { }\n"), 0o644)
+	if code := Run([]string{"-C", dir, "doctor"}); code == 0 {
+		t.Errorf("doctor should flag drift after source edit, got exit 0")
+	}
+}
+
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
