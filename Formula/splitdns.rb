@@ -5,13 +5,13 @@
 class Splitdns < Formula
   desc "Generate split-horizon DNS (Pi-hole/dnsmasq) and Caddy site blocks from a declarative services.yaml"
   homepage "https://github.com/Miista/homebrew-splitdns"
-  version "0.21.1"
+  version "0.22.0"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/Miista/homebrew-splitdns/releases/download/v0.21.1/splitdns_0.21.1_darwin_amd64.tar.gz"
-      sha256 "b1a55bf4439a6cf1260473bf8b9c5aef86450ed8f1acf2dabb6d6e737e11baae"
+      url "https://github.com/Miista/homebrew-splitdns/releases/download/v0.22.0/splitdns_0.22.0_darwin_amd64.tar.gz"
+      sha256 "c50ddb3cb71b882bcb6820acd88993767f71705580fad9b3d2629d322f5695e9"
 
       define_method(:install) do
         bin.install "splitdns"
@@ -21,8 +21,8 @@ class Splitdns < Formula
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/Miista/homebrew-splitdns/releases/download/v0.21.1/splitdns_0.21.1_darwin_arm64.tar.gz"
-      sha256 "b48615d2cf7162b2a54e885a68b219fbf59b158ead6c8594d17224f26a793115"
+      url "https://github.com/Miista/homebrew-splitdns/releases/download/v0.22.0/splitdns_0.22.0_darwin_arm64.tar.gz"
+      sha256 "7ef6621cd3ded93e0a8d0186ff31760d843fbf346c4eab117e25ec118512da6d"
 
       define_method(:install) do
         bin.install "splitdns"
@@ -35,8 +35,8 @@ class Splitdns < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/Miista/homebrew-splitdns/releases/download/v0.21.1/splitdns_0.21.1_linux_amd64.tar.gz"
-      sha256 "2ff6a2c1421b9368e5bd72f4963cbeb67ffa45401751ecf67a11df1c05acf97e"
+      url "https://github.com/Miista/homebrew-splitdns/releases/download/v0.22.0/splitdns_0.22.0_linux_amd64.tar.gz"
+      sha256 "8e7c36d902e96682057b8c0ecb241f92861a65499d219ca0bc6d0e857aa39110"
       define_method(:install) do
         bin.install "splitdns"
         man1.install "man/splitdns.1.gz"
@@ -45,8 +45,8 @@ class Splitdns < Formula
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/Miista/homebrew-splitdns/releases/download/v0.21.1/splitdns_0.21.1_linux_arm64.tar.gz"
-      sha256 "f288633791cae77d401d8d5e1c72c05d7ca557b051eeef6f74ac7a56c1978304"
+      url "https://github.com/Miista/homebrew-splitdns/releases/download/v0.22.0/splitdns_0.22.0_linux_arm64.tar.gz"
+      sha256 "98038cfff323ff2b1a9125cb6bb1d053c4bfdc46401f75dc835c01b52252fa77"
       define_method(:install) do
         bin.install "splitdns"
         man1.install "man/splitdns.1.gz"
