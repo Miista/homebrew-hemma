@@ -55,6 +55,24 @@ func cmdList(cfgPath string, args []string) int {
 		fmt.Printf("  %s\n", name)
 	}
 
+	// Auth is repo-wide config, not per-host — its own section, only shown when
+	// something is configured (keeps a no-auth repo's output clean). The snippet
+	// is any Caddy auth directive (forward_auth, basic_auth, …); splitdns is
+	// agnostic to its contents, so the section is named for the mechanism.
+	if cfg.Defaults.AuthSnippet != "" || cfg.Defaults.AuthService != "" {
+		fmt.Printf("\n%s== Auth ==%s\n", boldOn, boldOff)
+		if cfg.Defaults.AuthSnippet != "" {
+			fmt.Printf("  snippet:  %s\n", cfg.Defaults.AuthSnippet)
+		} else {
+			fmt.Println("  snippet:  (none — set with 'splitdns set auth-snippet <path>')")
+		}
+		if cfg.Defaults.AuthService != "" {
+			fmt.Printf("  service:  %s\n", cfg.Defaults.AuthService)
+		} else {
+			fmt.Println("  service:  (none — set with 'splitdns set auth-service <name>')")
+		}
+	}
+
 	// Gather the services to show, applying the this-host filter unless --all.
 	var svcNames []string
 	for _, name := range sortedKeysOf(cfg.Services) {
@@ -68,16 +86,6 @@ func cmdList(cfgPath string, args []string) int {
 		fmt.Printf("\n%s== Services on %s (%d of %d) ==%s\n", boldOn, self, len(svcNames), len(cfg.Services), boldOff)
 	} else {
 		fmt.Printf("\n%s== Services (%d) ==%s\n", boldOn, len(svcNames), boldOff)
-	}
-	// Surface the repo-global forward-auth config (snippet source + which
-	// service is the auth backend), so the per-service AUTH column has context.
-	if cfg.Defaults.AuthSnippet != "" {
-		fmt.Printf("  auth snippet:  %s\n", cfg.Defaults.AuthSnippet)
-	} else {
-		fmt.Println("  auth snippet:  (none — set with 'splitdns set auth-snippet <path>')")
-	}
-	if cfg.Defaults.AuthService != "" {
-		fmt.Printf("  auth service:  %s\n", cfg.Defaults.AuthService)
 	}
 	printServiceTable(cfg, svcNames)
 	if filtered && len(svcNames) < len(cfg.Services) {
@@ -140,7 +148,7 @@ func printServiceTable(cfg *config.Config, svcNames []string) {
 		fmt.Println(line)
 	}
 	if anyAuth {
-		fmt.Println("  (✓ = behind forward auth; disable with 'splitdns update service <name> --auth=false')")
+		fmt.Println("  (✓ = imports the auth snippet; disable with 'splitdns update service <name> --auth=false')")
 	}
 }
 

@@ -246,7 +246,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	fs.StringVar(host, "H", "", "alias for --host")
 	backend := fs.String("backend", "", "reverse_proxy upstream name:port")
 	fs.StringVar(backend, "b", "", "alias for --backend")
-	auth := fs.Bool("auth", false, "put this service behind the forward-auth (auth) snippet")
+	auth := fs.Bool("auth", false, "put this service behind the (auth) snippet")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -319,7 +319,7 @@ func syncBlockedReason(cfg *config.Config) string {
 }
 
 // authConfigWarnings returns non-fatal advisories about a half-configured
-// forward-auth setup. Forward-auth still authenticates without these, so they
+// auth setup. Auth still functions without these, so they
 // are warnings, not sync blockers (report-but-proceed):
 //   - snippet set but no auth_service: the auth backend's block won't preserve
 //     X-Forwarded-Host, so post-login redirects loop back to the portal (the
@@ -339,7 +339,7 @@ func authConfigWarnings(cfg *config.Config) []string {
 		w = append(w, "auth_snippet is set but auth_service is not — post-login redirects will loop back to the auth portal. Name the auth backend with: splitdns set auth-service <name>")
 	}
 	if service && !snippet {
-		w = append(w, "auth_service is set but auth_snippet is not — the (auth) snippet is an empty no-op, so forward-auth does nothing. Set it with: splitdns set auth-snippet <path>")
+		w = append(w, "auth_service is set but auth_snippet is not — the (auth) snippet is an empty no-op, so auth does nothing. Set it with: splitdns set auth-snippet <path>")
 	}
 	if service {
 		if _, ok := cfg.Services[cfg.Defaults.AuthService]; !ok {
@@ -355,7 +355,7 @@ func authConfigWarnings(cfg *config.Config) []string {
 			}
 		}
 		if !used {
-			w = append(w, "forward-auth is configured but no service uses it — opt one in with: splitdns update service <name> --auth")
+			w = append(w, "the auth snippet is configured but no service uses it — opt one in with: splitdns update service <name> --auth")
 		}
 	}
 	return w
@@ -375,7 +375,7 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	fs.StringVar(host, "H", "", "alias for --host")
 	backend := fs.String("backend", "", "reverse_proxy upstream name:port")
 	fs.StringVar(backend, "b", "", "alias for --backend")
-	auth := fs.Bool("auth", false, "put this service behind the forward-auth (auth) snippet")
+	auth := fs.Bool("auth", false, "put this service behind the (auth) snippet")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -538,7 +538,7 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 		return 1
 	}
 
-	// Read the forward-auth snippet source (if configured). On failure, keep the
+	// Read the auth snippet source (if configured). On failure, keep the
 	// last-good generated snippet: refuse to regenerate the auth file rather than
 	// silently reset it to the empty stub, which would drop auth on every
 	// protected service fleet-wide. The rest of the sync proceeds.
@@ -799,7 +799,7 @@ Building blocks (a service references a host and a domain):
   splitdns add    domain <name>
   splitdns remove domain <name>
   splitdns set    dns-host <name>       Set the default resolver host for DNS records.
-  splitdns set    auth-snippet <path>   Set the forward-auth (auth) snippet source ('-' clears). Services opt in with --auth.
+  splitdns set    auth-snippet <path>   Set the (auth) snippet source ('-' clears). Services opt in with --auth.
 
 Other:
   splitdns apply                    Make config live on THIS host: restart pihole / validate+reload caddy. Run on each host. Refuses if the repo has drift.

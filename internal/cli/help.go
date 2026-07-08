@@ -23,7 +23,7 @@ Flags:
   -f, --fqdn <fqdn>       Public name the service is reached at (must match a declared domain).
   -H, --host <host>       Host (repo directory) that runs the service.
   -b, --backend <n:port>  reverse_proxy upstream, e.g. mealie:9000.
-      --auth              Put the service behind forward auth (imports the (auth) snippet).
+      --auth              Put the service behind the (auth) snippet (imports it).
                           Requires 'splitdns set auth-snippet <path>' to be configured.
 
 Regenerates files immediately, then prints which hosts need 'splitdns apply'.`},
@@ -36,7 +36,7 @@ Flags:
   -f, --fqdn <fqdn>       New public name (must match a declared domain).
   -H, --host <host>       New host (repo directory).
   -b, --backend <n:port>  New reverse_proxy upstream.
-      --auth[=false]      Turn forward auth on (--auth) or off (--auth=false) for this service.
+      --auth[=false]      Turn the (auth) snippet on (--auth) or off (--auth=false) for this service.
 
 Only the given flags change; regenerated files and apply-hints follow.`},
 
@@ -76,7 +76,7 @@ Usage: splitdns remove domain <name>`},
 
 Usage: splitdns set dns-host <name>`},
 
-	{"set auth-snippet", `splitdns set auth-snippet — set the forward-auth (auth) snippet source
+	{"set auth-snippet", `splitdns set auth-snippet — set the (auth) snippet source
 
 Usage: splitdns set auth-snippet <path>   (use '-' to clear)
 

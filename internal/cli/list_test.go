@@ -86,7 +86,7 @@ func TestList_AuthColumn(t *testing.T) {
 	if !strings.HasSuffix(strings.TrimRight(blogLine, " "), "-") {
 		t.Errorf("non-auth service row should end in -, got %q", blogLine)
 	}
-	if !strings.Contains(out, "behind forward auth") {
+	if !strings.Contains(out, "imports the auth snippet") {
 		t.Errorf("expected the disable hint when a service uses auth, got:\n%s", out)
 	}
 }
@@ -117,16 +117,20 @@ func TestRun_Completion(t *testing.T) {
 	}
 }
 
-// The "auth snippet:" header line reflects whether a snippet is set.
-func TestList_AuthSnippetHeader(t *testing.T) {
-	// Set.
+// The Auth section shows the snippet when set, and is hidden entirely when no
+// auth is configured.
+func TestList_AuthSection(t *testing.T) {
+	// Set: the Auth section appears with the snippet path.
 	dir := listSetup(t, "snip.caddy")
 	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
-	if !strings.Contains(out, "auth snippet:  snip.caddy") {
-		t.Errorf("expected 'auth snippet:  snip.caddy', got:\n%s", out)
+	if !strings.Contains(out, "== Auth ==") {
+		t.Errorf("expected an '== Auth ==' section, got:\n%s", out)
+	}
+	if !strings.Contains(out, "snippet:  snip.caddy") {
+		t.Errorf("expected 'snippet:  snip.caddy', got:\n%s", out)
 	}
 
-	// Unset: no auth-snippet, and a single non-auth service.
+	// Unset: no auth-snippet, single non-auth service → no Auth section at all.
 	dir2 := t.TempDir()
 	mkdirs(t, dir2, "resolver", "appbox")
 	seed(t, dir2)
@@ -135,11 +139,11 @@ func TestList_AuthSnippetHeader(t *testing.T) {
 		t.Fatalf("add plain service exit %d", code)
 	}
 	out2 := captureStdout(t, func() { Run([]string{"-C", dir2, "list", "--all"}) })
-	if !strings.Contains(out2, "auth snippet:  (none") {
-		t.Errorf("expected 'auth snippet: (none ...)' when unset, got:\n%s", out2)
+	if strings.Contains(out2, "== Auth ==") {
+		t.Errorf("Auth section should be hidden when nothing is configured, got:\n%s", out2)
 	}
 	// With no auth service, the disable hint must NOT appear.
-	if strings.Contains(out2, "behind forward auth") {
+	if strings.Contains(out2, "imports the auth snippet") {
 		t.Errorf("disable hint should be absent when no service uses auth, got:\n%s", out2)
 	}
 }

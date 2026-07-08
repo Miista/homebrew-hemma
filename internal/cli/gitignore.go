@@ -81,7 +81,7 @@ func cmdDoctor(cfgPath string, args []string) int {
 	if cfg == nil {
 		return code
 	}
-	// Load the forward-auth snippet source so the plan below renders the real
+	// Load the auth snippet source so the plan below renders the real
 	// (auth) file content, not the empty stub — otherwise the gitignore check's
 	// plan is stale. On failure, warn and proceed (keep-last-good), the same way
 	// runSync handles it. detectDrift/checkDrift load it independently, so this
@@ -133,7 +133,7 @@ func cmdDoctor(cfgPath string, args []string) int {
 	// --- generated-file drift check (missing / modified / orphaned) ---
 	problems += checkDrift(repoRoot, cfg, fix)
 
-	// --- forward-auth config advisories ---
+	// --- auth config advisories ---
 	// Report-but-proceed: these don't corrupt generated files, but the
 	// snippet-without-auth_service case reproduces the redirect-loop bug, so it
 	// counts as a doctor problem (non-zero exit). The rest are advisory.
@@ -145,7 +145,7 @@ func cmdDoctor(cfgPath string, args []string) int {
 			problems++
 		}
 	} else if cfg.Defaults.AuthSnippet != "" {
-		fmt.Println(tick + " Forward-auth config is consistent.")
+		fmt.Println(tick + " Auth config is consistent.")
 	}
 
 	if problems > 0 {

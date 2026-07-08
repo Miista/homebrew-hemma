@@ -151,7 +151,7 @@ func Build(c *config.Config) *Plan {
 		p.Files[caddyImportOwner] = importFiles
 	}
 
-	// The forward-auth snippet (splitdns.auth.generated.caddy) is written to
+	// The auth snippet (splitdns.auth.generated.caddy) is written to
 	// every host's caddy/data/ dir, imported before the site blocks. It is
 	// always present: its body is the configured auth_snippet content, or an
 	// empty (auth) {} stub when none is set. Because it is always planned and
@@ -205,7 +205,7 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 		return nil, fmt.Sprintf("backend %q is not name:port shape", svc.Backend)
 	}
 	// Loop guard: the service that IS the forward-auth backend (defaults.
-	// auth_service, the Authelia portal) must not also be protected by it, or
+	// auth_service, e.g. an Authelia portal) must not also be protected by it, or
 	// every auth subrequest would recurse through the portal.
 	if svc.Auth && name == c.Defaults.AuthService {
 		return nil, fmt.Sprintf("auth refused: %q is the auth_service (the forward-auth backend) — protecting it would create a redirect loop", name)
@@ -229,7 +229,7 @@ const domainOwnerPrefix = "@domain:"
 const caddyImportKey = "@caddy-import"
 
 // authSnippetKey is the synthetic plan/manifest key for the per-host
-// splitdns.auth.generated.caddy forward-auth snippet file.
+// splitdns.auth.generated.caddy auth snippet file.
 const authSnippetKey = "@auth-snippet"
 
 // IsSyntheticOwner reports whether a plan/manifest key is synthetic (not a
@@ -243,7 +243,7 @@ func IsSyntheticOwner(key string) bool {
 // to whatever is currently on disk, so a sync writes it back unchanged. Used
 // when the configured auth_snippet source is unreadable: the file stays planned
 // and manifest-tracked (GC-safe) but is NOT reset to the empty stub, preserving
-// the last-good forward-auth block rather than silently disabling auth. Files
+// the last-good auth snippet rather than silently disabling auth. Files
 // not yet on disk keep their planned (stub) content — nothing to preserve.
 func PinAuthSnippetToDisk(p *Plan, repoRoot string) {
 	files := p.Files[authSnippetKey]

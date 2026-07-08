@@ -52,11 +52,11 @@ type Domain struct{}
 type Defaults struct {
 	DNSHost string `yaml:"dns_host"`
 	// AuthSnippet is an optional repo-relative path to a Caddy file whose
-	// contents are the forward-auth block copied into the generated (auth)
+	// contents are the auth directive(s) copied into the generated (auth)
 	// snippet on every host. Empty means an empty (auth) {} stub is generated
 	// (no-op), so services that `import auth` remain valid but unprotected.
 	AuthSnippet string `yaml:"auth_snippet,omitempty"`
-	// AuthService names the service that IS the forward-auth backend (the
+	// AuthService names the service that IS the forward-auth backend (e.g. an
 	// Authelia portal). Its site block gets `header_up X-Forwarded-Host
 	// {header.X-Forwarded-Host}` so the original request host survives the
 	// hairpin through Caddy — without it, forward-auth reconstructs the auth
@@ -73,7 +73,7 @@ type Service struct {
 	Host     string `yaml:"host"`
 	Backend  string `yaml:"backend"`
 	Disabled bool   `yaml:"disabled,omitempty"`
-	// Auth opts this service into forward auth: its site block imports the
+	// Auth opts this service into the auth snippet: its site block imports the
 	// (auth) snippet before proxying. The snippet's content is repo-global
 	// (defaults.auth_snippet); Auth only decides which services reference it.
 	Auth bool `yaml:"auth,omitempty"`

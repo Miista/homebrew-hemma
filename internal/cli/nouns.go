@@ -198,7 +198,7 @@ func cmdSetDNSHost(cfgPath string, args []string) int {
 }
 
 // cmdSetAuthSnippet sets (or clears) defaults.auth_snippet — the repo-relative
-// path to the Caddy file whose contents become the (auth) forward-auth snippet
+// path to the Caddy file whose contents become the body of the (auth) snippet
 // on every host. Pass an empty path (or "-") to clear it, which regenerates the
 // empty (auth) {} stub everywhere (services stay valid but unprotected).
 func cmdSetAuthSnippet(cfgPath string, args []string) int {
@@ -243,7 +243,7 @@ func cmdSetAuthSnippet(cfgPath string, args []string) int {
 	return runSync(repoRoot, cfg, syncpkg.Complete)
 }
 
-// cmdSetAuthService names the service that is the forward-auth backend (the
+// cmdSetAuthService names the service that is the forward-auth backend (e.g. an
 // Authelia portal). Its site block gains a header_up that preserves the inbound
 // X-Forwarded-Host, so post-login redirects target the original service rather
 // than looping back to the portal. Parallels set dns-host: names one repo-wide

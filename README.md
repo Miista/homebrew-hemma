@@ -105,8 +105,8 @@ splitdns add domain example.net
 # 4. Add a service (mutates YAML, then syncs)
 splitdns add service docs --fqdn docs.example.com --host appbox --backend paperless:8000
 
-# 5. (optional) Put services behind forward auth
-#    Point at a Caddy file containing your forward_auth block, then opt services in.
+# 5. (optional) Put services behind the (auth) snippet
+#    Point at a Caddy file containing any auth directive (forward_auth, basic_auth, …), then opt services in.
 splitdns set auth-snippet auth-snippet.caddy
 splitdns update service docs --auth
 
@@ -138,7 +138,10 @@ AAAA record so IPv6-preferring clients can't bypass split-horizon.
 
 ## Forward auth (optional)
 
-splitdns can put services behind a [Caddy `forward_auth`](https://caddyserver.com/docs/caddyfile/directives/forward_auth)
+The `(auth)` snippet mechanism is **generic** — its body can be any Caddy auth directive
+(`basic_auth`, a JWT check, an IP allowlist, …); splitdns copies it verbatim and is agnostic to
+its contents. This section works through the common case: putting services behind a
+[Caddy `forward_auth`](https://caddyserver.com/docs/caddyfile/directives/forward_auth)
 provider (Authelia, Authentik, oauth2-proxy, …). The design keeps one shared,
 substitution-free snippet for the whole fleet:
 
@@ -219,16 +222,16 @@ splitdns            completion <bash|zsh>
 
 | Command | Behavior |
 | --- | --- |
-| `add` | Fail if name/fqdn already exists. Mutate YAML, then sync. `--auth` opts the service into forward auth (imports the `(auth)` snippet). |
-| `update` | Fail if the service doesn't exist. Only the flags you pass are changed. Then sync. `--auth` / `--auth=false` toggles forward auth. |
+| `add` | Fail if name/fqdn already exists. Mutate YAML, then sync. `--auth` opts the service into the `(auth)` snippet (imports it). |
+| `update` | Fail if the service doesn't exist. Only the flags you pass are changed. Then sync. `--auth` / `--auth=false` toggles the `(auth)` snippet. |
 | `remove` | Drop the service from YAML, delete its tracked files, drop it from the manifest. |
 | `sync --incremental` *(default)* | Write/update files for every valid entry. **Never deletes.** |
 | `sync --complete` | Incremental **plus GC**: delete tracked files whose service is gone. Never touches non-manifest files. |
 | `add host` / `add domain` | Declare a host / domain. `add host <name> <ip>` (the name is its repo directory, which must already exist; the IP must be unique). `add domain <name>` — splitdns generates the domain's TLS snippet on sync. |
 | `remove host` / `remove domain` | **Refuses** while any service still references it (and lists the blockers). Idempotent otherwise. |
 | `set dns-host <name>` | Set the default resolver host (the one whose dnsmasq receives records). |
-| `set auth-snippet <path>` | Set the forward-auth `(auth)` snippet source (a repo-relative Caddy file). Pass `-` to clear it (regenerates an empty no-op stub). See [Forward auth](#forward-auth-optional). |
-| `list` | Show current hosts, domains, and services as an aligned table. The `AUTH` column marks each service `✓` (behind forward auth) or `-`, and an `auth snippet:` line shows the configured `(auth)` source (or that none is set). The services list defaults to those on **this** host (matched by local IP); `--all` shows every host. Read-only. |
+| `set auth-snippet <path>` | Set the `(auth)` snippet source (a repo-relative Caddy file holding any auth directive). Pass `-` to clear it (regenerates an empty no-op stub). See [Forward auth](#forward-auth-optional). |
+| `list` | Show current hosts, domains, and services as an aligned table. The `AUTH` column marks each service `✓` (imports the `(auth)` snippet) or `-`, and an `auth snippet:` line shows the configured `(auth)` source (or that none is set). The services list defaults to those on **this** host (matched by local IP); `--all` shows every host. Read-only. |
 | `completion <bash\|zsh>` | Print a static shell completion script to stdout (verbs, nouns, and flags). See [Shell completions](#shell-completions). |
 | `verify` | Check **live** DNS resolution per service: pihole's own view (in-container `dig`) + the client view (`getent`), asserting A == host IP and AAAA == `::`. Defaults to services this host can check (it is the resolver or the service host); `--all` includes the rest. Run **on each host** after a deploy (§13). Needs docker. |
 
@@ -255,14 +258,14 @@ domains:
 
 defaults:
   dns_host: resolver          # the single resolver host (set via: splitdns set dns-host)
-  auth_snippet: auth-snippet.caddy   # optional; forward-auth block copied into (auth) on every host
+  auth_snippet: auth-snippet.caddy   # optional; auth directive copied into (auth) on every host
 
 services:
   docs:
     fqdn: docs.example.com
     host: appbox        # host that runs the service; Caddy site block goes in its dir
     backend: paperless:8000
-    auth: true          # optional; import the (auth) forward-auth snippet in this site block
+    auth: true          # optional; import the (auth) snippet in this site block
 ```
 
 Output paths are fixed: `<host>/pihole/data/dnsmasq.d/generated/<service>.conf` and
