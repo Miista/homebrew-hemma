@@ -212,7 +212,7 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 	return 2
 }
 
-// dispatchSet routes `set <thing> <args>`: `set dns-host` and `set auth-snippet`.
+// dispatchSet routes `set <thing> <args>`: `set dns-host`, `set auth-snippet`, and `set auth-service`.
 func dispatchSet(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing what to set — expected dns-host, auth-snippet, or auth-service.")
@@ -948,6 +948,7 @@ Building blocks (a service references a host and a domain):
   splitdns remove domain <name>
   splitdns set    dns-host <name>       Set the default resolver host for DNS records.
   splitdns set    auth-snippet <path>   Set the (auth) snippet source ('-' clears). Services opt in with --auth.
+  splitdns set    auth-service <name>   Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.
 
 Other:
   splitdns apply                    Make config live on THIS host: restart pihole / validate+reload caddy. Run on each host. Refuses if the repo has drift.

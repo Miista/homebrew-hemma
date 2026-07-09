@@ -93,6 +93,16 @@ service ... --auth', which emits 'import auth' in their site block. Clearing it
 The snippet is a normal generated file, so 'splitdns doctor' reports drift if
 the source changes without a re-sync.`},
 
+	{"set auth-service", `splitdns set auth-service — name the forward-auth backend service
+
+Usage: splitdns set auth-service <name>   (use '-' to clear)
+
+<name> is an existing service — the forward-auth portal (e.g. Authelia). Its
+Caddy site block gains 'header_up X-Forwarded-Host {header.X-Forwarded-Host}',
+so the original request host survives the hairpin through Caddy; without it,
+post-login redirects loop back to the portal. Parallels 'set dns-host': one
+repo-wide role named by service. Clearing it ('-') drops the header-preserve.`},
+
 	{"list", `splitdns list — show hosts, domains, and services
 
 Usage: splitdns list [--all]
