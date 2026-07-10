@@ -141,6 +141,10 @@ type Service struct {
 	// omitempty drops none (""); forward/oidc serialize as their string form.
 	// Legacy `auth: true` is accepted on load and re-emitted as `auth: forward`.
 	Auth AuthMode `yaml:"auth,omitempty"`
+	// PublicPaths is a list of URL paths that are exempt from auth, served
+	// directly by the backend without going through the forward-auth gate.
+	// Only meaningful when Auth == AuthForward; ignored otherwise.
+	PublicPaths []string `yaml:"public_paths,omitempty"`
 }
 
 // Config is the in-memory representation of services.yaml.

@@ -101,8 +101,10 @@ func DNSRecord(fqdn, hostIP string) string {
 // reverse_proxy upstream (design §4.2).
 //
 // The auth mode decides what gate (if any) is emitted before reverse_proxy:
-//   - AuthForward imports the (auth) snippet before proxying, so Caddy runs the
-//     forward-auth check first and only proxies on success.
+//   - AuthForward wraps the site body in a catch-all handle block that imports
+//     the (auth) snippet before proxying. publicPaths, when non-empty, adds
+//     per-path handle blocks before the catch-all that proxy directly without
+//     auth — Caddy's handle blocks are mutually exclusive and first-match wins.
 //   - AuthOIDC and AuthNone both render a PLAIN reverse_proxy (no import auth):
 //     an oidc app authenticates itself, so splitdns adds no Caddy-level gate.
 //     Keeping oidc distinct from forward in config while both may render plainly
@@ -112,11 +114,7 @@ func DNSRecord(fqdn, hostIP string) string {
 // authBackend is orthogonal to the mode: when true (this service is the
 // forward-auth portal) the reverse_proxy preserves the inbound X-Forwarded-Host
 // so post-login redirects target the original service, not the portal.
-func CaddySite(fqdn, tlsImport, backend string, mode config.AuthMode, authBackend bool) string {
-	authLine := ""
-	if mode == config.AuthForward {
-		authLine = fmt.Sprintf("\timport %s\n", AuthSnippetName)
-	}
+func CaddySite(fqdn, tlsImport, backend string, mode config.AuthMode, authBackend bool, publicPaths []string) string {
 	// The forward-auth backend (e.g. an Authelia portal) must preserve the inbound
 	// X-Forwarded-Host through the reverse_proxy. When a protected service's
 	// auth check hits this backend, Caddy's outer hop already set
@@ -125,10 +123,22 @@ func CaddySite(fqdn, tlsImport, backend string, mode config.AuthMode, authBacken
 	// treat itself as the target and loop the post-login redirect. Preserving it
 	// is safe: the value is whatever the trusted outer Caddy hop computed, not
 	// anything a client can spoof.
+	proxyLine := fmt.Sprintf("reverse_proxy %s", backend)
 	if authBackend {
-		return fmt.Sprintf("%s\n%s {\n\timport %s\n%s\treverse_proxy %s {\n\t\theader_up X-Forwarded-Host {header.X-Forwarded-Host}\n\t}\n}\n",
-			Header, fqdn, tlsImport, authLine, backend)
+		proxyLine = fmt.Sprintf("reverse_proxy %s {\n\t\theader_up X-Forwarded-Host {header.X-Forwarded-Host}\n\t}", backend)
 	}
-	return fmt.Sprintf("%s\n%s {\n\timport %s\n%s\treverse_proxy %s\n}\n",
-		Header, fqdn, tlsImport, authLine, backend)
+
+	if mode != config.AuthForward {
+		return fmt.Sprintf("%s\n%s {\n\timport %s\n\t%s\n}\n", Header, fqdn, tlsImport, proxyLine)
+	}
+
+	// AuthForward: wrap in handle blocks so public_paths are mutually exclusive
+	// with the auth-gated catch-all (Caddy handle semantics: first match wins).
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n%s {\n\timport %s\n", Header, fqdn, tlsImport)
+	for _, p := range publicPaths {
+		fmt.Fprintf(&b, "\thandle %s {\n\t\treverse_proxy %s\n\t}\n", p, backend)
+	}
+	fmt.Fprintf(&b, "\thandle {\n\t\timport %s\n\t\t%s\n\t}\n}\n", AuthSnippetName, proxyLine)
+	return b.String()
 }

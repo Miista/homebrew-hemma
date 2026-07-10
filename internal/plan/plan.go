@@ -217,7 +217,7 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 
 	return []File{
 		{Path: dnsPath, Content: render.DNSRecord(svc.FQDN, hostM.IP)},
-		{Path: caddyPath, Content: render.CaddySite(svc.FQDN, tlsImport, svc.Backend, svc.Auth, name == c.Defaults.AuthService)},
+		{Path: caddyPath, Content: render.CaddySite(svc.FQDN, tlsImport, svc.Backend, svc.Auth, name == c.Defaults.AuthService, svc.PublicPaths)},
 		// NOTE: svc.Auth is now an AuthMode; forward → import auth, oidc/none → plain.
 	}, ""
 }

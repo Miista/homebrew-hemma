@@ -145,13 +145,31 @@ docs.example.com {
   a LAN IP. The tool validates only shape (`^[A-Za-z0-9._-]+:[0-9]+$`), not reachability.
 - A service's **auth mode** (`auth:`, §4.5) decides the gate. It is one of `forward`, `oidc`,
   or none (unset). Legacy `auth: true` still parses as `forward` and is re-emitted as the string
-  form. When the mode is `forward`, an `import auth` line is emitted **before** `reverse_proxy`,
-  so Caddy runs the forward-auth check first and only proxies on success:
+  form. When the mode is `forward`, the site body is wrapped in a catch-all `handle` block that
+  imports the `(auth)` snippet before proxying, so Caddy runs the forward-auth check first and
+  only proxies on success:
   ```
   docs.example.com {
   	import tls_example_com
-  	import auth
-  	reverse_proxy paperless:8000
+  	handle {
+  		import auth
+  		reverse_proxy paperless:8000
+  	}
+  }
+  ```
+  When `public_paths` is set (§4.5), per-path `handle` blocks are emitted before the catch-all;
+  Caddy `handle` blocks are mutually exclusive and first-match wins, so those paths are served
+  directly without going through the auth gate:
+  ```
+  status.example.com {
+  	import tls_example_com
+  	handle /health {
+  		reverse_proxy gatus:8080
+  	}
+  	handle {
+  		import auth
+  		reverse_proxy gatus:8080
+  	}
   }
   ```
   When the mode is `oidc` (or none), a **plain** `reverse_proxy` is emitted with **no** `import
@@ -265,10 +283,17 @@ forward-auth portal (parallels `dns_host`: one repo-wide role, named by service,
 is refused and skipped — protecting the portal with itself would recurse every auth subrequest.
 (The guard keys on the service name, not on parsing the opaque snippet body.)
 
-**Auth modes.** A service's `auth:` is a mode, not a bool (§4.2): `forward` imports the `(auth)`
-snippet; `oidc` renders a plain `reverse_proxy` (the app does OIDC itself, splitdns adds no gate);
-none/unset is unprotected. Legacy `auth: true` is read as `forward` and re-emitted as the string
-form. The mode is what makes an OIDC service's protection legible despite rendering plain Caddy.
+**Auth modes.** A service's `auth:` is a mode, not a bool (§4.2): `forward` wraps the site in a
+`handle` block that imports the `(auth)` snippet; `oidc` renders a plain `reverse_proxy` (the app
+does OIDC itself, splitdns adds no gate); none/unset is unprotected. Legacy `auth: true` is read
+as `forward` and re-emitted as the string form. The mode is what makes an OIDC service's
+protection legible despite rendering plain Caddy.
+
+**`public_paths`.** A `forward`-auth service may declare a list of URL paths that bypass the auth
+gate entirely. Each path is emitted as a `handle <path>` block before the catch-all `handle`
+block, proxying directly to the backend. Caddy `handle` blocks are mutually exclusive and
+first-match wins, so listed paths are never forwarded to the auth provider. Only meaningful when
+`auth: forward`; ignored for all other modes.
 
 **OIDC client validation (read-only).** For each `auth: oidc` service, splitdns reads the Authelia
 config at `<auth_service host dir>/authelia/data/config/configuration.yml` (fixed path convention,
