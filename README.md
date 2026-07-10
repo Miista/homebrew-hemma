@@ -35,25 +35,21 @@ the `homebrew-` prefix.)
 
 ### Debian / Ubuntu (apt)
 
-```sh
-curl -fsSL https://apt.guldmund.dk/setup.sh | sudo sh
-sudo apt install splitdns
-```
-
-Or, if you'd rather not pipe scripts into a root shell, do the one-time repo
-setup explicitly:
+The tools are published to a signed [Cloudsmith](https://cloudsmith.io) apt
+repository (`guldmund/stable`). One-time setup:
 
 ```sh
-sudo install -d /etc/apt/keyrings
-curl -fsSL https://apt.guldmund.dk/guldmund-archive-keyring.asc \
-  | sudo tee /etc/apt/keyrings/guldmund-archive-keyring.asc > /dev/null
-echo "deb [signed-by=/etc/apt/keyrings/guldmund-archive-keyring.asc] https://apt.guldmund.dk stable main" \
-  | sudo tee /etc/apt/sources.list.d/guldmund.list
+sudo install -d /usr/share/keyrings
+curl -1sLf https://dl.cloudsmith.io/public/guldmund/stable/gpg.key \
+  | sudo gpg --dearmor -o /usr/share/keyrings/guldmund-stable-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/guldmund-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/guldmund/stable/deb/debian any-version main" \
+  | sudo tee /etc/apt/sources.list.d/guldmund-stable.list
 sudo apt update && sudo apt install splitdns
 ```
 
-After that, updates arrive via regular `apt upgrade`. The apt repo serves only
-the latest version; older `.deb`s are on the
+The repo is distro-agnostic (`debian any-version`), so the same line works on
+any Debian/Raspberry Pi OS/Ubuntu release. After setup, updates arrive via
+regular `apt upgrade`. Older `.deb`s are on the
 [releases page](https://github.com/Miista/homebrew-splitdns/releases).
 
 ### From source
