@@ -38,6 +38,33 @@ jobs:
           # GITHUB_TOKEN suffices, no PAT needed.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Publish this release's .debs to the shared Cloudsmith apt repo
+      # (guldmund/stable). Each tool pushes only its own artifacts; Cloudsmith
+      # indexes and signs the repo server-side, so there is no shared build job.
+      # Two-step raw API per file: PUT the binary (returns an identifier), then
+      # POST to finalize it as a deb under the distro-agnostic any-distro track.
+      - name: Publish debs to Cloudsmith
+        env:
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+        run: |
+          set -euo pipefail
+          for deb in dist/*.deb; do
+            echo "Uploading $(basename "$deb")"
+            id=$(curl -fsSL -X PUT \
+              -H "X-Api-Key: $CLOUDSMITH_API_KEY" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"$deb" \
+              "https://upload.cloudsmith.io/guldmund/stable/$(basename "$deb")" \
+              | python3 -c "import sys,json;print(json.load(sys.stdin)['identifier'])")
+            curl -fsSL -X POST \
+              -H "X-Api-Key: $CLOUDSMITH_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"package_file\":\"$id\",\"distribution\":\"any-distro/any-version\"}" \
+              "https://api.cloudsmith.io/v1/packages/guldmund/stable/upload/deb/" \
+              > /dev/null
+            echo "  published $(basename "$deb")"
+          done
+
   # Rebuild the shared apt repo (docker-pin + splitdns + restic-coverage,
   # latest release of each)
   # and deploy it to Cloudflare Pages (apt.guldmund.dk). Stateless: the GitHub
