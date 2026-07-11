@@ -5,14 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"splitdns/internal/manifest"
-	"splitdns/internal/plan"
+	"hemma/internal/manifest"
+	"hemma/internal/plan"
 )
 
 func newEngine(t *testing.T) (*Engine, string) {
 	t.Helper()
 	root := t.TempDir()
-	mf, _ := manifest.Load(filepath.Join(root, "splitdns-manifest.yaml"))
+	mf, _ := manifest.Load(filepath.Join(root, "hemma-manifest.yaml"))
 	return &Engine{RepoRoot: root, Manifest: mf}, root
 }
 

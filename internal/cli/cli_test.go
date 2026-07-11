@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"splitdns/internal/auth"
+	"hemma/internal/auth"
 )
 
 // mkdirs creates host directories inside the temp repo so `host add` (which
@@ -196,7 +196,7 @@ func TestRun_AuthSnippetFlow(t *testing.T) {
 	}
 	// The (auth) file is generated on every host with the source body.
 	for _, host := range []string{"resolver", "appbox"} {
-		b, err := os.ReadFile(filepath.Join(dir, host, "caddy/data/splitdns.auth.generated.caddy"))
+		b, err := os.ReadFile(filepath.Join(dir, host, "caddy/data/hemma.auth.generated.caddy"))
 		if err != nil {
 			t.Fatalf("%s: auth snippet not generated: %v", host, err)
 		}
@@ -230,7 +230,7 @@ func TestRun_SetAuthSnippetClear(t *testing.T) {
 	if code := Run([]string{"-C", dir, "set", "auth-snippet", "-"}); code != 0 {
 		t.Fatalf("clear should exit 0, got %d", code)
 	}
-	b, _ := os.ReadFile(filepath.Join(dir, "resolver", "caddy/data/splitdns.auth.generated.caddy"))
+	b, _ := os.ReadFile(filepath.Join(dir, "resolver", "caddy/data/hemma.auth.generated.caddy"))
 	if contains(string(b), "forward_auth") {
 		t.Errorf("cleared snippet should be empty stub, got: %s", b)
 	}
@@ -483,7 +483,7 @@ func TestRun_AuthGroups(t *testing.T) {
 	}
 
 	// The access-control artifact is generated on the auth host.
-	ac, err := os.ReadFile(filepath.Join(dir, "appbox", "authelia/data/config/splitdns.access_control.generated.yml"))
+	ac, err := os.ReadFile(filepath.Join(dir, "appbox", "authelia/data/config/hemma.access_control.generated.yml"))
 	if err != nil {
 		t.Fatalf("access-control artifact missing: %v", err)
 	}

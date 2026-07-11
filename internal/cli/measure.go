@@ -10,12 +10,12 @@ import (
 	"strconv"
 	"strings"
 
-	"splitdns/internal/config"
+	"hemma/internal/config"
 )
 
 // measureScript is the user's measure.sh (made portable: awk not bc; curl's own
 // %{remote_ip} for the resolve line; -4 to skip the suppressed-AAAA path;
-// optional $2 pin via --resolve for the A/B legs). Embedded so the single splitdns
+// optional $2 pin via --resolve for the A/B legs). Embedded so the single hemma
 // binary carries it. Requires bash, curl, awk (universal on the hosts).
 //
 //go:embed measure.sh
@@ -24,8 +24,8 @@ var measureScript string
 // cmdMeasure times the HTTPS request breakdown for a service, fqdn, or any
 // URL via the embedded measure.sh.
 //
-//	splitdns measure <service|fqdn|url>          measure the current path (full breakdown, incl. DNS)
-//	splitdns measure --compare <service|fqdn>    A/B split-horizon vs public (dns-host only)
+//	hemma measure <service|fqdn|url>          measure the current path (full breakdown, incl. DNS)
+//	hemma measure --compare <service|fqdn>    A/B split-horizon vs public (dns-host only)
 //
 // Plain measure resolves naturally — on the LAN that is the split-horizon
 // record — and includes the real DNS lookup time. Read-only. A full URL
@@ -58,7 +58,7 @@ func cmdMeasure(cfgPath string, args []string) int {
 	if !ok {
 		if fs.NArg() < 1 {
 			errf("Missing the <service>, <fqdn>, or <url> to measure.")
-			hint("Usage: splitdns measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>")
+			hint("Usage: hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>")
 			return 2
 		}
 		// flag.Parse stops at the first positional, so `--compare familyscreen
@@ -86,7 +86,7 @@ func cmdMeasure(cfgPath string, args []string) int {
 	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
 		if *compare {
 			errf("--compare needs a configured service: the split-horizon leg's IP comes from services.yaml.")
-			hint("Run 'splitdns measure %s' for a plain measurement.", target)
+			hint("Run 'hemma measure %s' for a plain measurement.", target)
 			return 2
 		}
 		if err := runMeasureScript(target, "", *runs, *warmup); err != nil {
@@ -108,12 +108,12 @@ func cmdMeasure(cfgPath string, args []string) int {
 	if !resolved {
 		if !strings.Contains(target, ".") {
 			errf("No service named %q in services.yaml, and it does not look like a hostname or URL.", target)
-			hint("Usage: splitdns measure [--compare] <service|fqdn|url>")
+			hint("Usage: hemma measure [--compare] <service|fqdn|url>")
 			return 1
 		}
 		if *compare {
 			errf("--compare needs a configured service: the split-horizon leg's IP comes from services.yaml.")
-			hint("Run 'splitdns measure %s' for a plain measurement.", target)
+			hint("Run 'hemma measure %s' for a plain measurement.", target)
 			return 2
 		}
 		if err := runMeasureScript("https://"+target+"/", "", *runs, *warmup); err != nil {
@@ -140,7 +140,7 @@ func cmdMeasure(cfgPath string, args []string) int {
 	// is only sanctioned from the resolver here).
 	if localHost(cfg) != cfg.DNSHost() {
 		errf("--compare must run on the dns-host (%s): the public-IP lookup uses DoH, which only the resolver may reach on this network.", cfg.DNSHost())
-		hint("Run 'splitdns measure %s' here for a single (split-horizon) measurement, or run --compare on %s.", rest[0], cfg.DNSHost())
+		hint("Run 'hemma measure %s' here for a single (split-horizon) measurement, or run --compare on %s.", rest[0], cfg.DNSHost())
 		return 1
 	}
 

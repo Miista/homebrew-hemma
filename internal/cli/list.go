@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"splitdns/internal/config"
+	"hemma/internal/config"
 )
 
 // cmdList prints the declared inventory — hosts, domains, services. It is plain
@@ -37,7 +37,7 @@ func cmdList(cfgPath string, args []string) int {
 	// Big fat warning first: without a dns_host, nothing can sync.
 	if cfg.Defaults.DNSHost == "" {
 		fmt.Println(warn + " No dns_host set — services cannot sync.")
-		fmt.Println("   Set the resolver host:  splitdns set dns-host <name>")
+		fmt.Println("   Set the resolver host:  hemma set dns-host <name>")
 		fmt.Println()
 	}
 
@@ -57,19 +57,19 @@ func cmdList(cfgPath string, args []string) int {
 
 	// Auth is repo-wide config, not per-host — its own section, only shown when
 	// something is configured (keeps a no-auth repo's output clean). The snippet
-	// is any Caddy auth directive (forward_auth, basic_auth, …); splitdns is
+	// is any Caddy auth directive (forward_auth, basic_auth, …); hemma is
 	// agnostic to its contents, so the section is named for the mechanism.
 	if cfg.Defaults.AuthSnippet != "" || cfg.Defaults.AuthService != "" {
 		fmt.Printf("\n%s== Auth ==%s\n", boldOn, boldOff)
 		if cfg.Defaults.AuthSnippet != "" {
 			fmt.Printf("  snippet:  %s\n", cfg.Defaults.AuthSnippet)
 		} else {
-			fmt.Println("  snippet:  (none — set with 'splitdns set auth-snippet <path>')")
+			fmt.Println("  snippet:  (none — set with 'hemma set auth-snippet <path>')")
 		}
 		if cfg.Defaults.AuthService != "" {
 			fmt.Printf("  service:  %s\n", cfg.Defaults.AuthService)
 		} else {
-			fmt.Println("  service:  (none — set with 'splitdns set auth-service <name>')")
+			fmt.Println("  service:  (none — set with 'hemma set auth-service <name>')")
 		}
 	}
 
@@ -149,7 +149,7 @@ func printServiceTable(cfg *config.Config, svcNames []string) {
 		fmt.Println(line)
 	}
 	if anyAuth {
-		fmt.Println("  (AUTH: forward = imports the (auth) snippet; oidc = app does OIDC itself, no Caddy gate; change with 'splitdns update service <name> --auth-mode <mode>')")
+		fmt.Println("  (AUTH: forward = imports the (auth) snippet; oidc = app does OIDC itself, no Caddy gate; change with 'hemma update service <name> --auth-mode <mode>')")
 	}
 }
 

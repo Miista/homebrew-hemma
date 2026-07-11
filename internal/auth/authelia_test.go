@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"splitdns/internal/render"
+	"hemma/internal/render"
 )
 
 func provider(t *testing.T) Provider {
@@ -30,7 +30,7 @@ func TestAuthelia_AccessControl(t *testing.T) {
 	if !ok {
 		t.Fatal("expected an artifact")
 	}
-	if path != filepath.Join("authelia/data/config", "splitdns.access_control.generated.yml") {
+	if path != filepath.Join("authelia/data/config", "hemma.access_control.generated.yml") {
 		t.Errorf("path wrong: %q", path)
 	}
 	want := render.Header + "\n" +

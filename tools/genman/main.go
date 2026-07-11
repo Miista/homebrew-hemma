@@ -1,7 +1,7 @@
 // genman compiles the CLI's help text (internal/cli.UsageText and
 // cli.HelpTopics) into a gzipped man page. Run from the repo root:
 //
-//	go run ./tools/genman            # writes man/splitdns.1.gz
+//	go run ./tools/genman            # writes man/hemma.1.gz
 //
 // The release workflow runs this before goreleaser so the deb and brew
 // archive can ship the page. Single source of truth: the man page can never
@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"splitdns/internal/cli"
+	"hemma/internal/cli"
 )
 
 func main() {
@@ -25,9 +25,9 @@ func main() {
 	flag.Parse()
 
 	var b bytes.Buffer
-	b.WriteString(".TH SPLITDNS 1 \"\" \"splitdns\" \"User Commands\"\n")
-	b.WriteString(".SH NAME\nsplitdns \\- split-horizon DNS and Caddy config from a declarative services.yaml\n")
-	b.WriteString(".SH SYNOPSIS\n.B splitdns\n[\\-C \\fIdir\\fR] \\fIcommand\\fR [\\fIargs\\fR]\n")
+	b.WriteString(".TH HEMMA 1 \"\" \"hemma\" \"User Commands\"\n")
+	b.WriteString(".SH NAME\nhemma \\- split-horizon DNS and Caddy config from a declarative services.yaml\n")
+	b.WriteString(".SH SYNOPSIS\n.B hemma\n[\\-C \\fIdir\\fR] \\fIcommand\\fR [\\fIargs\\fR]\n")
 	b.WriteString(".SH DESCRIPTION\n")
 	verbatim(&b, cli.UsageText)
 	b.WriteString(".SH COMMANDS\n")
@@ -39,7 +39,7 @@ func main() {
 	if err := os.MkdirAll(*dir, 0o755); err != nil {
 		fatal(err)
 	}
-	out := filepath.Join(*dir, "splitdns.1.gz")
+	out := filepath.Join(*dir, "hemma.1.gz")
 	f, err := os.Create(out)
 	if err != nil {
 		fatal(err)

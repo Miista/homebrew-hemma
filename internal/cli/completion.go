@@ -6,13 +6,13 @@ import "fmt"
 // there is no cobra generator). They complete the top-level verbs, the nouns
 // (service/host/domain), and the known flags. Dynamic completion of existing
 // service/host/domain names would require invoking the tool; keeping it static
-// is intentional and sufficient. The same strings back both `splitdns
+// is intentional and sufficient. The same strings back both `hemma
 // completion <shell>` (stdout) and tools/gencompletions (files for packaging),
 // so the two can never drift.
 
-// BashCompletion is the bash completion script for splitdns.
-const BashCompletion = `# bash completion for splitdns
-_splitdns() {
+// BashCompletion is the bash completion script for hemma.
+const BashCompletion = `# bash completion for hemma
+_hemma() {
     local cur prev words cword
     _init_completion 2>/dev/null || {
         cur="${COMP_WORDS[COMP_CWORD]}"
@@ -57,14 +57,14 @@ _splitdns() {
         return
     fi
 }
-complete -F _splitdns splitdns
+complete -F _hemma hemma splitdns
 `
 
-// ZshCompletion is the zsh completion script for splitdns.
-const ZshCompletion = `#compdef splitdns
-# zsh completion for splitdns
+// ZshCompletion is the zsh completion script for hemma.
+const ZshCompletion = `#compdef hemma splitdns
+# zsh completion for hemma
 
-_splitdns() {
+_hemma() {
     local -a verbs nouns set_keys flags
     verbs=(add update remove enable disable sync set list verify apply doctor measure version help completion)
     nouns=(service host domain)
@@ -100,16 +100,16 @@ _splitdns() {
     _describe 'flag' flags
 }
 
-_splitdns "$@"
+_hemma "$@"
 `
 
 // cmdCompletion prints a shell completion script to stdout. It is a hidden
 // command (not listed in the verb inventory of `list`/help top matter) but does
-// carry a help topic. Usage: splitdns completion <bash|zsh>.
+// carry a help topic. Usage: hemma completion <bash|zsh>.
 func cmdCompletion(args []string) int {
 	if len(args) < 1 {
 		errf("Missing the shell — expected bash or zsh.")
-		hint("Usage: splitdns completion <bash|zsh>")
+		hint("Usage: hemma completion <bash|zsh>")
 		return 2
 	}
 	switch args[0] {

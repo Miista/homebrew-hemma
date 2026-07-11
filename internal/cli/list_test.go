@@ -128,7 +128,7 @@ func TestRun_Completion(t *testing.T) {
 			t.Fatalf("completion bash exit %d", code)
 		}
 	})
-	if !strings.Contains(bash, "complete -F _splitdns splitdns") {
+	if !strings.Contains(bash, "complete -F _hemma hemma") {
 		t.Errorf("bash script missing complete registration:\n%s", bash)
 	}
 	zsh := captureStdout(t, func() {
@@ -136,7 +136,7 @@ func TestRun_Completion(t *testing.T) {
 			t.Fatalf("completion zsh exit %d", code)
 		}
 	})
-	if !strings.Contains(zsh, "#compdef splitdns") {
+	if !strings.Contains(zsh, "#compdef hemma") {
 		t.Errorf("zsh script missing #compdef header:\n%s", zsh)
 	}
 	if code := Run([]string{"completion", "fish"}); code != 2 {

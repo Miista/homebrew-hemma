@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 
-	"splitdns/internal/config"
-	"splitdns/internal/manifest"
-	"splitdns/internal/plan"
+	"hemma/internal/config"
+	"hemma/internal/manifest"
+	"hemma/internal/plan"
 )
 
 // Mode selects reconcile behavior.

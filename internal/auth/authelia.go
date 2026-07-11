@@ -10,12 +10,12 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"splitdns/internal/render"
+	"hemma/internal/render"
 )
 
 // authelia is the Provider implementation for Authelia
 // (https://www.authelia.com). It owns the generated
-// splitdns.access_control.generated.yml artifact and the read-only validation
+// hemma.access_control.generated.yml artifact and the read-only validation
 // of configuration.yml (OIDC clients).
 type authelia struct{}
 
@@ -24,12 +24,12 @@ func init() { Register(authelia{}) }
 const (
 	// autheliaConfigPath is the fixed convention path (relative to the
 	// auth_service host's repo directory) of the Authelia configuration file
-	// that declares OIDC clients. Read-only; splitdns never writes it.
+	// that declares OIDC clients. Read-only; hemma never writes it.
 	autheliaConfigPath = "authelia/data/config/configuration.yml"
 	// autheliaAccessControlFile is the generated access-control artifact,
 	// written next to configuration.yml (same config dir). Authelia must be
-	// told to include it (it is not auto-loaded); splitdns only generates it.
-	autheliaAccessControlFile = "splitdns.access_control.generated.yml"
+	// told to include it (it is not auto-loaded); hemma only generates it.
+	autheliaAccessControlFile = "hemma.access_control.generated.yml"
 )
 
 func (authelia) Name() string       { return DefaultName }
@@ -165,9 +165,9 @@ type autheliaConfigDoc struct {
 // service declares groups (so a named authorization_policy is generated) —
 // that the matching client references that policy. A missing/unparseable
 // file is a soft advisory (report-but-proceed), not a hard failure —
-// splitdns validates OIDC but does not own it. The match is fqdn-only:
+// hemma validates OIDC but does not own it. The match is fqdn-only:
 // callback paths are app-defined (/login, /oidc/callback/,
-// /accounts/oidc/<provider>/...) and unknown to splitdns.
+// /accounts/oidc/<provider>/...) and unknown to hemma.
 func (authelia) ValidateConfig(cfgPath string, services []Service) []string {
 	var oidcSvcs []Service
 	for _, s := range services {

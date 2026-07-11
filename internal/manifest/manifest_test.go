@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"splitdns/internal/plan"
+	"hemma/internal/plan"
 )
 
 func TestLoad_Missing(t *testing.T) {

@@ -15,9 +15,9 @@ type HelpTopic struct {
 }
 
 var HelpTopics = []HelpTopic{
-	{"add service", `splitdns add service — declare a service and generate its DNS/Caddy config
+	{"add service", `hemma add service — declare a service and generate its DNS/Caddy config
 
-Usage: splitdns add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc] [--auth-groups <g1,g2>]
+Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc] [--auth-groups <g1,g2>]
 
 Flags:
   -f, --fqdn <fqdn>       Public name the service is reached at (must match a declared domain).
@@ -25,19 +25,19 @@ Flags:
   -b, --backend <n:port>  reverse_proxy upstream, e.g. mealie:9000.
       --auth-mode <mode>  How the service authenticates: forward, oidc, or none (default none).
                           forward imports the (auth) snippet (Caddy forward-auth);
-                          requires 'splitdns set auth-snippet <path>'. oidc renders a
-                          PLAIN reverse_proxy (the app speaks OIDC itself — splitdns adds
+                          requires 'hemma set auth-snippet <path>'. oidc renders a
+                          PLAIN reverse_proxy (the app speaks OIDC itself — hemma adds
                           no gate) and verifies read-only that an Authelia OIDC client exists.
       --auth-groups <gs>  Comma-separated auth provider group names allowed access; flows into
                           the generated access-control rules (multiple groups are OR'd).
                           Requires an auth mode (forward or oidc).
       --auth              Back-compat shorthand for --auth-mode forward.
 
-Regenerates files immediately, then prints which hosts need 'splitdns apply'.`},
+Regenerates files immediately, then prints which hosts need 'hemma apply'.`},
 
-	{"update service", `splitdns update service — change a service's fqdn, host, backend, or auth
+	{"update service", `hemma update service — change a service's fqdn, host, backend, or auth
 
-Usage: splitdns update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|none] [--auth-groups <g1,g2>]
+Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|none] [--auth-groups <g1,g2>]
 
 Flags:
   -f, --fqdn <fqdn>       New public name (must match a declared domain).
@@ -52,56 +52,56 @@ Flags:
 
 Only the given flags change; regenerated files and apply-hints follow.`},
 
-	{"remove service", `splitdns remove service — remove a service and its generated files
+	{"remove service", `hemma remove service — remove a service and its generated files
 
-Usage: splitdns remove service <name>`},
+Usage: hemma remove service <name>`},
 
-	{"enable service", `splitdns enable service — re-enable a disabled service (regenerates its files)
+	{"enable service", `hemma enable service — re-enable a disabled service (regenerates its files)
 
-Usage: splitdns enable service <name>`},
+Usage: hemma enable service <name>`},
 
-	{"disable service", `splitdns disable service — stop generating config for a service (kept in services.yaml)
+	{"disable service", `hemma disable service — stop generating config for a service (kept in services.yaml)
 
-Usage: splitdns disable service <name>`},
+Usage: hemma disable service <name>`},
 
-	{"add host", `splitdns add host — declare a host (its name is its repo directory)
+	{"add host", `hemma add host — declare a host (its name is its repo directory)
 
-Usage: splitdns add host <name> <ip>
+Usage: hemma add host <name> <ip>
 
 The directory ./<name>/ must already exist in the repo.`},
 
-	{"remove host", `splitdns remove host — remove a host (refused while services reference it)
+	{"remove host", `hemma remove host — remove a host (refused while services reference it)
 
-Usage: splitdns remove host <name>`},
+Usage: hemma remove host <name>`},
 
-	{"add domain", `splitdns add domain — declare a domain (generates a TLS snippet per host)
+	{"add domain", `hemma add domain — declare a domain (generates a TLS snippet per host)
 
-Usage: splitdns add domain <name>
+Usage: hemma add domain <name>
 
 Cert paths derive from caddy/data/certs/<domain>/{fullchain.cer,privkey.key}.`},
 
-	{"remove domain", `splitdns remove domain — remove a domain (refused while services reference it)
+	{"remove domain", `hemma remove domain — remove a domain (refused while services reference it)
 
-Usage: splitdns remove domain <name>`},
+Usage: hemma remove domain <name>`},
 
-	{"set dns-host", `splitdns set dns-host — set the default resolver host for DNS records
+	{"set dns-host", `hemma set dns-host — set the default resolver host for DNS records
 
-Usage: splitdns set dns-host <name>`},
+Usage: hemma set dns-host <name>`},
 
-	{"set auth-snippet", `splitdns set auth-snippet — set the (auth) snippet source
+	{"set auth-snippet", `hemma set auth-snippet — set the (auth) snippet source
 
-Usage: splitdns set auth-snippet <path>   (use '-' to clear)
+Usage: hemma set auth-snippet <path>   (use '-' to clear)
 
 <path> is a repo-relative Caddy file whose contents become the body of the
 (auth) snippet generated on every host. Services opt in with 'add/update
 service ... --auth', which emits 'import auth' in their site block. Clearing it
 ('-') regenerates an empty (auth) {} stub — services stay valid but unprotected.
-The snippet is a normal generated file, so 'splitdns doctor' reports drift if
+The snippet is a normal generated file, so 'hemma doctor' reports drift if
 the source changes without a re-sync.`},
 
-	{"set auth-service", `splitdns set auth-service — name the forward-auth backend service
+	{"set auth-service", `hemma set auth-service — name the forward-auth backend service
 
-Usage: splitdns set auth-service <name>   (use '-' to clear)
+Usage: hemma set auth-service <name>   (use '-' to clear)
 
 <name> is an existing service — the forward-auth portal (e.g. Authelia). Its
 Caddy site block gains 'header_up X-Forwarded-Host {header.X-Forwarded-Host}',
@@ -109,9 +109,9 @@ so the original request host survives the hairpin through Caddy; without it,
 post-login redirects loop back to the portal. Parallels 'set dns-host': one
 repo-wide role named by service. Clearing it ('-') drops the header-preserve.`},
 
-	{"list", `splitdns list — show hosts, domains, and services
+	{"list", `hemma list — show hosts, domains, and services
 
-Usage: splitdns list [--all]
+Usage: hemma list [--all]
 
 By default the services list is filtered to those running on THIS host
 (matched by local IP).
@@ -119,9 +119,9 @@ By default the services list is filtered to those running on THIS host
 Flags:
   -a, --all   Show services on every host, not just this one.`},
 
-	{"verify", `splitdns verify — check live DNS resolution per service
+	{"verify", `hemma verify — check live DNS resolution per service
 
-Usage: splitdns verify [--all] [<fqdn>]
+Usage: hemma verify [--all] [<fqdn>]
 
 By default it checks only services this host can verify (it is the resolver
 or the service host); the rest are hidden. Pass a single <fqdn> to check just
@@ -130,23 +130,23 @@ that service. Run on each host to cover the whole chain; needs docker.
 Flags:
   -a, --all   Also list services with nothing to check on this host.`},
 
-	{"apply", `splitdns apply — make config live on THIS host
+	{"apply", `hemma apply — make config live on THIS host
 
-Usage: splitdns apply
+Usage: hemma apply
 
 Restarts pihole / validates+reloads caddy for this host's generated files.
 Run it on each host after config changes. Refuses if the repo has drift.`},
 
-	{"doctor", `splitdns doctor — audit the repo (gitignore, Caddyfile imports, drift)
+	{"doctor", `hemma doctor — audit the repo (gitignore, Caddyfile imports, drift)
 
-Usage: splitdns doctor [--fix]
+Usage: hemma doctor [--fix]
 
 Flags:
   -f, --fix   Apply fixes: reconcile generated files and .gitignore entries.`},
 
-	{"measure", `splitdns measure — time the HTTPS request breakdown (dns/connect/tls/ttfb)
+	{"measure", `hemma measure — time the HTTPS request breakdown (dns/connect/tls/ttfb)
 
-Usage: splitdns measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>
+Usage: hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>
 
 Flags:
   -c, --compare        A/B the split-horizon path vs the public path, both pinned
@@ -158,22 +158,22 @@ Flags:
 The target may be a configured service, a bare hostname, or any http(s) URL —
 the latter two need no services.yaml. Requires bash, curl, awk.`},
 
-	{"version", `splitdns version — print the version
+	{"version", `hemma version — print the version
 
-Usage: splitdns version   (aliases: --version, -v)`},
+Usage: hemma version   (aliases: --version, -v)`},
 
-	{"completion", `splitdns completion — print a shell completion script
+	{"completion", `hemma completion — print a shell completion script
 
-Usage: splitdns completion <bash|zsh>
+Usage: hemma completion <bash|zsh>
 
 Writes a static completion script to stdout. It completes the top-level verbs,
 the nouns (service/host/domain), and the known flags — not existing service,
 host, or domain names (that would require invoking the tool).
 
 Install (bash):
-  splitdns completion bash | sudo tee /usr/share/bash-completion/completions/splitdns
+  hemma completion bash | sudo tee /usr/share/bash-completion/completions/hemma
 Install (zsh, into a dir on your $fpath):
-  splitdns completion zsh > "${fpath[1]}/_splitdns"
+  hemma completion zsh > "${fpath[1]}/_hemma"
 
 The Debian package and Homebrew formula install these scripts for you.`},
 }

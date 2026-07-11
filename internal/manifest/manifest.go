@@ -11,8 +11,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"splitdns/internal/config"
-	"splitdns/internal/plan"
+	"hemma/internal/config"
+	"hemma/internal/plan"
 )
 
 // Manifest maps service name -> the file paths it generated.

@@ -9,10 +9,10 @@ import (
 	"sort"
 	"strings"
 
-	"splitdns/internal/config"
-	"splitdns/internal/plan"
-	"splitdns/internal/render"
-	syncpkg "splitdns/internal/sync"
+	"hemma/internal/config"
+	"hemma/internal/plan"
+	"hemma/internal/render"
+	syncpkg "hemma/internal/sync"
 )
 
 // planPaths returns the unique repo-relative paths a plan would write.
@@ -33,7 +33,7 @@ func planPaths(p *plan.Plan) []string {
 // warnIfIgnored prints a SHORT one-line warning to stderr if any of the plan's
 // output paths are gitignored (they'd generate but never commit/deploy). It
 // fires every run while the problem persists — a standing deploy hazard should
-// stay visible — and points at `splitdns doctor` for the full file list + fix.
+// stay visible — and points at `hemma doctor` for the full file list + fix.
 // Silent when nothing is ignored or the check can't run (git absent / no repo).
 func warnIfIgnored(repoRoot string, p *plan.Plan) {
 	ignored, ok := ignoredPaths(repoRoot, planPaths(p))
@@ -46,26 +46,26 @@ func warnIfIgnored(repoRoot string, p *plan.Plan) {
 		verb = "are"
 	}
 	fmt.Fprintf(os.Stderr,
-		warn+" %d generated %s %s gitignored and won't deploy. Run 'splitdns doctor --fix'.\n",
+		warn+" %d generated %s %s gitignored and won't deploy. Run 'hemma doctor --fix'.\n",
 		len(ignored), noun, verb)
 }
 
 // printIgnoreDetail prints the full report: the ignored paths and the per-host
-// .gitignore negation lines to add. Used by `splitdns doctor`.
+// .gitignore negation lines to add. Used by `hemma doctor`.
 func printIgnoreDetail(ignored []string) {
 	fmt.Printf("%d generated %s ignored by git — they won't be committed or deployed:\n",
 		len(ignored), plural(len(ignored), "file"))
 	for _, p := range ignored {
 		fmt.Printf("  %s\n", p)
 	}
-	fmt.Println("\nAdd to .gitignore to un-ignore them (or run 'splitdns doctor --fix'):")
+	fmt.Println("\nAdd to .gitignore to un-ignore them (or run 'hemma doctor --fix'):")
 	for _, rule := range unignoreRules() {
 		fmt.Printf("  %s\n", rule)
 	}
 }
 
-// cmdDoctor audits the repo for problems splitdns can detect. Read-only by default;
-// `splitdns doctor --fix` applies the .gitignore negations (the one fix splitdns can make
+// cmdDoctor audits the repo for problems hemma can detect. Read-only by default;
+// `hemma doctor --fix` applies the .gitignore negations (the one fix hemma can make
 // safely). Exits non-zero if problems remain.
 func cmdDoctor(cfgPath string, args []string) int {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
@@ -123,7 +123,7 @@ func cmdDoctor(cfgPath string, args []string) int {
 			}
 		} else {
 			printIgnoreDetail(ignored)
-			fmt.Println("\nRun 'splitdns doctor --fix' to add these entries automatically.")
+			fmt.Println("\nRun 'hemma doctor --fix' to add these entries automatically.")
 		}
 	}
 
@@ -169,7 +169,7 @@ func checkDrift(repoRoot string, cfg *config.Config, fix bool) int {
 	if !fix {
 		fmt.Printf(cross+" %d generated %s out of sync with services.yaml:\n", d.Count(), plural(d.Count(), "file"))
 		printDriftDetail(d)
-		fmt.Println("\nRun 'splitdns doctor --fix' to reconcile (regenerate missing/modified, remove orphaned).")
+		fmt.Println("\nRun 'hemma doctor --fix' to reconcile (regenerate missing/modified, remove orphaned).")
 		return 1
 	}
 
@@ -194,12 +194,14 @@ func checkDrift(repoRoot string, cfg *config.Config, fix bool) int {
 }
 
 // checkCaddyfileImports checks that each host's Caddyfile contains the line
-// `import splitdns.generated.caddy`. If fix is true, appends the line when
-// missing — or rewrites the pre-rename `import sd.generated.caddy` line in
-// place, since leaving it would break caddy once GC removes the old file.
+// `import hemma.generated.caddy`. If fix is true, appends the line when
+// missing — or rewrites a pre-rename import line (`import splitdns.generated.caddy`
+// or `import sd.generated.caddy`) in place, since leaving it would break caddy
+// once GC removes the old file.
 func checkCaddyfileImports(repoRoot string, cfg *config.Config, fix bool) int {
 	const importLine = "import " + render.CaddyImportFilename
-	const legacyImportLine = "import sd.generated.caddy"
+	// Pre-rename import lines, newest first (splitdns era, then sd era).
+	legacyImportLines := []string{"import splitdns.generated.caddy", "import sd.generated.caddy"}
 	problems := 0
 	for hostName, h := range cfg.Hosts {
 		cfPath := filepath.Join(repoRoot, h.ResolvedDir(hostName), config.DefaultCaddyDataDir, "Caddyfile")
@@ -218,18 +220,24 @@ func checkCaddyfileImports(repoRoot string, cfg *config.Config, fix bool) int {
 			continue
 		}
 		problems++
-		legacy := strings.Contains(string(data), legacyImportLine)
+		var legacy string
+		for _, l := range legacyImportLines {
+			if strings.Contains(string(data), l) {
+				legacy = l
+				break
+			}
+		}
 		if !fix {
-			if legacy {
-				fmt.Printf(cross+" %s: Caddyfile has outdated `%s`\n", hostName, legacyImportLine)
+			if legacy != "" {
+				fmt.Printf(cross+" %s: Caddyfile has outdated `%s`\n", hostName, legacy)
 			} else {
 				fmt.Printf(cross+" %s: Caddyfile missing `%s`\n", hostName, importLine)
 			}
 			continue
 		}
 		content := string(data)
-		if legacy {
-			content = strings.ReplaceAll(content, legacyImportLine, importLine)
+		if legacy != "" {
+			content = strings.ReplaceAll(content, legacy, importLine)
 		} else {
 			// Append the import line, ensuring a trailing newline before it.
 			if !strings.HasSuffix(content, "\n") {
@@ -241,8 +249,8 @@ func checkCaddyfileImports(repoRoot string, cfg *config.Config, fix bool) int {
 			fmt.Printf(cross+" %s: could not fix Caddyfile: %v\n", hostName, err)
 			continue
 		}
-		if legacy {
-			fmt.Printf(tick+" %s: rewrote `%s` -> `%s`\n", hostName, legacyImportLine, importLine)
+		if legacy != "" {
+			fmt.Printf(tick+" %s: rewrote `%s` -> `%s`\n", hostName, legacy, importLine)
 		} else {
 			fmt.Printf(tick+" %s: added `%s` to Caddyfile\n", hostName, importLine)
 		}
@@ -252,15 +260,17 @@ func checkCaddyfileImports(repoRoot string, cfg *config.Config, fix bool) int {
 }
 
 const (
-	giBlockStart = "# >>> splitdns managed >>>"
-	giBlockEnd   = "# <<< splitdns managed <<<"
-	// Pre-rename markers; rewritten to the new ones on the next write so the
-	// old block is replaced in place instead of a duplicate being appended.
-	legacyGiBlockStart = "# >>> sd managed >>>"
-	legacyGiBlockEnd   = "# <<< sd managed <<<"
+	giBlockStart = "# >>> hemma managed >>>"
+	giBlockEnd   = "# <<< hemma managed <<<"
 )
 
-// writeManagedBlock writes rules into path inside a marked splitdns block,
+// Pre-rename marker generations (splitdns era, sd era); rewritten to the new
+// ones on the next write so the old block is replaced in place instead of a
+// duplicate being appended.
+var legacyGiBlockStarts = []string{"# >>> splitdns managed >>>", "# >>> sd managed >>>"}
+var legacyGiBlockEnds = []string{"# <<< splitdns managed <<<", "# <<< sd managed <<<"}
+
+// writeManagedBlock writes rules into path inside a marked hemma block,
 // creating the file if absent and preserving any content outside the markers.
 // Idempotent.
 func writeManagedBlock(path string, rules []string) error {
@@ -271,12 +281,16 @@ func writeManagedBlock(path string, rules []string) error {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
 	// Migrate pre-rename markers so the block below replaces the old block.
-	existing = strings.ReplaceAll(existing, legacyGiBlockStart, giBlockStart)
-	existing = strings.ReplaceAll(existing, legacyGiBlockEnd, giBlockEnd)
+	for _, m := range legacyGiBlockStarts {
+		existing = strings.ReplaceAll(existing, m, giBlockStart)
+	}
+	for _, m := range legacyGiBlockEnds {
+		existing = strings.ReplaceAll(existing, m, giBlockEnd)
+	}
 
 	block := giBlockStart + "\n" +
-		"# splitdns-generated config under data/ dirs the repo otherwise ignores.\n" +
-		"# Managed by 'splitdns doctor --fix'; edit outside these markers.\n" +
+		"# hemma-generated config under data/ dirs the repo otherwise ignores.\n" +
+		"# Managed by 'hemma doctor --fix'; edit outside these markers.\n" +
 		strings.Join(rules, "\n") + "\n" +
 		giBlockEnd + "\n"
 
@@ -331,10 +345,10 @@ func ignoredPaths(repoRoot string, relPaths []string) (ignored []string, ok bool
 }
 
 // unignoreRules returns the repo-root .gitignore negation block that
-// re-includes splitdns's generated files when a broad rule like **/data/** would
+// re-includes hemma's generated files when a broad rule like **/data/** would
 // otherwise ignore them. Git won't re-include a file under an excluded
 // directory, so the directories must be un-ignored first (lines 1–2); then
-// only splitdns's outputs are re-included — runtime data (.db, caches,
+// only hemma's outputs are re-included — runtime data (.db, caches,
 // certs, …) stays ignored. The .caddy rule is scoped to caddy data dirs
 // (site files like pihole.caddy carry no .generated marker, so the extension
 // alone would be too broad elsewhere); the .generated.yml rule covers the

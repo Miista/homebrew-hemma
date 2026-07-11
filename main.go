@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"splitdns/internal/cli"
+	"hemma/internal/cli"
 )
 
 func main() {

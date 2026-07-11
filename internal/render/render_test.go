@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"splitdns/internal/config"
+	"hemma/internal/config"
 )
 
 func TestDNSRecord(t *testing.T) {
@@ -43,7 +43,7 @@ func TestCaddySite(t *testing.T) {
 }
 
 // oidc renders a PLAIN reverse_proxy with NO `import auth` — the app does OIDC
-// itself, so splitdns adds no Caddy-level auth gate.
+// itself, so hemma adds no Caddy-level auth gate.
 func TestCaddySite_OIDC(t *testing.T) {
 	got := CaddySite("app.example.com", "tls_example_com", "app:3000", config.AuthOIDC, false, nil)
 	if strings.Contains(got, "import auth") {

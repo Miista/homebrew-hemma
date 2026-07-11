@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	"splitdns/internal/config"
-	"splitdns/internal/manifest"
-	"splitdns/internal/plan"
+	"hemma/internal/config"
+	"hemma/internal/manifest"
+	"hemma/internal/plan"
 )
 
 // Drift is the difference between what services.yaml/manifest say the generated
@@ -20,7 +20,7 @@ import (
 //     would write (e.g. hand-edited).
 //   - Orphaned: a manifest-tracked file no longer desired by the current plan
 //     (e.g. a service/host/domain was removed but its files linger). This is the
-//     GC target that only `splitdns sync --complete` used to catch.
+//     GC target that only `hemma sync --complete` used to catch.
 type Drift struct {
 	Missing  []string
 	Modified []string
@@ -91,7 +91,7 @@ func reportDrift(d Drift) {
 	if !d.Any() {
 		return
 	}
-	fmt.Printf("\n%s Repo drift: %d %s out of sync with services.yaml — run 'splitdns doctor --fix'.\n",
+	fmt.Printf("\n%s Repo drift: %d %s out of sync with services.yaml — run 'hemma doctor --fix'.\n",
 		warn, d.Count(), plural(d.Count(), "generated file"))
 	printDriftDetail(d)
 }

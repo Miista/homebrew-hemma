@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 
-	"splitdns/internal/auth"
-	"splitdns/internal/config"
-	"splitdns/internal/render"
+	"hemma/internal/auth"
+	"hemma/internal/config"
+	"hemma/internal/render"
 )
 
 // File is one desired output file.
@@ -139,7 +139,7 @@ func Build(c *config.Config) *Plan {
 		}
 	}
 
-	// splitdns.generated.caddy is written to every host's caddy/data/ dir. It
+	// hemma.generated.caddy is written to every host's caddy/data/ dir. It
 	// contains the two import lines the Caddyfile must import. Owned under a
 	// synthetic key so GC tracks it independently of services/domains.
 	const caddyImportOwner = caddyImportKey
@@ -152,7 +152,7 @@ func Build(c *config.Config) *Plan {
 		p.Files[caddyImportOwner] = importFiles
 	}
 
-	// The auth snippet (splitdns.auth.generated.caddy) is written to
+	// The auth snippet (hemma.auth.generated.caddy) is written to
 	// every host's caddy/data/ dir, imported before the site blocks. It is
 	// always present: its body is the configured auth_snippet content, or an
 	// empty (auth) {} stub when none is set. Because it is always planned and
@@ -244,7 +244,7 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 	// The single resolver host (defaults.dns_host) receives every DNS record.
 	dnsHostName := c.DNSHost()
 	if dnsHostName == "" {
-		return nil, "no dns_host set — run 'splitdns set dns-host <name>'"
+		return nil, "no dns_host set — run 'hemma set dns-host <name>'"
 	}
 	dnsM, ok := c.Hosts[dnsHostName]
 	if !ok {
@@ -281,11 +281,11 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 const domainOwnerPrefix = "@domain:"
 
 // caddyImportKey is the synthetic plan/manifest key for the per-host
-// splitdns.generated.caddy import file.
+// hemma.generated.caddy import file.
 const caddyImportKey = "@caddy-import"
 
 // authSnippetKey is the synthetic plan/manifest key for the per-host
-// splitdns.auth.generated.caddy auth snippet file.
+// hemma.auth.generated.caddy auth snippet file.
 const authSnippetKey = "@auth-snippet"
 
 // authAccessKey is the synthetic plan/manifest key for the auth provider's

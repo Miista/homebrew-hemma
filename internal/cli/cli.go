@@ -11,21 +11,24 @@ import (
 	"sort"
 	"strings"
 
-	"splitdns/internal/auth"
-	"splitdns/internal/config"
-	"splitdns/internal/manifest"
-	"splitdns/internal/plan"
-	syncpkg "splitdns/internal/sync"
+	"hemma/internal/auth"
+	"hemma/internal/config"
+	"hemma/internal/manifest"
+	"hemma/internal/plan"
+	syncpkg "hemma/internal/sync"
 )
 
 const (
-	configName         = "services.yaml"
-	manifestName       = "splitdns-manifest.yaml"
-	legacyManifestName = "sd-manifest.yaml" // pre-rename; migrated on first load
+	configName   = "services.yaml"
+	manifestName = "hemma-manifest.yaml"
 )
 
+// legacyManifestNames are the pre-rename manifest filenames, newest first
+// (splitdns era, then sd era); migrated on first load.
+var legacyManifestNames = []string{"splitdns-manifest.yaml", "sd-manifest.yaml"}
+
 // Version is the build version, overridden at release time via
-// -ldflags "-X splitdns/internal/cli.Version=...".
+// -ldflags "-X hemma/internal/cli.Version=...".
 var Version = "dev"
 
 // Status glyphs, colored only when stdout is a terminal (so piped/captured
@@ -119,7 +122,7 @@ func Run(args []string) int {
 
 	switch cmd {
 	case "version", "--version", "-v":
-		fmt.Println("splitdns", Version)
+		fmt.Println("hemma", Version)
 		return 0
 	case "add":
 		return dispatchNoun(repoRoot, cfgPath, "add", rest)
@@ -163,7 +166,7 @@ func Run(args []string) int {
 func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the noun for %q — expected service, host, or domain.", verb)
-		hint("Usage: splitdns %s service|host|domain ...", verb)
+		hint("Usage: hemma %s service|host|domain ...", verb)
 		return 2
 	}
 	noun, rest := args[0], args[1:]
@@ -203,7 +206,7 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 		}
 	default:
 		errf("Unknown noun %q — expected service, host, or domain.", noun)
-		hint("Usage: splitdns %s service|host|domain ...", verb)
+		hint("Usage: hemma %s service|host|domain ...", verb)
 		return 2
 	}
 	// Reached only if a verb/noun combo fell through (shouldn't happen).
@@ -215,7 +218,7 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 func dispatchSet(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing what to set — expected dns-host, auth-snippet, or auth-service.")
-		hint("Usage: splitdns set dns-host <name>  |  splitdns set auth-snippet <path>  |  splitdns set auth-service <name>")
+		hint("Usage: hemma set dns-host <name>  |  hemma set auth-snippet <path>  |  hemma set auth-service <name>")
 		return 2
 	}
 	switch args[0] {
@@ -237,7 +240,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	name, args, ok := leadingName(args)
 	if !ok {
 		errf("Missing the <service> name.")
-		hint("Usage: splitdns add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
+		hint("Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		return 2
 	}
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
@@ -277,7 +280,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	}
 	if len(missing) > 0 {
 		errf("Missing required %s: %s.", plural(len(missing), "flag"), strings.Join(missing, ", "))
-		hint("Usage: splitdns add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
+		hint("Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		return 2
 	}
 
@@ -301,9 +304,9 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	if _, ok := cfg.MatchDomain(*fqdn); !ok {
 		errf("The fqdn %q matches no defined domain.", *fqdn)
 		if doms := cfg.DomainNames(); len(doms) > 0 {
-			hint("Defined domains: %s. Add one with 'splitdns add domain <name>' or fix the fqdn.", strings.Join(doms, ", "))
+			hint("Defined domains: %s. Add one with 'hemma add domain <name>' or fix the fqdn.", strings.Join(doms, ", "))
 		} else {
-			hint("No domains defined yet — run 'splitdns add domain <name>' first.")
+			hint("No domains defined yet — run 'hemma add domain <name>' first.")
 		}
 		return 1
 	}
@@ -326,7 +329,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 // blockers — only repo-wide preconditions are.
 func syncBlockedReason(cfg *config.Config) string {
 	if len(cfg.Services) > 0 && cfg.Defaults.DNSHost == "" {
-		return "no dns_host is set, so DNS records can't be routed. Set the resolver with: splitdns set dns-host <name>"
+		return "no dns_host is set, so DNS records can't be routed. Set the resolver with: hemma set dns-host <name>"
 	}
 	return ""
 }
@@ -343,7 +346,7 @@ func syncBlockedReason(cfg *config.Config) string {
 //   - auth_service names a service that doesn't exist.
 //   - fully configured but no service opted in (auth: true): a gentle note that
 //     nothing is actually protected yet.
-//   - For each auth: oidc service, splitdns verifies (read-only) that an Authelia
+//   - For each auth: oidc service, hemma verifies (read-only) that an Authelia
 //     OIDC client registers a redirect_uri for the service. It does NOT configure
 //     OIDC — client registration and app env are out of scope.
 //
@@ -365,10 +368,10 @@ func authConfigWarnings(repoRoot string, cfg *config.Config) []string {
 	}
 
 	if snippet && !service {
-		w = append(w, "auth_snippet is set but auth_service is not — post-login redirects will loop back to the auth portal. Name the auth backend with: splitdns set auth-service <name>")
+		w = append(w, "auth_snippet is set but auth_service is not — post-login redirects will loop back to the auth portal. Name the auth backend with: hemma set auth-service <name>")
 	}
 	if service && !snippet {
-		w = append(w, "auth_service is set but auth_snippet is not — the (auth) snippet is an empty no-op, so auth does nothing. Set it with: splitdns set auth-snippet <path>")
+		w = append(w, "auth_service is set but auth_snippet is not — the (auth) snippet is an empty no-op, so auth does nothing. Set it with: hemma set auth-snippet <path>")
 	}
 	if service {
 		if _, ok := cfg.Services[cfg.Defaults.AuthService]; !ok {
@@ -376,7 +379,7 @@ func authConfigWarnings(repoRoot string, cfg *config.Config) []string {
 		}
 	}
 	if snippet && service && !anyForward {
-		w = append(w, "the auth snippet is configured but no service uses forward auth — opt one in with: splitdns update service <name> --auth-mode forward")
+		w = append(w, "the auth snippet is configured but no service uses forward auth — opt one in with: hemma update service <name> --auth-mode forward")
 	}
 
 	// OIDC client-existence checks (read-only; never writes the Authelia config).
@@ -394,7 +397,7 @@ func authConfigWarnings(repoRoot string, cfg *config.Config) []string {
 // Authelia-specific lives behind the auth.Provider interface.
 func oidcClientWarnings(repoRoot string, cfg *config.Config) []string {
 	if cfg.Defaults.AuthService == "" {
-		return []string{"OIDC clients can't be verified (auth_service not set) — set the Authelia service with: splitdns set auth-service <name>"}
+		return []string{"OIDC clients can't be verified (auth_service not set) — set the Authelia service with: hemma set auth-service <name>"}
 	}
 	authSvc, ok := cfg.Services[cfg.Defaults.AuthService]
 	if !ok {
@@ -476,7 +479,7 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	name, args, ok := leadingName(args)
 	if !ok {
 		errf("Missing the <service> name.")
-		hint("Usage: splitdns update service <name> [--fqdn ...] [--host ...] [--backend ...]")
+		hint("Usage: hemma update service <name> [--fqdn ...] [--host ...] [--backend ...]")
 		return 2
 	}
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
@@ -551,7 +554,7 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 func cmdRemove(repoRoot, cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <service> name.")
-		hint("Usage: splitdns remove service <name>")
+		hint("Usage: hemma remove service <name>")
 		return 2
 	}
 	name := args[0]
@@ -597,7 +600,7 @@ func cmdEnableDisable(repoRoot, cfgPath string, args []string, disable bool) int
 	}
 	if len(args) < 1 {
 		errf("Missing the <service> name.")
-		hint("Usage: splitdns %s service <name>", verb)
+		hint("Usage: hemma %s service <name>", verb)
 		return 2
 	}
 	name := args[0]
@@ -656,13 +659,13 @@ func cmdEnableDisable(repoRoot, cfgPath string, args []string, disable bool) int
 // write wouldn't overwrite). remove-service and every host/domain/dns-host
 // mutation use Complete, because they can leave orphaned files (a removed
 // service's records, or a host/domain's now-dead cross-product of TLS
-// snippets) that must be GC'd so the repo is left clean and `splitdns apply` won't
+// snippets) that must be GC'd so the repo is left clean and `hemma apply` won't
 // refuse on drift.
 func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 	// Pre-flight: refuse before writing when a repo-wide precondition isn't met.
 	if reason := syncBlockedReason(cfg); reason != "" {
 		fmt.Fprintf(os.Stderr, cross+" Not synced: %s\n", reason)
-		hint("  The change is saved in services.yaml. Run 'splitdns doctor --fix' once that's resolved.")
+		hint("  The change is saved in services.yaml. Run 'hemma doctor --fix' once that's resolved.")
 		return 1
 	}
 
@@ -698,10 +701,10 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 	// Surface an incomplete bootstrap so a no-op/partial sync explains itself,
 	// rather than leaving the user wondering why nothing happened.
 	if cfg.Defaults.DNSHost == "" {
-		fmt.Println("Note: no dns_host set — run 'splitdns set dns-host <name>' (records can't be routed without it).")
+		fmt.Println("Note: no dns_host set — run 'hemma set dns-host <name>' (records can't be routed without it).")
 	}
 	if len(cfg.Domains) == 0 {
-		fmt.Println("Note: no domains defined — run 'splitdns add domain <name>' (a service's fqdn must match a domain).")
+		fmt.Println("Note: no domains defined — run 'hemma add domain <name>' (a service's fqdn must match a domain).")
 	}
 	for _, msg := range authConfigWarnings(repoRoot, cfg) {
 		fmt.Printf("%s %s\n", warn, msg)
@@ -735,7 +738,7 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 
 	// Report (but don't fix) any residual drift — chiefly orphaned files, since
 	// the incremental reconcile above never deletes. Points the user at
-	// 'splitdns doctor --fix'. add/update/remove proceed regardless (report-but-proceed).
+	// 'hemma doctor --fix'. add/update/remove proceed regardless (report-but-proceed).
 	reportDrift(detectDrift(repoRoot, cfg, mf))
 	return 0
 }
@@ -773,7 +776,7 @@ func printNextSteps(cfg *config.Config, res *syncpkg.Result) {
 
 	self := localHost(cfg)
 
-	// Collect the set of hosts that need `splitdns apply` run on them: the DNS host
+	// Collect the set of hosts that need `hemma apply` run on them: the DNS host
 	// (if its records changed) plus every caddy host whose files changed.
 	needApply := map[string]bool{}
 	if dnsDirty {
@@ -783,12 +786,12 @@ func printNextSteps(cfg *config.Config, res *syncpkg.Result) {
 		needApply[name] = true
 	}
 
-	fmt.Println("\nTo make changes live, run 'splitdns apply' on each host:")
+	fmt.Println("\nTo make changes live, run 'hemma apply' on each host:")
 	for _, name := range sortedKeysOf(needApply) {
 		if name == self {
-			fmt.Println("  splitdns apply  # here")
+			fmt.Println("  hemma apply  # here")
 		} else {
-			fmt.Printf("  on %s:  splitdns apply\n", name)
+			fmt.Printf("  on %s:  hemma apply\n", name)
 		}
 	}
 }
@@ -819,12 +822,15 @@ func changedServices(p *plan.Plan, res *syncpkg.Result) []string {
 // loadManifest loads the manifest, rebuilding it if unparseable (design §5/§7).
 func loadManifest(repoRoot string, cfg *config.Config) *manifest.Manifest {
 	mfPath := filepath.Join(repoRoot, manifestName)
-	// Migrate the pre-rename manifest so its tracked-file history (the GC
-	// authority) survives the sd -> splitdns rename. Rebuild would lose
-	// knowledge of files whose service was since removed.
-	if legacy := filepath.Join(repoRoot, legacyManifestName); fileExists(legacy) && !fileExists(mfPath) {
-		if err := os.Rename(legacy, mfPath); err == nil {
-			fmt.Fprintf(os.Stderr, "Migrated %s -> %s (commit the rename).\n", legacyManifestName, manifestName)
+	// Migrate a pre-rename manifest so its tracked-file history (the GC
+	// authority) survives the sd -> splitdns -> hemma renames. Rebuild would
+	// lose knowledge of files whose service was since removed.
+	for _, name := range legacyManifestNames {
+		legacy := filepath.Join(repoRoot, name)
+		if fileExists(legacy) && !fileExists(mfPath) {
+			if err := os.Rename(legacy, mfPath); err == nil {
+				fmt.Fprintf(os.Stderr, "Migrated %s -> %s (commit the rename).\n", name, manifestName)
+			}
 		}
 	}
 	mf, ok := manifest.Load(mfPath)
@@ -884,7 +890,7 @@ func loadExisting(cfgPath, command string) (*config.Config, int) {
 		errf("No %s in this directory — nothing to %s.", configName, command)
 		fmt.Fprintln(os.Stderr)
 		hint("To create your first service:")
-		hint("  splitdns add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
+		hint("  hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		fmt.Fprintln(os.Stderr)
 		hint("Or run from the repo root, or pass -C <dir>.")
 		return nil, 1
@@ -907,7 +913,7 @@ func usage() {
 
 // UsageText is the top-level help, also compiled into the man page by
 // tools/genman.
-const UsageText = `splitdns — Split-Horizon DNS (Manager)
+const UsageText = `hemma — Split-Horizon DNS (Manager)
 
 Generates split-horizon DNS records and Caddy site blocks from a declarative
 services.yaml. Operates on ~/docker by default; -C <dir> overrides.
@@ -915,30 +921,30 @@ services.yaml. Operates on ~/docker by default; -C <dir> overrides.
 Commands are verb-first: <verb> <noun> <args>.
 
 Services (an app reached at an fqdn, on a host, under a domain):
-  splitdns add     service <name> --fqdn <f> --host <h> --backend <b> [--auth-mode forward|oidc] [--auth-groups <g1,g2>]
-  splitdns update  service <name> [--fqdn ...] [--host ...] [--backend ...] [--auth-mode forward|oidc|none] [--auth-groups <g1,g2>]
-  splitdns remove  service <name>
-  splitdns disable service <name>   Stop generating DNS/Caddy config for a service (keeps it in services.yaml).
-  splitdns enable  service <name>   Re-enable a disabled service (regenerates its files).
+  hemma add     service <name> --fqdn <f> --host <h> --backend <b> [--auth-mode forward|oidc] [--auth-groups <g1,g2>]
+  hemma update  service <name> [--fqdn ...] [--host ...] [--backend ...] [--auth-mode forward|oidc|none] [--auth-groups <g1,g2>]
+  hemma remove  service <name>
+  hemma disable service <name>   Stop generating DNS/Caddy config for a service (keeps it in services.yaml).
+  hemma enable  service <name>   Re-enable a disabled service (regenerates its files).
 
 Building blocks (a service references a host and a domain):
-  splitdns add    host   <name> <ip>
-  splitdns remove host   <name>
-  splitdns add    domain <name>
-  splitdns remove domain <name>
-  splitdns set    dns-host <name>       Set the default resolver host for DNS records.
-  splitdns set    auth-snippet <path>   Set the (auth) snippet source ('-' clears). Services opt in with --auth.
-  splitdns set    auth-service <name>   Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.
+  hemma add    host   <name> <ip>
+  hemma remove host   <name>
+  hemma add    domain <name>
+  hemma remove domain <name>
+  hemma set    dns-host <name>       Set the default resolver host for DNS records.
+  hemma set    auth-snippet <path>   Set the (auth) snippet source ('-' clears). Services opt in with --auth.
+  hemma set    auth-service <name>   Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.
 
 Other:
-  splitdns apply                    Make config live on THIS host: restart pihole / validate+reload caddy. Run on each host. Refuses if the repo has drift.
-  splitdns list [--all]             Show current hosts, domains, and services. Services default to THIS host; --all shows every host.
-  splitdns verify [--all] [<fqdn>]  Check live DNS/Caddy per service. Defaults to services this host can check; --all includes the rest. Run on each host; needs docker.
-  splitdns measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>  Time the request breakdown (dns/connect/tls/ttfb) for a service or any URL. --compare A/Bs split-horizon vs public read-only (dns-host only, services only).
-  splitdns doctor [--fix]           Audit the repo (gitignored files, Caddyfile imports, generated-file drift); --fix reconciles files and .gitignore.
-  splitdns version
-  splitdns completion <bash|zsh>    Print a shell completion script to stdout (see 'splitdns help completion' to install).
-  splitdns help [<command>]         Show this text, or a command's help (same as <command> --help).
+  hemma apply                    Make config live on THIS host: restart pihole / validate+reload caddy. Run on each host. Refuses if the repo has drift.
+  hemma list [--all]             Show current hosts, domains, and services. Services default to THIS host; --all shows every host.
+  hemma verify [--all] [<fqdn>]  Check live DNS/Caddy per service. Defaults to services this host can check; --all includes the rest. Run on each host; needs docker.
+  hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>  Time the request breakdown (dns/connect/tls/ttfb) for a service or any URL. --compare A/Bs split-horizon vs public read-only (dns-host only, services only).
+  hemma doctor [--fix]           Audit the repo (gitignored files, Caddyfile imports, generated-file drift); --fix reconciles files and .gitignore.
+  hemma version
+  hemma completion <bash|zsh>    Print a shell completion script to stdout (see 'hemma help completion' to install).
+  hemma help [<command>]         Show this text, or a command's help (same as <command> --help).
 
 Global flags:
   -C, --chdir <dir>   Operate on <dir> instead of the default ~/docker.
@@ -948,6 +954,6 @@ Notes:
   - Each domain gets a TLS snippet generated on every host, deriving cert paths from
     the convention caddy/data/certs/<domain>/{fullchain.cer,privkey.key}.
   - Config edits (add/update/remove/enable/disable) regenerate files automatically, then
-    print which hosts to run 'splitdns apply' on to make the change live.
+    print which hosts to run 'hemma apply' on to make the change live.
   - Removing a host or domain is refused while any service still references it.
 `

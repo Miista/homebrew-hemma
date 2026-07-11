@@ -29,8 +29,8 @@ const (
 //
 //   - AuthNone ("")     — no auth; a plain reverse_proxy is rendered.
 //   - AuthForward ("forward") — Caddy forward-auth: the site imports the (auth)
-//     snippet before proxying (splitdns adds the auth gate).
-//   - AuthOIDC ("oidc") — the app speaks OIDC itself; splitdns adds NO forward
+//     snippet before proxying (hemma adds the auth gate).
+//   - AuthOIDC ("oidc") — the app speaks OIDC itself; hemma adds NO forward
 //     auth (a PLAIN reverse_proxy), and instead validates read-only that an
 //     Authelia OIDC client is registered for the service.
 //
@@ -148,7 +148,7 @@ func (m Host) ResolvedDir(name string) string {
 	return name
 }
 
-// Domain is a registrable domain splitdns manages. The TLS snippet name and cert
+// Domain is a registrable domain hemma manages. The TLS snippet name and cert
 // paths are derived from the domain (see render.TLSSnippetName / TLSSnippet),
 // so no per-domain configuration is needed.
 type Domain struct{}
@@ -167,7 +167,7 @@ type Defaults struct {
 	// hairpin through Caddy — without it, forward-auth reconstructs the auth
 	// domain as the target and post-login redirects loop back to the portal.
 	// Parallels dns_host: one repo-wide role, named by service, set via
-	// `splitdns set auth-service <name>`.
+	// `hemma set auth-service <name>`.
 	AuthService string `yaml:"auth_service,omitempty"`
 }
 
@@ -181,7 +181,7 @@ type Service struct {
 	// Auth is how this service authenticates (none/forward/oidc, see AuthMode).
 	// - forward opts into the (auth) snippet: its site block imports (auth)
 	//   before proxying. The snippet content is repo-global (defaults.auth_snippet).
-	// - oidc means the app does OIDC itself; splitdns renders a plain
+	// - oidc means the app does OIDC itself; hemma renders a plain
 	//   reverse_proxy and instead verifies an Authelia OIDC client exists.
 	// omitempty (via Auth.IsZero) drops the unprotected zero value; forward/oidc
 	// serialize as their string form, or the {mode, groups} mapping when groups
