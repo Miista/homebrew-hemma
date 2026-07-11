@@ -60,6 +60,46 @@ type Provider interface {
 	// name by convention). A nil validate skips straight to reload; a nil
 	// reload means the provider needs no apply step at all.
 	ApplyCommands(container string) (validate, reload []string)
+
+	// --- credential generation (print-only; providers never write their own
+	// config, the user pastes the returned snippets in by hand) ---
+
+	// GenerateOIDCClient mints fresh OIDC client credentials in the provider's
+	// conventions: a client id, the plaintext secret (for the app side), and
+	// the secret's digest in the form the provider stores (for the provider
+	// side). Pure generation — no I/O.
+	GenerateOIDCClient() (clientID, secret, digest string, err error)
+	// OIDCClientSnippet renders the paste-into-config instructions + YAML for
+	// registering the given client. Provider-specific format.
+	OIDCClientSnippet(c OIDCClient) string
+	// HashUserPassword returns the password's digest in the crypt format the
+	// provider's user database stores.
+	HashUserPassword(password string) (digest string, err error)
+	// UserSnippet renders the paste-into-users-database instructions + YAML
+	// for a new user entry with the given (already hashed) digest.
+	UserSnippet(username, email, digest string) string
+	// ValidateUsers read-only cross-checks the provider's user database
+	// (located relative to the provider config at absolute path cfgPath)
+	// against the services' auth groups, returning advisory warnings. A
+	// missing user database returns nil (the check is gated on it existing).
+	// Warnings never contain password hashes or email addresses.
+	ValidateUsers(cfgPath string, services []Service) []string
+	// UserGroups reads the provider's user database (located relative to the
+	// provider config at absolute path cfgPath) and returns username ->
+	// groups, read-only. A missing database returns (nil, nil); passwords
+	// and emails are never surfaced.
+	UserGroups(cfgPath string) (map[string][]string, error)
+}
+
+// OIDCClient describes one OIDC client registration to render with
+// OIDCClientSnippet. Policy is the provider authorization policy name the
+// client should reference (e.g. "one_factor" or a generated named policy).
+type OIDCClient struct {
+	Name         string // client_name (the app)
+	ClientID     string
+	SecretDigest string // provider-side stored digest of the client secret
+	RedirectURI  string
+	Policy       string
 }
 
 // DefaultName is the provider used when none is selected explicitly.
