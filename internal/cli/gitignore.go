@@ -334,13 +334,18 @@ func ignoredPaths(repoRoot string, relPaths []string) (ignored []string, ok bool
 // re-includes splitdns's generated files when a broad rule like **/data/** would
 // otherwise ignore them. Git won't re-include a file under an excluded
 // directory, so the directories must be un-ignored first (lines 1–2); then
-// only splitdns's file types are re-included (lines 3–4) — runtime data (.db,
-// caches, certs, …) stays ignored. Host-agnostic; one block at the repo root.
+// only splitdns's outputs are re-included — runtime data (.db, caches,
+// certs, …) stays ignored. The .caddy rule is scoped to caddy data dirs
+// (site files like pihole.caddy carry no .generated marker, so the extension
+// alone would be too broad elsewhere); the .generated.yml rule covers the
+// auth provider's access-control artifact. Host-agnostic; one block at the
+// repo root.
 func unignoreRules() []string {
 	return []string{
 		"!**/data/",
 		"!**/data/**/",
 		"!**/data/**/*.generated.conf",
-		"!**/data/**/*.caddy",
+		"!**/caddy/data/**/*.caddy",
+		"!**/data/**/*.generated.yml",
 	}
 }

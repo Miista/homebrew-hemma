@@ -35,6 +35,14 @@ const (
 func (authelia) Name() string       { return DefaultName }
 func (authelia) ConfigPath() string { return autheliaConfigPath }
 
+// ApplyCommands: Authelia has no hot reload — validate in-container (this
+// respects X_AUTHELIA_CONFIG multi-file setups), then restart the container.
+// Sessions survive when they live in an external store (e.g. redis).
+func (authelia) ApplyCommands(container string) (validate, reload []string) {
+	return []string{"docker", "exec", container, "authelia", "config", "validate"},
+		[]string{"docker", "restart", container}
+}
+
 // AccessControl renders access_control rules for forward-auth services and
 // oidc authorization_policies for oidc services that declare groups.
 //

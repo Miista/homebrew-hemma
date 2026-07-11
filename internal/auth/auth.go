@@ -53,6 +53,13 @@ type Provider interface {
 	// cfgPath against the auth-enabled services and returns human-readable
 	// warnings (report-but-proceed; never fatal).
 	ValidateConfig(cfgPath string, services []Service) []string
+	// ApplyCommands returns the commands (argv) `splitdns apply` runs on the
+	// auth host to make a synced provider config live: validate runs first
+	// and must succeed before reload runs (the caddy validate-before-reload
+	// pattern). container is the provider's container name (the auth_service
+	// name by convention). A nil validate skips straight to reload; a nil
+	// reload means the provider needs no apply step at all.
+	ApplyCommands(container string) (validate, reload []string)
 }
 
 // DefaultName is the provider used when none is selected explicitly.

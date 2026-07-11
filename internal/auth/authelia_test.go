@@ -3,6 +3,7 @@ package auth
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -207,5 +208,17 @@ func TestAuthelia_SingleSectionPerKind(t *testing.T) {
 	id, ip := strings.Index(got, "- domain: 'docs.example.com'"), strings.Index(got, "- domain: 'pihole.example.com'")
 	if id < 0 || ip < 0 || id > ip {
 		t.Errorf("forward rules must both be in the one rules list, docs before pihole:\n%s", got)
+	}
+}
+
+func TestAutheliaApplyCommands(t *testing.T) {
+	validate, reload := authelia{}.ApplyCommands("authelia")
+	wantV := []string{"docker", "exec", "authelia", "authelia", "config", "validate"}
+	wantR := []string{"docker", "restart", "authelia"}
+	if !reflect.DeepEqual(validate, wantV) {
+		t.Errorf("validate = %v, want %v", validate, wantV)
+	}
+	if !reflect.DeepEqual(reload, wantR) {
+		t.Errorf("reload = %v, want %v", reload, wantR)
 	}
 }

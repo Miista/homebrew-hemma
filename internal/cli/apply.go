@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"splitdns/internal/auth"
 	"splitdns/internal/config"
 )
 
@@ -89,6 +90,38 @@ func cmdApply(repoRoot, cfgPath string, args []string) int {
 			} else {
 				fmt.Println("  " + cross + " caddy reload FAILED")
 				failed++
+			}
+		}
+	}
+
+	// Auth provider half: runs only on the host that runs the auth_service.
+	// Same validate-before-reload discipline as caddy; the provider supplies
+	// the commands (Authelia: config validate, then container restart — it has
+	// no hot reload).
+	if name := cfg.Defaults.AuthService; name != "" {
+		if s, ok := cfg.Services[name]; ok && s.Host == self && !s.Disabled {
+			provider := auth.Default()
+			validate, reload := provider.ApplyCommands(name)
+			if reload != nil {
+				fmt.Printf("\n%s== Auth (%s) ==%s\n", boldOn, name, boldOff)
+				valOK := true
+				if validate != nil {
+					if runQuiet(validate[0], validate[1:]...) {
+						fmt.Printf("  "+tick+" %s config validate passes\n", provider.Name())
+					} else {
+						fmt.Printf("  "+cross+" %s config validate FAILED — not reloading\n", provider.Name())
+						failed++
+						valOK = false
+					}
+				}
+				if valOK {
+					if runQuiet(reload[0], reload[1:]...) {
+						fmt.Printf("  "+tick+" %s reloaded\n", name)
+					} else {
+						fmt.Printf("  "+cross+" %s reload FAILED\n", name)
+						failed++
+					}
+				}
 			}
 		}
 	}
