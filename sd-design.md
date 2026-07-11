@@ -298,12 +298,12 @@ first-match wins, so listed paths are never forwarded to the auth provider. Only
 **OIDC client validation (read-only).** For each `auth: oidc` service, splitdns reads the Authelia
 config at `<auth_service host dir>/authelia/data/config/configuration.yml` (fixed path convention,
 `config.DefaultAutheliaConfig`; host derived from `defaults.auth_service`) and checks that some
-`identity_providers.oidc.clients[].redirect_uris` entry contains `https://<fqdn>/accounts/oidc/`.
+`identity_providers.oidc.clients[].redirect_uris` entry starts with `https://<fqdn>/`.
 Missing → warn with the URI to register; config absent/unparseable → softer advisory; both
 report-but-proceed. splitdns **never writes** the Authelia config — registering the OIDC client and
 configuring the app's OIDC env are out of scope (the same internal-horizon boundary as §12). The
-match is deliberately loose (fqdn + the `/accounts/oidc/` literal) because the allauth `provider_id`
-segment is app-side and unknown to splitdns.
+match is fqdn-only because callback paths are app-defined (`/login`, `/oidc/callback/`,
+`/accounts/oidc/<provider>/...`) and unknown to splitdns.
 
 **Auth groups.** A service's `auth:` also accepts an object form declaring which auth-provider
 group names may access it:

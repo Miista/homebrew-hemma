@@ -172,8 +172,8 @@ if you forget). Groups with `auth: none` are a validation error.
 **OIDC validation (read-only, splitdns does NOT configure OIDC).** For each `auth: oidc`
 service, splitdns reads the Authelia config at
 `<auth_service host dir>/authelia/data/config/configuration.yml` and checks that some
-`identity_providers.oidc.clients[].redirect_uris` entry contains
-`https://<fqdn>/accounts/oidc/`. If none does, it warns; if the config is missing/unparseable
+`identity_providers.oidc.clients[].redirect_uris` entry starts with
+`https://<fqdn>/` (callback paths are app-defined, so the match is fqdn-only). If none does, it warns; if the config is missing/unparseable
 it emits a softer advisory and proceeds (report-but-proceed). splitdns never writes that file —
 **registering the OIDC client and configuring the app's OIDC env are out of scope.** If
 `auth_service` is unset, it notes that OIDC clients can't be verified.

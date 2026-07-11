@@ -153,13 +153,13 @@ type autheliaConfigDoc struct {
 }
 
 // ValidateConfig verifies, read-only, that each oidc service has an Authelia
-// OIDC client registering a redirect_uri under https://<fqdn>/accounts/oidc/,
-// and — when the service declares groups (so a named authorization_policy is
-// generated) — that the matching client references that policy. A
-// missing/unparseable file is a soft advisory (report-but-proceed), not a
-// hard failure — splitdns validates OIDC but does not own it. The redirect
-// match is deliberately loose (fqdn + the /accounts/oidc/ literal) because
-// the app-side provider_id segment is unknown to splitdns.
+// OIDC client registering a redirect_uri on https://<fqdn>/, and — when the
+// service declares groups (so a named authorization_policy is generated) —
+// that the matching client references that policy. A missing/unparseable
+// file is a soft advisory (report-but-proceed), not a hard failure —
+// splitdns validates OIDC but does not own it. The match is fqdn-only:
+// callback paths are app-defined (/login, /oidc/callback/,
+// /accounts/oidc/<provider>/...) and unknown to splitdns.
 func (authelia) ValidateConfig(cfgPath string, services []Service) []string {
 	var oidcSvcs []Service
 	for _, s := range services {
@@ -181,12 +181,12 @@ func (authelia) ValidateConfig(cfgPath string, services []Service) []string {
 		return w
 	}
 	for _, s := range oidcSvcs {
-		want := fmt.Sprintf("https://%s/accounts/oidc/", s.FQDN)
+		want := fmt.Sprintf("https://%s/", s.FQDN)
 		matchedPolicy := ""
 		matched := false
 		for _, c := range doc.IdentityProviders.OIDC.Clients {
 			for _, uri := range c.RedirectURIs {
-				if strings.Contains(uri, want) {
+				if strings.HasPrefix(uri, want) {
 					matched = true
 					matchedPolicy = c.AuthorizationPolicy
 					break

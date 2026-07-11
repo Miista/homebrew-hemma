@@ -135,7 +135,7 @@ func TestAuthelia_ValidateConfig_AuthorizationPolicy(t *testing.T) {
 
 	write := func(policyLine string) {
 		body := "identity_providers:\n  oidc:\n    clients:\n      - client_id: app\n" + policyLine +
-			"        redirect_uris:\n          - https://app.example.com/accounts/oidc/callback\n"
+			"        redirect_uris:\n          - https://app.example.com/login\n"
 		if err := os.WriteFile(cfgPath, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}

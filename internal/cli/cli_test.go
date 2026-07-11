@@ -396,7 +396,7 @@ func TestRun_AuthConfigWarnings(t *testing.T) {
 }
 
 // An auth: oidc service with no matching Authelia OIDC client warns; adding the
-// client (a redirect_uri under https://<fqdn>/accounts/oidc/) clears it.
+// client (a redirect_uri on https://<fqdn>/) clears it.
 func TestRun_OIDCClientWarning(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver", "appbox")
@@ -417,7 +417,7 @@ func TestRun_OIDCClientWarning(t *testing.T) {
 	os.MkdirAll(filepath.Dir(acfg), 0o755)
 	os.WriteFile(acfg, []byte("identity_providers:\n  oidc:\n    clients:\n      - client_id: other\n        redirect_uris:\n          - https://other.example.com/accounts/oidc/callback\n"), 0o644)
 	out2 := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
-	if !contains(out2, "no Authelia OIDC client registers a redirect_uri for https://app.example.com/accounts/oidc/") {
+	if !contains(out2, "no Authelia OIDC client registers a redirect_uri for https://app.example.com/") {
 		t.Errorf("expected unregistered-client warning:\n%s", out2)
 	}
 
