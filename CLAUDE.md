@@ -25,11 +25,10 @@ go test ./...                        # all tests
 go test ./internal/plan/             # one package
 go test ./internal/cli/ -run TestFoo # one test
 go run ./tools/genman                # regenerate man/hemma.1.gz from CLI help
-./deploy.sh [host ...]               # cross-compile + scp to hosts (default: optiplex pi)
 ```
 
-`deploy.sh` stamps the version via `-ldflags "-X hemma/internal/cli.Version=$(git describe)"`; the
-`FLEET` var (`host:GOARCH` pairs) maps hosts to arches. The script is kept portable to bash 3.2 (macOS).
+Deployment to the hosts is via the apt package (Cloudsmith) published by the tag-triggered
+release workflow; there is no deploy script in this repo.
 
 Per the user's global convention: build and live-verify on the Mac before committing/pushing in this repo.
 
