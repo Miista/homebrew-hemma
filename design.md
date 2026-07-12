@@ -150,33 +150,21 @@ docs.example.com {
   a LAN IP. The tool validates only shape (`^[A-Za-z0-9._-]+:[0-9]+$`), not reachability.
 - A service's **auth mode** (`auth:`, §4.5) decides the gate. It is one of `forward`, `oidc`,
   or none (unset). Legacy `auth: true` still parses as `forward` and is re-emitted as the string
-  form. When the mode is `forward`, the site body is wrapped in a catch-all `handle` block that
-  imports the `(auth)` snippet before proxying, so Caddy runs the forward-auth check first and
-  only proxies on success:
+  form. When the mode is `forward`, the site imports the `(auth)` snippet before proxying, so
+  Caddy runs the forward-auth check first and only proxies on success — one uniform shape
+  regardless of `public_paths`:
   ```
   docs.example.com {
   	import tls_example_com
-  	handle {
-  		import auth
-  		reverse_proxy paperless:8000
-  	}
+  	import auth
+  	reverse_proxy paperless:8000
   }
   ```
-  When `public_paths` is set (§4.5), per-path `handle` blocks are emitted before the catch-all;
-  Caddy `handle` blocks are mutually exclusive and first-match wins, so those paths are served
-  directly without going through the auth gate:
-  ```
-  status.example.com {
-  	import tls_example_com
-  	handle /health {
-  		reverse_proxy gatus:8080
-  	}
-  	handle {
-  		import auth
-  		reverse_proxy gatus:8080
-  	}
-  }
-  ```
+  `public_paths` (§4.5) is **not rendered in Caddy at all**: every request goes through the
+  forward-auth check, and the exemptions live solely in the generated auth-provider bypass
+  rules (§4.6). (**Changed from the original design**, which emitted per-path `handle` blocks
+  before an auth-gated catch-all — two matchers for one intent; §4.5 has the rationale.
+  The catch-all `handle` wrapper went with them: with a single branch it added nothing.)
   When the mode is `oidc` (or none), a **plain** `reverse_proxy` is emitted with **no** `import
   auth`: an OIDC app performs the login flow itself, so hemma must add no second gate in front
   of it. `oidc` renders identically to a no-auth service in Caddy on purpose — the mode is still
@@ -288,17 +276,35 @@ forward-auth portal (parallels `dns_host`: one repo-wide role, named by service,
 is refused and skipped — protecting the portal with itself would recurse every auth subrequest.
 (The guard keys on the service name, not on parsing the opaque snippet body.)
 
-**Auth modes.** A service's `auth:` is a mode, not a bool (§4.2): `forward` wraps the site in a
-`handle` block that imports the `(auth)` snippet; `oidc` renders a plain `reverse_proxy` (the app
+**Auth modes.** A service's `auth:` is a mode, not a bool (§4.2): `forward` emits `import auth`
+before the proxy line; `oidc` renders a plain `reverse_proxy` (the app
 does OIDC itself, hemma adds no gate); none/unset is unprotected. Legacy `auth: true` is read
 as `forward` and re-emitted as the string form. The mode is what makes an OIDC service's
 protection legible despite rendering plain Caddy.
 
-**`public_paths`.** A `forward`-auth service may declare a list of URL paths that bypass the auth
-gate entirely. Each path is emitted as a `handle <path>` block before the catch-all `handle`
-block, proxying directly to the backend. Caddy `handle` blocks are mutually exclusive and
-first-match wins, so listed paths are never forwarded to the auth provider. Only meaningful when
-`auth: forward`; ignored for all other modes.
+**`public_paths`.** A `forward`-auth service may declare a list of URL paths exempt from the
+auth gate (e.g. a `/health` endpoint polled without credentials). Enforcement lives entirely in
+the **auth provider**: each entry becomes a `bypass` rule in the generated access-control
+artifact (§4.6), and the Caddy site block stays the uniform gated shape of §4.2 — every request
+still traverses the forward-auth subrequest, and Authelia answers 200 for bypassed paths
+without demanding a session. Only meaningful when `auth: forward`; ignored for all other modes.
+
+(**Changed from the original design**, which ALSO emitted per-path `handle` blocks in Caddy so
+exempt paths never touched the auth provider. That meant two matchers for one intent — Caddy's
+path matcher and Authelia's resource regex — which could silently drift apart, and Caddy's
+prefix-style matching made bare entries broader than they read. One policy engine removes the
+dual-matcher drift and makes the access-control artifact the single answer to "who may reach
+what". The trade-off is availability: bypassed paths now require the auth provider to be up,
+where the old `handle` blocks kept e.g. `/health` reachable through an Authelia outage. It also
+makes the §4.6 wiring non-optional for exemptions to work — doctor's wiring advisory calls out
+the gated paths until then, §6.4.)
+
+*Considered and rejected*: a raw-regex entry form (`- regex: '^…'`), possible only now that the
+gate is Authelia (Caddy path matchers aren't regexes). Rejected: the two sugar shapes encode
+correct anchoring, escaping, and query handling for free, whereas a hand-written regex fails
+silently toward a *wider* unauthenticated surface (a missing `^`/`$` or unescaped `.` exempts
+more than intended); and any realistic complex pattern decomposes into several sugar entries,
+which reads as clearer policy anyway.
 
 **OIDC client validation (read-only).** For each `auth: oidc` service, hemma reads the Authelia
 config at `<auth_service host dir>/authelia/data/config/configuration.yml` (fixed path convention,

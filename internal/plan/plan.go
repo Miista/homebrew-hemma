@@ -273,7 +273,7 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 
 	return []File{
 		{Path: dnsPath, Content: render.DNSRecord(svc.FQDN, hostM.IP)},
-		{Path: caddyPath, Content: render.CaddySite(svc.FQDN, tlsImport, svc.Backend, svc.Auth.Mode, name == c.Defaults.AuthService, svc.PublicPaths)},
+		{Path: caddyPath, Content: render.CaddySite(svc.FQDN, tlsImport, svc.Backend, svc.Auth.Mode, name == c.Defaults.AuthService)},
 	}, ""
 }
 
