@@ -175,12 +175,17 @@ each validate-before-reload, so a bad config aborts instead of taking the
 service down. Run it on each host after config changes. Refuses if the repo
 has drift.`},
 
-	{"doctor", `hemma doctor — audit the repo (gitignore, Caddyfile imports, drift)
+	{"doctor", `hemma doctor — audit the repo (gitignore, Caddyfile imports, drift, auth)
 
 Usage: hemma doctor [--fix]
 
 Flags:
-  -f, --fix   Apply fixes: reconcile generated files and .gitignore entries.`},
+  -f, --fix   Apply fixes: reconcile generated files and .gitignore entries.
+
+The auth checks are read-only advisories (hemma never writes the provider's
+config, users database, or compose file); each one prints the exact fix to
+paste in — e.g. the X_AUTHELIA_CONFIG value that wires the generated
+access-control file into the auth container.`},
 
 	{"measure", `hemma measure — time the HTTPS request breakdown (dns/connect/tls/ttfb)
 

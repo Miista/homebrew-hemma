@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"hemma/internal/auth"
 	"hemma/internal/config"
 	"hemma/internal/plan"
 	"hemma/internal/render"
@@ -156,10 +157,48 @@ func cmdDoctor(cfgPath string, args []string) int {
 		fmt.Printf("%s %s\n", warn, msg)
 	}
 
+	// --- access-control wiring check (advisory only; never affects exit code) ---
+	// Gated on the access-control artifact being part of the plan; silent
+	// otherwise. Not --fix-able (hemma never writes docker-compose.yml or
+	// configuration.yml), so the warnings carry the full paste-in recipe.
+	for _, msg := range authWiringWarnings(repoRoot, cfg) {
+		fmt.Printf("%s %s\n", warn, msg)
+	}
+
 	if problems > 0 {
 		return 1
 	}
 	return 0
+}
+
+// authWiringWarnings runs the provider's read-only access-control wiring
+// check for `doctor`: is the generated artifact (§4.6) actually loaded by the
+// auth container per the auth host's docker-compose.yml? Mirrors
+// usersDBWarnings' config-location logic; silent when the auth service or its
+// host isn't resolvable (flagged elsewhere), when the auth service is
+// disabled (apply skips its auth half too), or when the artifact isn't part
+// of the plan (gated inside the provider).
+func authWiringWarnings(repoRoot string, cfg *config.Config) []string {
+	if cfg.Defaults.AuthService == "" {
+		return nil
+	}
+	authSvc, ok := cfg.Services[cfg.Defaults.AuthService]
+	if !ok || authSvc.Disabled {
+		return nil
+	}
+	hostM, ok := cfg.Hosts[authSvc.Host]
+	if !ok {
+		return nil
+	}
+	hostDir := filepath.Join(repoRoot, hostM.ResolvedDir(authSvc.Host))
+	var svcs []auth.Service
+	for name, s := range cfg.Services {
+		if s.Auth.Mode == config.AuthNone || s.Disabled {
+			continue
+		}
+		svcs = append(svcs, auth.Service{Name: name, FQDN: s.FQDN, Mode: string(s.Auth.Mode), Groups: s.Auth.Groups, PublicPaths: s.PublicPaths})
+	}
+	return auth.Default().ValidateWiring(hostDir, cfg.Defaults.AuthService, svcs)
 }
 
 // checkDrift reports (and with fix, repairs) drift between services.yaml and the

@@ -115,3 +115,101 @@ func TestWriteManagedBlock_CreatesAndPreserves(t *testing.T) {
 		t.Errorf("block duplicated: %d start markers", n)
 	}
 }
+
+// --- access-control wiring advisories (authWiringWarnings) ---
+
+// writeAuthComposeFixture writes the auth host's docker-compose.yml.
+func writeAuthComposeFixture(t *testing.T, dir, composeYAML string) {
+	t.Helper()
+	mkdirs(t, dir, "appbox")
+	if err := os.WriteFile(filepath.Join(dir, "appbox", "docker-compose.yml"), []byte(composeYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAuthWiringWarnings_WiredThroughRepoLayout(t *testing.T) {
+	dir := t.TempDir()
+	seedWithAuth(t, dir) // grafana is oidc-with-groups -> artifact is planned
+	writeAuthComposeFixture(t, dir, `services:
+  authelia:
+    environment:
+      X_AUTHELIA_CONFIG: /config/configuration.yml,/config/hemma.access_control.generated.yml
+`)
+	cfg, code := loadExisting(filepath.Join(dir, configName), "test")
+	if cfg == nil {
+		t.Fatalf("load: %d", code)
+	}
+	if w := authWiringWarnings(dir, cfg); w != nil {
+		t.Errorf("correctly wired -> silent, got %v", w)
+	}
+}
+
+func TestAuthWiringWarnings_UnwiredWarns(t *testing.T) {
+	dir := t.TempDir()
+	seedWithAuth(t, dir)
+	writeAuthComposeFixture(t, dir, "services:\n  authelia:\n    image: authelia/authelia\n")
+	cfg, _ := loadExisting(filepath.Join(dir, configName), "test")
+	w := authWiringWarnings(dir, cfg)
+	if len(w) != 1 || !strings.Contains(w[0], "X_AUTHELIA_CONFIG") {
+		t.Fatalf("want one unwired warning, got %v", w)
+	}
+}
+
+func TestAuthWiringWarnings_GatedOnAuthService(t *testing.T) {
+	// No auth_service at all -> silent.
+	dir := t.TempDir()
+	seed(t, dir)
+	cfg, _ := loadExisting(filepath.Join(dir, configName), "test")
+	if w := authWiringWarnings(dir, cfg); w != nil {
+		t.Errorf("no auth_service -> silent, got %v", w)
+	}
+
+	// auth_service names a disabled service -> silent too (apply skips its
+	// auth half the same way).
+	dir2 := t.TempDir()
+	content := `hosts:
+  appbox: {ip: 192.0.2.2, dir: appbox}
+domains:
+  - example.com
+defaults:
+  dns_host: appbox
+  auth_service: authelia
+services:
+  authelia:
+    fqdn: auth.example.com
+    host: appbox
+    backend: authelia:9091
+    disabled: true
+  grafana:
+    fqdn: grafana.example.com
+    host: appbox
+    backend: grafana:3000
+    auth:
+      mode: forward
+      groups: [admins]
+`
+	if err := os.WriteFile(filepath.Join(dir2, configName), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg2, _ := loadExisting(filepath.Join(dir2, configName), "test")
+	if w := authWiringWarnings(dir2, cfg2); w != nil {
+		t.Errorf("disabled auth_service -> silent, got %v", w)
+	}
+}
+
+func TestDoctor_ReportsWiringWarning(t *testing.T) {
+	dir := t.TempDir()
+	seedWithAuth(t, dir)
+	writeAuthComposeFixture(t, dir, "services:\n  authelia:\n    image: authelia/authelia\n")
+	// Bring generated files in sync so drift doesn't dominate the output.
+	captureStdout(t, func() { Run([]string{"-C", dir, "doctor", "--fix"}) })
+
+	out := captureStdout(t, func() { Run([]string{"-C", dir, "doctor"}) })
+	if !strings.Contains(out, "X_AUTHELIA_CONFIG: '/config/configuration.yml,/config/hemma.access_control.generated.yml'") {
+		t.Errorf("doctor should surface the wiring recipe:\n%s", out)
+	}
+	// Advisory only: the wiring warning alone must not flip the exit code.
+	if code := Run([]string{"-C", dir, "doctor"}); code != 0 {
+		t.Errorf("wiring advisory must not affect exit code, got %d", code)
+	}
+}
