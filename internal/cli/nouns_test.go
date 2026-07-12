@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"hemma/internal/config"
@@ -300,5 +301,108 @@ func TestDomainRemoval_AutoGCsTLS(t *testing.T) {
 	Run([]string{"-C", dir, "remove", "domain", "example.com"})
 	if _, err := os.Stat(tls); !os.IsNotExist(err) {
 		t.Error("removed domain's tls snippet should be GC'd")
+	}
+}
+
+// --- update host ---
+
+// Changing a host's ip regenerates the DNS records pointing at it (Complete
+// mode: DNS records embed the ip).
+func TestHostUpdate_IPChangeRegeneratesDNS(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir) // resolver (dns_host) + appbox
+	Run([]string{"-C", dir, "add", "service", "docs",
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+	rec := filepath.Join(dir, "resolver", "pihole/data/dnsmasq.d/docs.generated.conf")
+	if b, err := os.ReadFile(rec); err != nil || !strings.Contains(string(b), "192.0.2.2") {
+		t.Fatalf("precondition: record should point at appbox's old ip: %v", err)
+	}
+
+	if code := Run([]string{"-C", dir, "update", "host", "appbox", "--ip", "192.0.2.5"}); code != 0 {
+		t.Fatalf("update host --ip should exit 0, got %d", code)
+	}
+	if got := load(t, dir).Hosts["appbox"].IP; got != "192.0.2.5" {
+		t.Errorf("ip not updated, got %q", got)
+	}
+	b, err := os.ReadFile(rec)
+	if err != nil || !strings.Contains(string(b), "192.0.2.5") {
+		t.Errorf("DNS record should be regenerated with the new ip, got:\n%s (%v)", b, err)
+	}
+	if d := detectDrift(dir, load(t, dir), loadManifest(dir, load(t, dir))); d.Any() {
+		t.Errorf("repo should have no drift after update host --ip, got %d files", d.Count())
+	}
+}
+
+// Changing only the ssh destination persists the field but touches nothing
+// generated; '-' clears it back to the default (the host name).
+func TestHostUpdate_SSHOnlyTouchesNothingGenerated(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+	Run([]string{"-C", dir, "add", "service", "docs",
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+	rec := filepath.Join(dir, "resolver", "pihole/data/dnsmasq.d/docs.generated.conf")
+	before, err := os.ReadFile(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if code := Run([]string{"-C", dir, "update", "host", "appbox", "--ssh", "admin@appbox.lan"}); code != 0 {
+		t.Fatalf("update host --ssh should exit 0, got %d", code)
+	}
+	h := load(t, dir).Hosts["appbox"]
+	if h.SSH != "admin@appbox.lan" || h.SSHDest("appbox") != "admin@appbox.lan" {
+		t.Errorf("ssh destination not persisted: %+v", h)
+	}
+	if h.IP != "192.0.2.2" {
+		t.Errorf("ip must be untouched by --ssh, got %q", h.IP)
+	}
+	after, err := os.ReadFile(rec)
+	if err != nil || string(after) != string(before) {
+		t.Errorf("generated DNS record must be unchanged by an ssh-only update (%v)", err)
+	}
+
+	// '-' clears back to the name default.
+	if code := Run([]string{"-C", dir, "update", "host", "appbox", "--ssh", "-"}); code != 0 {
+		t.Fatalf("clearing ssh should exit 0, got %d", code)
+	}
+	h = load(t, dir).Hosts["appbox"]
+	if h.SSH != "" || h.SSHDest("appbox") != "appbox" {
+		t.Errorf("'-' should clear ssh back to the name default: %+v", h)
+	}
+}
+
+func TestHostUpdate_Validation(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+	// Unknown host.
+	if code := Run([]string{"-C", dir, "update", "host", "ghost", "--ip", "192.0.2.9"}); code != 1 {
+		t.Errorf("update of unknown host should exit 1, got %d", code)
+	}
+	// No flags is a usage error.
+	if code := Run([]string{"-C", dir, "update", "host", "appbox"}); code != 2 {
+		t.Errorf("update host without flags should exit 2, got %d", code)
+	}
+	// Invalid ip refused before persisting.
+	if code := Run([]string{"-C", dir, "update", "host", "appbox", "--ip", "not-an-ip"}); code != 2 {
+		t.Errorf("invalid ip should exit 2, got %d", code)
+	}
+	// Duplicate ip refused.
+	if code := Run([]string{"-C", dir, "update", "host", "appbox", "--ip", "192.0.2.1"}); code != 1 {
+		t.Errorf("duplicate ip should exit 1, got %d", code)
+	}
+	if got := load(t, dir).Hosts["appbox"].IP; got != "192.0.2.2" {
+		t.Errorf("failed updates must not persist, ip is %q", got)
+	}
+}
+
+// add host --ssh stores the destination at creation time.
+func TestHostAdd_WithSSH(t *testing.T) {
+	dir := t.TempDir()
+	mkdirs(t, dir, "resolver")
+	if code := Run([]string{"-C", dir, "add", "host", "resolver", "192.0.2.1", "--ssh", "pi"}); code != 0 {
+		t.Fatalf("add host --ssh should exit 0, got %d", code)
+	}
+	if got := load(t, dir).Hosts["resolver"].SSH; got != "pi" {
+		t.Errorf("ssh not stored, got %q", got)
 	}
 }

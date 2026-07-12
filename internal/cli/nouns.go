@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -23,15 +24,20 @@ func hostAdd(cfgPath string, args []string) int {
 	// and isn't derivable from anything else.
 	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: hemma add host <name> <ip>")
+		hint("Usage: hemma add host <name> <ip> [--ssh <dest>]")
 		return 2
 	}
-	if len(args) < 2 {
+	if len(args) < 2 || strings.HasPrefix(args[1], "-") {
 		errf("Missing the <ip> for host %q.", args[0])
-		hint("Usage: hemma add host <name> <ip>")
+		hint("Usage: hemma add host <name> <ip> [--ssh <dest>]")
 		return 2
 	}
 	name, ip := args[0], args[1]
+	fs := flag.NewFlagSet("add host", flag.ContinueOnError)
+	sshDest := fs.String("ssh", "", "ssh(1) destination for 'hemma deploy' (defaults to the host name)")
+	if err := fs.Parse(args[2:]); err != nil {
+		return 2
+	}
 
 	if net.ParseIP(ip) == nil {
 		errf("%q is not a valid IP address.", ip)
@@ -65,7 +71,9 @@ func hostAdd(cfgPath string, args []string) int {
 		}
 	}
 	// Dir is left empty; it defaults to the host name (config.Host.ResolvedDir).
-	cfg.Hosts[name] = config.Host{IP: ip}
+	// SSH is set only when --ssh was passed; empty defaults to the host name
+	// (config.Host.SSHDest).
+	cfg.Hosts[name] = config.Host{IP: ip, SSH: *sshDest}
 	if err := cfg.Save(); err != nil {
 		errf("%v", err)
 		return 1
@@ -107,6 +115,90 @@ func hostRemove(cfgPath string, args []string) int {
 	// Complete reconcile GCs the removed host's now-orphaned TLS snippets so the
 	// repo is left clean.
 	return runSync(repoRoot, cfg, syncpkg.Complete)
+}
+
+// hostUpdate changes a host's ip and/or ssh destination — the update-service
+// pattern applied to hosts: validate before persisting, only explicitly
+// passed flags change anything.
+//
+// Sync mode by mutation shape (matching the other host mutations): a changed
+// ip rewrites every DNS record pointing at the host, so it syncs Complete
+// (same as the other host mutations, which can orphan/rewrite generated
+// files); an ssh-only change touches nothing generated, so Incremental (a
+// no-op reconcile) suffices.
+func hostUpdate(cfgPath string, args []string) int {
+	name, args, ok := leadingName(args)
+	if !ok {
+		errf("Missing the <name>.")
+		hint("Usage: hemma update host <name> [--ip <ip>] [--ssh <dest>]")
+		return 2
+	}
+	fs := flag.NewFlagSet("update host", flag.ContinueOnError)
+	ip := fs.String("ip", "", "new ip address")
+	sshDest := fs.String("ssh", "", "new ssh(1) destination ('-' or '' clears it back to the host name)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	ipSet, sshSet := false, false
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "ip":
+			ipSet = true
+		case "ssh":
+			sshSet = true
+		}
+	})
+	if !ipSet && !sshSet {
+		errf("Nothing to update — pass --ip and/or --ssh.")
+		hint("Usage: hemma update host <name> [--ip <ip>] [--ssh <dest>]")
+		return 2
+	}
+	// Validate the ip shape BEFORE touching the YAML (validate-before-persist).
+	if ipSet && net.ParseIP(*ip) == nil {
+		errf("%q is not a valid IP address.", *ip)
+		return 2
+	}
+
+	cfg, code := loadExisting(cfgPath, "update a host in")
+	if cfg == nil {
+		return code
+	}
+	h, exists := cfg.Hosts[name]
+	if !exists {
+		errf("Host %q does not exist.", name)
+		return 1
+	}
+	mode := syncpkg.Incremental
+	if ipSet {
+		// A LAN IP identifies exactly one host (same rule as add host).
+		for n, other := range cfg.Hosts {
+			if n != name && other.IP == *ip {
+				errf("IP %s is already used by host %q.", *ip, n)
+				return 1
+			}
+		}
+		if h.IP != *ip {
+			// The ip feeds every DNS record targeting this host; rewrite them
+			// all and GC anything orphaned, leaving the repo clean.
+			mode = syncpkg.Complete
+		}
+		h.IP = *ip
+	}
+	if sshSet {
+		// '-' (or empty) clears the field back to the default (the host name).
+		if *sshDest == "-" {
+			h.SSH = ""
+		} else {
+			h.SSH = *sshDest
+		}
+	}
+	cfg.Hosts[name] = h
+	if err := cfg.Save(); err != nil {
+		errf("%v", err)
+		return 1
+	}
+	fmt.Printf(tick+" Updated host %q\n", name)
+	return runSync(filepath.Dir(cfgPath), cfg, mode)
 }
 
 func domainAdd(cfgPath string, args []string) int {

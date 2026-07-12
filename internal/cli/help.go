@@ -75,9 +75,27 @@ Usage: hemma disable service <name>`},
 
 	{"add host", `hemma add host — declare a host (its name is its repo directory)
 
-Usage: hemma add host <name> <ip>
+Usage: hemma add host <name> <ip> [--ssh <dest>]
 
-The directory ./<name>/ must already exist in the repo.`},
+The directory ./<name>/ must already exist in the repo.
+
+Flags:
+      --ssh <dest>   ssh(1) destination 'hemma deploy' uses to reach the host —
+                     a verbatim alias/user@host/anything ssh accepts (put ports,
+                     users, keys in ssh_config). Defaults to the host's name.`},
+
+	{"update host", `hemma update host — change a host's ip or ssh destination
+
+Usage: hemma update host <name> [--ip <ip>] [--ssh <dest>]
+
+Only the given flags change. Changing the ip regenerates every DNS record
+pointing at the host; changing the ssh destination touches nothing generated.
+
+Flags:
+      --ip <ip>      New IP address (must be valid and unique across hosts).
+      --ssh <dest>   New verbatim ssh(1) destination for 'hemma deploy'.
+                     Pass '-' (or '') to clear it back to the default (the
+                     host's name).`},
 
 	{"remove host", `hemma remove host — remove a host (refused while services reference it)
 
@@ -184,6 +202,29 @@ restart pihole (resolver host), reload caddy (service hosts), restart the
 auth provider (the host running auth_service). A bad config can never cost
 a pihole restart or leave the host half-applied. Run it on each host after
 config changes. Refuses if the repo has drift.`},
+
+	{"deploy", `hemma deploy — push-based fan-out: pull + apply on every host over ssh
+
+Usage: hemma deploy [<host> ...]
+
+Makes the fleet match origin, in two strictly ordered phases:
+
+  Phase 1 — pull:   'git -C ~/docker pull --ff-only' on every target host.
+                    ANY failure (divergence, dirty remote tree, unreachable
+                    host, ssh auth) aborts the ENTIRE deploy before phase 2 —
+                    no runtime state changed anywhere. After the pulls, every
+                    host must be on the same commit (a racing push aborts too).
+  Phase 2 — apply:  'hemma apply' per host — remotes first, THIS host last,
+                    so a resolver restart can't break DNS-resolved ssh to the
+                    remaining hosts. A failure on one host is reported and the
+                    fan-out continues; exit is non-zero with a per-host summary.
+
+Targets default to every host with a role (runs a service, or is the
+dns_host); pass names to restrict. Hosts are reached with
+'ssh -o BatchMode=yes <dest>' where <dest> is the host's ssh: field
+(default: its name); a host whose IP matches this machine runs locally.
+Refuses up front if the LOCAL repo is dirty or has unpushed commits —
+deploying means "make the fleet match origin", so push first.`},
 
 	{"doctor", `hemma doctor — audit the repo (gitignore, Caddyfile imports, drift, auth)
 

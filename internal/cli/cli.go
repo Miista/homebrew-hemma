@@ -150,6 +150,8 @@ func Run(args []string) int {
 		return cmdDoctor(cfgPath, rest)
 	case "apply":
 		return cmdApply(repoRoot, cfgPath, rest)
+	case "deploy":
+		return cmdDeploy(repoRoot, cfgPath, rest)
 	case "measure":
 		return cmdMeasure(cfgPath, rest)
 	case "completion":
@@ -194,10 +196,12 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 		switch verb {
 		case "add":
 			return hostAdd(cfgPath, rest)
+		case "update":
+			return hostUpdate(cfgPath, rest)
 		case "remove":
 			return hostRemove(cfgPath, rest)
 		default:
-			errf("Cannot %q a host — hosts support add and remove.", verb)
+			errf("Cannot %q a host — hosts support add, update, and remove.", verb)
 			return 2
 		}
 	case "domain":
@@ -983,7 +987,8 @@ Services (an app reached at an fqdn, on a host, under a domain):
   hemma enable  service <name>   Re-enable a disabled service (regenerates its files).
 
 Building blocks (a service references a host and a domain):
-  hemma add    host   <name> <ip>
+  hemma add    host   <name> <ip> [--ssh <dest>]
+  hemma update host   <name> [--ip <ip>] [--ssh <dest>]
   hemma remove host   <name>
   hemma add    domain <name>
   hemma remove domain <name>
@@ -997,6 +1002,7 @@ Credentials (print-only; the auth provider's config and users database are never
 
 Other:
   hemma apply                    Make config live on THIS host: validate caddy + auth config first, then restart pihole / reload caddy / restart the auth provider. Run on each host. Refuses if the repo has drift.
+  hemma deploy [<host> ...]      Push-based fan-out over ssh: 'git pull --ff-only' on every target host (any failure aborts everything), then 'hemma apply' per host, remotes first and this host last. Targets default to all hosts with a role. Requires a clean, pushed local repo.
   hemma list [--all]             Overview: hosts, domains, services, and auth groups (users + restricted services). Services default to THIS host; --all shows every host.
   hemma verify [--all] [<fqdn>]  Check live DNS/Caddy per service. Defaults to services this host can check; --all includes the rest. Run on each host; needs docker.
   hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>  Time the request breakdown (dns/connect/tls/ttfb) for a service or any URL. --compare A/Bs split-horizon vs public read-only (dns-host only, services only).
