@@ -382,14 +382,22 @@ single-element lists (`- ['group:a']` / `- ['group:b']`); a single group is a pl
 Boundary: hemma generates this file but does **not** wire it in — telling Authelia to include
 it, and pointing an OIDC client at its named `authorization_policy`, are provider-config steps
 the OIDC validation (§4.5) warns about read-only. The provider config itself is never written
-(same non-goal as §12).
+(same non-goal as §12). Wiring is no longer silently assumed, though: whenever the artifact is
+part of the plan, `doctor` verifies it read-only (§6.4) by parsing the auth host's
+`docker-compose.yml` from the checkout (no docker calls) and warns — with the exact
+`X_AUTHELIA_CONFIG` value to paste in — until the container actually loads the file, plus a
+warning when a hand-written top-level `access_control:` section coexists with a generated one
+(Authelia does not merge rule lists across config files; one silently wins).
 
 **The auth-provider interface.** Everything provider-specific lives behind
 `auth.Provider` (`internal/auth`): the provider's config-file convention path
 (`ConfigPath`), the access-control artifact (`AccessControl(services) → (path,
 content, ok)`, paths relative to the auth host's directory), the read-only
-validation of its own config (`ValidateConfig`) and users database
+validation of its own config (`ValidateConfig`), of its users database
 (`ValidateUsers`, §6.4; `UserGroups` feeds `list`'s Groups section, §6.6),
+and of its deployment wiring (`ValidateWiring(hostDir, container, services)`,
+§6.4 — is the generated artifact actually loaded, per the auth host's
+compose file),
 the commands `apply` runs on the auth host (`ApplyCommands(container) →
 (validate, reload)`, §6.3 — Authelia: config validate, then container
 restart), and credential minting + paste-in snippets
@@ -565,7 +573,7 @@ SSH.
 hemma doctor [--fix]     (-f)
 ```
 
-`doctor` audits the repo (no docker needed) and, with `--fix`, repairs it. Four checks:
+`doctor` audits the repo (no docker needed) and, with `--fix`, repairs it. Five checks:
 
 1. **Gitignore**: are any generated output paths swallowed by a `.gitignore` rule (e.g. a broad
    `**/data/**`)? Such files generate fine but never commit/deploy. `--fix` writes a managed
@@ -579,8 +587,29 @@ hemma doctor [--fix]     (-f)
 4. **Auth config consistency** (§4.5): the half-configured-auth warnings are printed; most are
    advisory, but snippet-set-but-no-`auth_service` counts as a problem (redirect-loop hazard).
    An unreadable `auth_snippet` source also counts as a problem (keep-last-good still applies).
+5. **Access-control wiring** (§4.6, advisory only — never affects the exit code): when the plan
+   includes the generated access-control artifact, the auth host's `docker-compose.yml` is
+   parsed from the checkout (read-only, no docker calls; env in both map and list form) to find
+   the `auth_service`'s container and check that its `X_AUTHELIA_CONFIG` lists the artifact.
+   Warns when the artifact is generated but not loaded, and when a hand-written top-level
+   `access_control:` section in `configuration.yml` coexists with a generated one (Authelia
+   does not merge rule lists across config files — one silently wins; remove the hand-written
+   section once the file is wired in). A missing/unparseable compose file, or no matching
+   service in it, degrades to a single soft could-not-verify advisory; `auth_service`
+   unset/disabled or artifact-not-planned means silence. Warnings quote only the
+   `X_AUTHELIA_CONFIG` value — never any other compose content (compose files carry secrets).
+   Lives behind `auth.Provider.ValidateWiring`.
 
 Exits non-zero if any problem remains.
+
+**The two-tier contract.** Every doctor finding is one of exactly two kinds: a *problem*
+`--fix` repairs mechanically (gitignore, Caddyfile imports, drift), or an *instructive
+advisory* about a file hemma deliberately never writes (the OIDC client checks §4.5, the
+users-database cross-checks below, the wiring check above — the compose file and provider
+config are hand-owned, same rationale as §12). Advisories can't be `--fix`ed, so they must
+always carry the complete, copy-pasteable fix — the exact env line to set (computed from the
+current value when present), the exact `hemma create`/`hemma update` command, the exact section
+to remove — never just a diagnosis.
 
 Additionally, doctor runs **advisory users-database cross-checks** (never affect the exit code),
 gated on the provider's users database existing next to its config (filename taken from

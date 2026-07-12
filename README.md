@@ -199,7 +199,10 @@ when no groups are set) and flow into a generated Authelia access-control file o
 `identity_providers.oidc.authorization_policies` for oidc services with groups. hemma
 generates the file but does not wire it into Authelia; include it in the Authelia config and
 point each OIDC client's `authorization_policy` at its service name (the OIDC validation warns
-if you forget). Groups with `auth: none` are a validation error.
+if you forget). `hemma doctor` warns — with the exact `X_AUTHELIA_CONFIG` value to paste into
+the auth host's compose file — until the container actually loads the file, and while a
+hand-written `access_control:` section remains in `configuration.yml` alongside the generated
+one. Groups with `auth: none` are a validation error.
 
 **OIDC validation (read-only, hemma does NOT configure OIDC).** For each `auth: oidc`
 service, hemma reads the Authelia config at
