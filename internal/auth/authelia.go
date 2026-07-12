@@ -205,7 +205,7 @@ func (authelia) ValidateConfig(cfgPath string, services []Service) []string {
 			}
 		}
 		if !matched {
-			w = append(w, fmt.Sprintf("service %s is auth: oidc but no Authelia OIDC client registers a redirect_uri for %s — register the client in %s.", s.Name, want, cfgPath))
+			w = append(w, fmt.Sprintf("service %s is auth: oidc but no Authelia OIDC client registers a redirect_uri for %s — register the client in %s ('hemma create app oidc %s' prints a paste-in snippet).", s.Name, want, cfgPath, s.Name))
 			continue
 		}
 		// Groups generate a named authorization_policy (see AccessControl);

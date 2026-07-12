@@ -125,10 +125,10 @@ func (a authelia) ValidateUsers(cfgPath string, services []Service) []string {
 				anyMember = true
 				continue
 			}
-			w = append(w, fmt.Sprintf("auth group %q (service %s) is not assigned to any user in %s — check for a typo.", g, s.Name, filepath.Base(usersPath)))
+			w = append(w, fmt.Sprintf("auth group %q (service %s) is not assigned to any user in %s — check for a typo: fix the list with 'hemma update service %s --auth-groups <groups>' or add the group to a user in that file.", g, s.Name, filepath.Base(usersPath), s.Name))
 		}
 		if !anyMember {
-			w = append(w, fmt.Sprintf("no user is in any of service %s's allowed groups (%s) — nobody can access it.", s.Name, strings.Join(s.Groups, ", ")))
+			w = append(w, fmt.Sprintf("no user is in any of service %s's allowed groups (%s) — nobody can access it. Add a group to a user in %s or relax the service's --auth-groups.", s.Name, strings.Join(s.Groups, ", "), filepath.Base(usersPath)))
 		}
 	}
 	return w
