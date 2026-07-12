@@ -118,6 +118,43 @@ func TestValidateWiring_EnvVarAbsent(t *testing.T) {
 	}
 }
 
+// public_paths exemptions are enforced ONLY by the artifact's bypass rules
+// (Caddy renders no per-path branches), so the unwired advisory must call out
+// the consequence — the declared public paths stay auth-gated — folded into
+// the ONE existing advisory, listing the paths.
+func TestValidateWiring_UnwiredListsGatedPublicPaths(t *testing.T) {
+	compose := `services:
+  authelia:
+    image: authelia/authelia
+`
+	dir := writeWiringFixture(t, compose, "")
+	svcs := []Service{
+		{Name: "status", FQDN: "status.example.com", Mode: ModeForward, PublicPaths: []string{"/health", "/api/badges/*"}},
+		{Name: "pihole", FQDN: "pihole.example.com", Mode: ModeForward, Groups: []string{"admins"}},
+	}
+	w := (authelia{}).ValidateWiring(dir, "authelia", svcs)
+	if len(w) != 1 {
+		t.Fatalf("consequence must fold into the single unwired advisory, got %d: %v", len(w), w)
+	}
+	s := w[0].String()
+	for _, want := range []string{"public_paths are NOT exempt",
+		"status.example.com/health", "status.example.com/api/badges/*"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("advisory should contain %q:\n%s", want, s)
+		}
+	}
+	// Still carries the paste-in fix (house style: advisories always do).
+	if !strings.Contains(s, "X_AUTHELIA_CONFIG: '/config/configuration.yml,/config/hemma.access_control.generated.yml'") {
+		t.Errorf("advisory lost the paste-in env line:\n%s", s)
+	}
+
+	// No public_paths declared → no consequence line.
+	w = (authelia{}).ValidateWiring(dir, "authelia", wiringSvcs)
+	if len(w) != 1 || strings.Contains(w[0].String(), "public_paths") {
+		t.Errorf("no public_paths → no consequence line, got %v", w)
+	}
+}
+
 func TestValidateWiring_HandWrittenAccessControlConflict(t *testing.T) {
 	compose := `services:
   authelia:

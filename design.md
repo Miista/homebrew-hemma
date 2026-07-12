@@ -620,7 +620,10 @@ hemma doctor [--fix]     (-f)
    includes the generated access-control artifact, the auth host's `docker-compose.yml` is
    parsed from the checkout (read-only, no docker calls; env in both map and list form) to find
    the `auth_service`'s container and check that its `X_AUTHELIA_CONFIG` lists the artifact.
-   Warns when the artifact is generated but not loaded, and when a hand-written top-level
+   Warns when the artifact is generated but not loaded — and because public_paths exemptions
+   live only in the artifact's bypass rules (§4.5), that same advisory additionally lists any
+   declared public paths as still auth-gated (unauthenticated probes break) until it is wired
+   in — and when a hand-written top-level
    `access_control:` section in `configuration.yml` coexists with a generated one (Authelia
    does not merge rule lists across config files — one silently wins; remove the hand-written
    section once the file is wired in). A missing/unparseable compose file, or no matching

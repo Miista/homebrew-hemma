@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -102,10 +103,21 @@ func (a authelia) ValidateWiring(hostDir, container string, services []Service) 
 		if envFound {
 			detail = fmt.Sprintf("its %s=%q does not list the file.", autheliaConfigEnv, envValue)
 		}
+		body := []string{fmt.Sprintf("%s is generated, but Authelia is not configured to load it —", artifact),
+			detail}
+		// public_paths exemptions live ONLY in this artifact's bypass rules
+		// (Caddy renders no per-path branches, design §4.5), so an unwired
+		// artifact does not just leave groups unenforced — it keeps the
+		// declared public paths auth-gated, breaking unauthenticated probes.
+		// One advisory, consequence folded in; no separate warning.
+		if gated := gatedPublicPaths(services); len(gated) > 0 {
+			body = append(body,
+				"until it is wired in, public_paths are NOT exempt — these stay behind the login,",
+				fmt.Sprintf("breaking unauthenticated probes: %s.", strings.Join(gated, ", ")))
+		}
 		w = append(w, Advisory{
 			Headline: "access control is declared but not enforced",
-			Body: []string{fmt.Sprintf("%s is generated, but Authelia is not configured to load it —", artifact),
-				detail},
+			Body:     body,
 			Fix: []string{fmt.Sprintf("add to the %s service environment in %s:", container, composePath),
 				fmt.Sprintf("  %s: '%s'", autheliaConfigEnv, want)},
 			Then: "hemma apply",
@@ -128,6 +140,23 @@ func (a authelia) ValidateWiring(hostDir, container string, services []Service) 
 		}
 	}
 	return w
+}
+
+// gatedPublicPaths lists, as sorted <fqdn><path> strings, every public_paths
+// entry of the forward services — the paths that stay auth-gated while the
+// access-control artifact is unwired.
+func gatedPublicPaths(services []Service) []string {
+	var gated []string
+	for _, s := range services {
+		if s.Mode != ModeForward {
+			continue
+		}
+		for _, p := range s.PublicPaths {
+			gated = append(gated, s.FQDN+p)
+		}
+	}
+	sort.Strings(gated)
+	return gated
 }
 
 // composeEnvValue parses the compose file at composePath, locates the service
