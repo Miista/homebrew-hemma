@@ -289,3 +289,17 @@ func TestDeploy_UnknownHostRefused(t *testing.T) {
 		t.Errorf("deploy with unknown host should exit 1, got %d", code)
 	}
 }
+
+func TestSummarizePull(t *testing.T) {
+	cases := []struct{ out, want string }{
+		{"Already up to date.\n", "up to date"},
+		{"From github.com:x/y\n   aaa..bbb  master -> origin/master\nUpdating aaa..bbb\nFast-forward\n services.yaml | 5 +\n 2 files changed, 6 insertions(+), 1 deletion(-)\n", "pulled aaa..bbb — 2 files changed, 6 insertions(+), 1 deletion(-)"},
+		{"Updating ccc..ddd\nFast-forward\n", "pulled ccc..ddd"},
+		{"something new git says\n", "something new git says"},
+	}
+	for _, c := range cases {
+		if got := summarizePull(c.out); got != c.want {
+			t.Errorf("summarizePull(%q) = %q, want %q", c.out, got, c.want)
+		}
+	}
+}

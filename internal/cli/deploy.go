@@ -202,18 +202,54 @@ func applyArgv(t deployTarget, localRepo string) []string {
 	return []string{"hemma", "apply"}
 }
 
+// summarizePull condenses successful `git pull --ff-only` output to one
+// phrase: "up to date", or "pulled <range> — <shortstat>" when it moved.
+// Unrecognized (but successful) output passes through first-line-only, so a
+// git wording change degrades to terse rather than noisy.
+func summarizePull(out string) string {
+	if strings.Contains(out, "Already up to date") {
+		return "up to date"
+	}
+	var rng, stat string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if v, ok := strings.CutPrefix(line, "Updating "); ok {
+			rng = v
+		}
+		if strings.Contains(line, "changed") && (strings.Contains(line, "insertion") || strings.Contains(line, "deletion") || strings.HasSuffix(line, "changed")) {
+			stat = line
+		}
+	}
+	if rng != "" && stat != "" {
+		return "pulled " + rng + " — " + stat
+	}
+	if rng != "" {
+		return "pulled " + rng
+	}
+	if first := strings.TrimSpace(strings.SplitN(out, "\n", 2)[0]); first != "" {
+		return first
+	}
+	return "pulled"
+}
+
 // runDeploy executes the two phases against resolved, ordered targets.
 // Factored off cmdDeploy so the phase logic runs under a fake runner in tests.
 func runDeploy(r deployRunner, targets []deployTarget, localRepo string) int {
 	fmt.Printf("Deploying to %d %s: %s.\n", len(targets), plural(len(targets), "host"), joinTargetNames(targets))
 
 	// Phase 1 — pull everywhere; ANY failure aborts the whole deploy.
+	// Success is one tick line per host (apply-style); the raw git output is
+	// shown only on failure, where it is the diagnostic.
 	fmt.Printf("\n%s== Phase 1: pull ==%s\n", boldOn, boldOff)
 	for _, t := range targets {
-		fmt.Printf("\n%s== %s ==%s\n", boldOn, t.Name, boldOff)
 		out, err := r.run(t, pullArgv(t, localRepo))
+		if err == nil {
+			fmt.Printf("  "+tick+" %s: %s\n", t.Name, summarizePull(out))
+			continue
+		}
+		fmt.Printf("\n%s== %s ==%s\n", boldOn, t.Name, boldOff)
 		printIndented(out)
-		if err != nil {
+		{
 			fmt.Println()
 			errf("Pull failed on %q — deploy aborted, phase 2 (apply) never started.", t.Name)
 			hint("Either the host is unreachable over ssh, or its checkout has diverged from")
@@ -252,7 +288,7 @@ func runDeploy(r deployRunner, targets []deployTarget, localRepo string) int {
 			return 1
 		}
 	}
-	fmt.Printf("\nAll hosts at %s.\n", shortCommit(heads[0]))
+	fmt.Printf("  all hosts at %s\n", shortCommit(heads[0]))
 
 	// Phase 2 — apply per host, remotes first, self LAST. A failure is
 	// reported and the fan-out continues: each host's apply is internally
