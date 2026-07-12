@@ -53,6 +53,19 @@ type Provider interface {
 	// cfgPath against the auth-enabled services and returns human-readable
 	// warnings (report-but-proceed; never fatal).
 	ValidateConfig(cfgPath string, services []Service) []string
+	// ValidateWiring read-only checks that the generated access-control
+	// artifact (AccessControl) is actually loaded by the provider's
+	// deployment, by parsing the auth host's docker-compose.yml from the repo
+	// checkout — no docker calls. hostDir is the absolute path of the
+	// auth_service host's repo directory (the same root ConfigPath and
+	// AccessControl paths are relative to; compose convention:
+	// <hostDir>/docker-compose.yml); container is the provider's container
+	// name (the auth_service name by convention). Returns advisory warnings
+	// (report-but-proceed; never fatal) and returns nil when AccessControl
+	// would emit nothing for these services — there is nothing to wire.
+	// Warnings must never quote compose content beyond the provider's own
+	// config-loading variable (compose files carry secrets).
+	ValidateWiring(hostDir, container string, services []Service) []string
 	// ApplyCommands returns the commands (argv) `hemma apply` runs on the
 	// auth host to make a synced provider config live: validate runs first
 	// and must succeed before reload runs (the caddy validate-before-reload
