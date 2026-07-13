@@ -266,6 +266,13 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	// Zero flags → the interactive editor (TTY-gated; a non-terminal stdin is
+	// refused there). Any flag present keeps the non-interactive path.
+	given := 0
+	fs.Visit(func(*flag.Flag) { given++ })
+	if given == 0 {
+		return cmdAddInteractive(repoRoot, cfgPath, name)
+	}
 	mode, ok := resolveAuthMode(fs, *authFlag, *authMode)
 	if !ok {
 		return 2
@@ -299,20 +306,29 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 		errf("%v", err)
 		return 1
 	}
+	return persistNewService(repoRoot, cfg, name,
+		config.Service{FQDN: *fqdn, Host: *host, Backend: *backend, Auth: config.Auth{Mode: mode, Groups: groups}})
+}
+
+// persistNewService is the shared tail of `add service`: both the flags form
+// (cmdAdd) and the interactive editor (cmdAddInteractive) funnel through it —
+// validate the entry, persist, and run the single sync path (Incremental,
+// design §6.1). Zero mutation logic lives in the editor.
+func persistNewService(repoRoot string, cfg *config.Config, name string, svc config.Service) int {
 	if _, exists := cfg.Services[name]; exists {
 		errf("Service %q already exists.", name)
 		return 1
 	}
 	for n, s := range cfg.Services {
-		if s.FQDN == *fqdn {
-			errf("The fqdn %q is already used by service %q.", *fqdn, n)
+		if s.FQDN == svc.FQDN {
+			errf("The fqdn %q is already used by service %q.", svc.FQDN, n)
 			return 1
 		}
 	}
 	// fqdn must fall under a defined domain — catch typos (e.g. .dl for .dk)
 	// before persisting, not as a skip at sync time.
-	if _, ok := cfg.MatchDomain(*fqdn); !ok {
-		errf("The fqdn %q matches no defined domain.", *fqdn)
+	if _, ok := cfg.MatchDomain(svc.FQDN); !ok {
+		errf("The fqdn %q matches no defined domain.", svc.FQDN)
 		if doms := cfg.DomainNames(); len(doms) > 0 {
 			hint("Defined domains: %s. Add one with 'hemma add domain <name>' or fix the fqdn.", strings.Join(doms, ", "))
 		} else {
@@ -321,11 +337,11 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 		return 1
 	}
 	// Host must exist too (else it'd persist then skip at sync).
-	if _, ok := cfg.Hosts[*host]; !ok {
-		errf("Unknown host %q — defined hosts: %s.", *host, strings.Join(sortedKeysOf(cfg.Hosts), ", "))
+	if _, ok := cfg.Hosts[svc.Host]; !ok {
+		errf("Unknown host %q — defined hosts: %s.", svc.Host, strings.Join(sortedKeysOf(cfg.Hosts), ", "))
 		return 1
 	}
-	cfg.Services[name] = config.Service{FQDN: *fqdn, Host: *host, Backend: *backend, Auth: config.Auth{Mode: mode, Groups: groups}}
+	cfg.Services[name] = svc
 	if err := cfg.Save(); err != nil {
 		errf("%v", err)
 		return 1
@@ -980,6 +996,7 @@ Commands are verb-first: <verb> <noun> <args>.
 
 Services (an app reached at an fqdn, on a host, under a domain):
   hemma add     service <name> --fqdn <f> --host <h> --backend <b> [--auth-mode forward|oidc] [--auth-groups <g1,g2>]
+                                 With no flags: an interactive editor (terminal only) collects the fields.
   hemma update  service <name> [--fqdn ...] [--host ...] [--backend ...] [--auth-mode forward|oidc|none] [--auth-groups <g1,g2>]
                                  With no flags: an interactive editor (terminal only), pre-filled with current values.
   hemma remove  service <name>

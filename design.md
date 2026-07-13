@@ -498,6 +498,13 @@ hemma disable service <name>
   allowed only if they agree, otherwise the conflict is refused (exit 2). `--auth-groups g1,g2`
   sets the auth-provider groups (requires a non-none mode). Then persists and reconciles
   (Incremental).
+  **Interactive mode**: with zero flags, `add service <name>` opens the same style of editor as
+  `update service` (TTY-gated, exit 2 on a non-terminal stdin) — empty fields instead of
+  pre-filled ones (the fqdn is pre-filled to `<name>.<domain>` when exactly one domain exists),
+  with the fqdn validated live against the defined domains and existing services. It refuses up
+  front when no domain or no host is defined (the pickers would have nothing to offer). Strictly
+  a flag collector: on submit it prints the collected fields and funnels through the **same**
+  validate-before-persist path and single sync tail as the flags form (`persistNewService`).
 - **`update`**: fails if the service does not exist. Only explicitly-set fields are changed;
   `--auth-mode` / `--auth[=false]` set or clear the auth mode (same conflict refusal as `add`),
   and `--auth-groups` sets the groups (`''` clears). Reconciles (Incremental).
