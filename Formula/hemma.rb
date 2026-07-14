@@ -5,13 +5,13 @@
 class Hemma < Formula
   desc "Generate split-horizon DNS (Pi-hole/dnsmasq), Caddy site blocks, and auth-provider config from a declarative services.yaml"
   homepage "https://github.com/Miista/homebrew-hemma"
-  version "0.31.0"
+  version "0.32.0"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/Miista/homebrew-hemma/releases/download/v0.31.0/hemma_0.31.0_darwin_amd64.tar.gz"
-      sha256 "fc58b9636587c87575cebfdc1197e64d38c0d103921c0bc0bbaf0f6f51f808b0"
+      url "https://github.com/Miista/homebrew-hemma/releases/download/v0.32.0/hemma_0.32.0_darwin_amd64.tar.gz"
+      sha256 "70fd98f27f10c958002add079c6a8f632f21d0d8bc1244987efacf650e640eb3"
 
       define_method(:install) do
         bin.install "hemma"
@@ -23,8 +23,8 @@ class Hemma < Formula
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/Miista/homebrew-hemma/releases/download/v0.31.0/hemma_0.31.0_darwin_arm64.tar.gz"
-      sha256 "967255314c380309b9be1b3b3237922bf5f33776df7d71a84847b15b81ee5c72"
+      url "https://github.com/Miista/homebrew-hemma/releases/download/v0.32.0/hemma_0.32.0_darwin_arm64.tar.gz"
+      sha256 "8d28a1f58983cca850f411c5ec255af1596292fd842262d346f3f0d3cc0cf872"
 
       define_method(:install) do
         bin.install "hemma"
@@ -39,8 +39,8 @@ class Hemma < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/Miista/homebrew-hemma/releases/download/v0.31.0/hemma_0.31.0_linux_amd64.tar.gz"
-      sha256 "afef1cc0cd7245a069d02507cb916831e73a92b6bf1e44a991b298e01fdfa2d5"
+      url "https://github.com/Miista/homebrew-hemma/releases/download/v0.32.0/hemma_0.32.0_linux_amd64.tar.gz"
+      sha256 "0f531ba61c6815aee80aff0d03f1f7e9ca520884aacd429de2f48577735cad17"
       define_method(:install) do
         bin.install "hemma"
         # Backwards-compatible alias: `splitdns` keeps working for all commands.
@@ -51,8 +51,8 @@ class Hemma < Formula
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/Miista/homebrew-hemma/releases/download/v0.31.0/hemma_0.31.0_linux_arm64.tar.gz"
-      sha256 "07cbc925a4ef1b465a984e93c9acdbc0e7be1699778df3f2de8296049aa1b252"
+      url "https://github.com/Miista/homebrew-hemma/releases/download/v0.32.0/hemma_0.32.0_linux_arm64.tar.gz"
+      sha256 "8780fcb0a1e83a957d7fdcd88c469b591fadd7fc06ca765793a570dee5b1fa21"
       define_method(:install) do
         bin.install "hemma"
         # Backwards-compatible alias: `splitdns` keeps working for all commands.
