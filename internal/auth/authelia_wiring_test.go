@@ -129,7 +129,7 @@ func TestValidateWiring_UnwiredListsGatedPublicPaths(t *testing.T) {
 `
 	dir := writeWiringFixture(t, compose, "")
 	svcs := []Service{
-		{Name: "status", FQDN: "status.example.com", Mode: ModeForward, PublicPaths: []string{"/health", "/api/badges/*"}},
+		{Name: "status", FQDN: "status.example.com", Mode: ModeForward, BypassPaths: []string{"/health", "/api/badges/*"}},
 		{Name: "pihole", FQDN: "pihole.example.com", Mode: ModeForward, Groups: []string{"admins"}},
 	}
 	w := (authelia{}).ValidateWiring(dir, "authelia", svcs)
@@ -137,7 +137,7 @@ func TestValidateWiring_UnwiredListsGatedPublicPaths(t *testing.T) {
 		t.Fatalf("consequence must fold into the single unwired advisory, got %d: %v", len(w), w)
 	}
 	s := w[0].String()
-	for _, want := range []string{"public_paths are NOT exempt",
+	for _, want := range []string{"auth.bypass_paths are NOT exempt",
 		"status.example.com/health", "status.example.com/api/badges/*"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("advisory should contain %q:\n%s", want, s)
@@ -150,7 +150,7 @@ func TestValidateWiring_UnwiredListsGatedPublicPaths(t *testing.T) {
 
 	// No public_paths declared → no consequence line.
 	w = (authelia{}).ValidateWiring(dir, "authelia", wiringSvcs)
-	if len(w) != 1 || strings.Contains(w[0].String(), "public_paths") {
+	if len(w) != 1 || strings.Contains(w[0].String(), "bypass_paths") {
 		t.Errorf("no public_paths → no consequence line, got %v", w)
 	}
 }

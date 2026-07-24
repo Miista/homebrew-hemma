@@ -27,10 +27,10 @@ func serviceLine(out, fqdn string) string {
 	return ""
 }
 
-// The EXPOSURE column marks a labelled FQDN public and an unlabelled one local.
+// The PUBLIC column marks a labelled FQDN public and an unlabelled one local.
 // Only the label VALUE matters, not which container carries it: here the label
 // sits on a caddy container, not on the service's own.
-func TestList_ExposureColumn(t *testing.T) {
+func TestList_PublicColumn(t *testing.T) {
 	dir := listSetup(t, "")
 	writeCompose(t, dir, "appbox", `services:
   caddy:
@@ -42,22 +42,22 @@ func TestList_ExposureColumn(t *testing.T) {
 `)
 	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
 
-	if !strings.Contains(out, "EXPOSURE") {
-		t.Fatalf("expected EXPOSURE header, got:\n%s", out)
+	if !strings.Contains(out, "PUBLIC") {
+		t.Fatalf("expected PUBLIC header, got:\n%s", out)
 	}
 	docs := serviceLine(out, "docs.example.com")
 	blog := serviceLine(out, "blog.example.com")
-	if got := strings.Fields(docs); len(got) == 0 || got[len(got)-1] != exposurePublic {
-		t.Errorf("labelled service should be %s, got %q", exposurePublic, docs)
+	if got := strings.Fields(docs); len(got) == 0 || got[len(got)-1] != publicYes {
+		t.Errorf("labelled service should be %s, got %q", publicYes, docs)
 	}
-	if got := strings.Fields(blog); len(got) == 0 || got[len(got)-1] != exposureLocal {
-		t.Errorf("unlabelled service should be %s, got %q", exposureLocal, blog)
+	if got := strings.Fields(blog); len(got) == 0 || got[len(got)-1] != publicNo {
+		t.Errorf("unlabelled service should be %s, got %q", publicNo, blog)
 	}
 }
 
 // The list form of compose labels (- key=value) is accepted, and a backend-port
 // suffix on the label value is stripped before matching.
-func TestList_ExposureListFormAndPortSuffix(t *testing.T) {
+func TestList_PublicListFormAndPortSuffix(t *testing.T) {
 	dir := listSetup(t, "")
 	writeCompose(t, dir, "appbox", `services:
   paperless:
@@ -66,14 +66,14 @@ func TestList_ExposureListFormAndPortSuffix(t *testing.T) {
       - cloudflare.io/hostname=docs.example.com:8000
 `)
 	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
-	if got := strings.Fields(serviceLine(out, "docs.example.com")); len(got) == 0 || got[len(got)-1] != exposurePublic {
-		t.Errorf("list-form label with port suffix should be %s, got:\n%s", exposurePublic, out)
+	if got := strings.Fields(serviceLine(out, "docs.example.com")); len(got) == 0 || got[len(got)-1] != publicYes {
+		t.Errorf("list-form label with port suffix should be %s, got:\n%s", publicYes, out)
 	}
 }
 
 // A configured public_label overrides the cloudflared default, so a different
 // tunnel tool's convention works without code changes.
-func TestList_ExposureCustomLabel(t *testing.T) {
+func TestList_PublicCustomLabel(t *testing.T) {
 	dir := listSetup(t, "")
 	writeCompose(t, dir, "appbox", `services:
   paperless:
@@ -89,8 +89,8 @@ func TestList_ExposureCustomLabel(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
-	if got := strings.Fields(serviceLine(out, "docs.example.com")); len(got) == 0 || got[len(got)-1] != exposurePublic {
-		t.Errorf("custom public_label should mark the service %s, got:\n%s", exposurePublic, out)
+	if got := strings.Fields(serviceLine(out, "docs.example.com")); len(got) == 0 || got[len(got)-1] != publicYes {
+		t.Errorf("custom public_label should mark the service %s, got:\n%s", publicYes, out)
 	}
 	// The default key must no longer be consulted.
 	if strings.Contains(out, config.DefaultPublicLabel) {
@@ -100,7 +100,7 @@ func TestList_ExposureCustomLabel(t *testing.T) {
 
 // public_label: none switches the column off entirely, even with compose
 // labels present.
-func TestList_ExposureDisabled(t *testing.T) {
+func TestList_PublicDisabled(t *testing.T) {
 	dir := listSetup(t, "")
 	writeCompose(t, dir, "appbox", `services:
   paperless:
@@ -116,24 +116,24 @@ func TestList_ExposureDisabled(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
-	if strings.Contains(out, "EXPOSURE") {
+	if strings.Contains(out, "PUBLIC") {
 		t.Errorf("public_label: none must drop the column, got:\n%s", out)
 	}
 }
 
 // With no compose file anywhere, the column is dropped rather than rendering a
 // useless column of "?" — a repo whose hosts are not compose-managed.
-func TestList_ExposureHiddenWithoutCompose(t *testing.T) {
+func TestList_PublicHiddenWithoutCompose(t *testing.T) {
 	dir := listSetup(t, "")
 	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
-	if strings.Contains(out, "EXPOSURE") {
+	if strings.Contains(out, "PUBLIC") {
 		t.Errorf("no compose file must drop the column, got:\n%s", out)
 	}
 }
 
 // One readable compose file is enough to show the column; services on a host
 // whose compose is missing then read as unknown rather than silently local.
-func TestList_ExposureUnknownPerHost(t *testing.T) {
+func TestList_PublicUnknownPerHost(t *testing.T) {
 	dir := listSetup(t, "")
 	if code := Run([]string{"-C", dir, "add", "service", "dns",
 		"--fqdn", "dns.example.com", "--host", "resolver", "--backend", "pihole:80"}); code != 0 {
@@ -145,8 +145,8 @@ func TestList_ExposureUnknownPerHost(t *testing.T) {
       cloudflare.io/hostname: "docs.example.com"
 `)
 	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
-	if got := strings.Fields(serviceLine(out, "dns.example.com")); len(got) == 0 || got[len(got)-1] != exposureUnknown {
-		t.Errorf("service on compose-less host should be %s, got:\n%s", exposureUnknown, out)
+	if got := strings.Fields(serviceLine(out, "dns.example.com")); len(got) == 0 || got[len(got)-1] != publicUnknown {
+		t.Errorf("service on compose-less host should be %s, got:\n%s", publicUnknown, out)
 	}
 	if !strings.Contains(out, "could not be read") {
 		t.Errorf("expected the unknown-exposure footnote, got:\n%s", out)
@@ -183,9 +183,9 @@ func TestHostnameFromLabel(t *testing.T) {
 	}
 }
 
-// The EXPOSURE read must never modify the compose file it inspects. hemma does
+// The PUBLIC read must never modify the compose file it inspects. hemma does
 // not own docker-compose.yml (design §12) and the "never write compose" line is
-// absolute — this pins it, since exposure.go is one of only two places in the
+// absolute — this pins it, since public_horizon.go is one of only two places in the
 // codebase that constructs a compose path.
 func TestList_NeverWritesComposeFile(t *testing.T) {
 	dir := listSetup(t, "")

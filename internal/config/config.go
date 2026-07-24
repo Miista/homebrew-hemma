@@ -64,16 +64,25 @@ func parseAuthMode(s string) (AuthMode, error) {
 
 // Auth is a service's auth declaration: a mode plus, optionally, the auth
 // provider group names allowed to access the service (used to generate the
-// provider's access-control rules; groups are meaningless with mode none).
+// provider's access-control rules; groups are meaningless with mode none) and
+// the URL paths exempt from the gate.
 type Auth struct {
 	Mode   AuthMode
 	Groups []string
+	// BypassPaths lists URL paths served without passing the auth gate. It
+	// lives under `auth` because it is only meaningful with mode forward —
+	// it was a top-level `public_paths` before (migrated on load, see
+	// Service.UnmarshalYAML), which put it at the wrong altitude and collided
+	// with the unrelated `public` field. The name mirrors the provider's own
+	// vocabulary: these render as Authelia `policy: 'bypass'` rules.
+	BypassPaths []string
 }
 
 // authWire is the mapping (long) YAML form of Auth.
 type authWire struct {
-	Mode   string   `yaml:"mode"`
-	Groups []string `yaml:"groups,omitempty"`
+	Mode        string   `yaml:"mode"`
+	Groups      []string `yaml:"groups,omitempty"`
+	BypassPaths []string `yaml:"bypass_paths,omitempty"`
 }
 
 // UnmarshalYAML accepts three forms, oldest first:
@@ -104,7 +113,7 @@ func (a *Auth) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("auth object form requires a mode (forward, oidc, or none)")
 		}
 		mode, err := parseAuthMode(w.Mode)
-		a.Mode, a.Groups = mode, w.Groups
+		a.Mode, a.Groups, a.BypassPaths = mode, w.Groups, w.BypassPaths
 		return err
 	}
 	var s string
@@ -116,19 +125,21 @@ func (a *Auth) UnmarshalYAML(value *yaml.Node) error {
 	return err
 }
 
-// MarshalYAML emits the SHORT string form (`auth: forward`) when no groups are
-// set, and the mapping form only when groups carry data — the YAML stays as
-// terse as before this field grew structure.
+// MarshalYAML emits the SHORT string form (`auth: forward`) when neither groups
+// nor bypass paths are set, and the mapping form only when one of them carries
+// data — the YAML stays as terse as before this field grew structure.
 func (a Auth) MarshalYAML() (any, error) {
-	if len(a.Groups) == 0 {
+	if len(a.Groups) == 0 && len(a.BypassPaths) == 0 {
 		return string(a.Mode), nil
 	}
-	return authWire{Mode: string(a.Mode), Groups: a.Groups}, nil
+	return authWire{Mode: string(a.Mode), Groups: a.Groups, BypassPaths: a.BypassPaths}, nil
 }
 
 // IsZero lets yaml's omitempty drop `auth:` entirely for unprotected services
-// (mode none, no groups), matching the pre-struct behavior.
-func (a Auth) IsZero() bool { return a.Mode == AuthNone && len(a.Groups) == 0 }
+// (mode none, no groups, no bypass paths), matching the pre-struct behavior.
+func (a Auth) IsZero() bool {
+	return a.Mode == AuthNone && len(a.Groups) == 0 && len(a.BypassPaths) == 0
+}
 
 // Host is one host in the homelab, owning a directory in the repo. The
 // directory defaults to the host's name (its key in the hosts map); the dir
@@ -192,7 +203,7 @@ type Defaults struct {
 	// hardcoded — so hemma stays generator-agnostic: the default matches
 	// cloudflared-wrapper's convention on this homelab, but any tunnel tool
 	// that declares ingress by compose label works by setting this key.
-	// Set to "none" to switch the EXPOSURE column off entirely.
+	// Set to "none" to switch the PUBLIC column off entirely.
 	// Empty means DefaultPublicLabel.
 	PublicLabel string `yaml:"public_label,omitempty"`
 }
@@ -202,7 +213,7 @@ type Defaults struct {
 const DefaultPublicLabel = "cloudflare.io/hostname"
 
 // PublicLabelDisabled is the defaults.public_label value that turns the
-// public/local distinction off (no EXPOSURE column, no compose reads).
+// public-horizon reporting off (no PUBLIC column, no compose reads).
 const PublicLabelDisabled = "none"
 
 // ResolvedPublicLabel returns the compose label key to consult, or "" when the
@@ -230,14 +241,72 @@ type Service struct {
 	// - oidc means the app does OIDC itself; hemma renders a plain
 	//   reverse_proxy and instead verifies an Authelia OIDC client exists.
 	// omitempty (via Auth.IsZero) drops the unprotected zero value; forward/oidc
-	// serialize as their string form, or the {mode, groups} mapping when groups
-	// are set. Legacy `auth: true` is accepted on load and re-emitted as
-	// `auth: forward`.
+	// serialize as their string form, or the {mode, groups, bypass_paths}
+	// mapping when either carries data. Legacy `auth: true` is accepted on load
+	// and re-emitted as `auth: forward`.
 	Auth Auth `yaml:"auth,omitempty"`
-	// PublicPaths is a list of URL paths that are exempt from auth, served
-	// directly by the backend without going through the forward-auth gate.
-	// Only meaningful when Auth == AuthForward; ignored otherwise.
+	// Public declares the INTENDED public horizon: true = should be reachable
+	// from the internet, false = internal only. There is no "public" value that
+	// excludes the internal horizon — every service with an entry here gets a
+	// Pi-hole record and a Caddy block, so "local" is a consequence of being
+	// declared at all, not a choice (design §12).
+	//
+	// It is a *bool because THREE states matter, and they are not
+	// true/false/"whatever": nil means undeclared, and only a DECLARED value is
+	// compared against the observed compose label. Were this a plain bool,
+	// every existing service would silently declare itself internal-only and
+	// doctor would warn on every publicly-labelled one.
+	Public *bool `yaml:"public,omitempty"`
+}
+
+// serviceWire is the on-disk form of Service, carrying the legacy keys that are
+// accepted on load and migrated away. Service itself holds only current fields,
+// so marshalling can never re-emit a legacy key.
+type serviceWire struct {
+	FQDN     string `yaml:"fqdn"`
+	Host     string `yaml:"host"`
+	Backend  string `yaml:"backend"`
+	Disabled bool   `yaml:"disabled,omitempty"`
+	Auth     Auth   `yaml:"auth,omitempty"`
+	Public   *bool  `yaml:"public,omitempty"`
+	// PublicPaths is the pre-move name of Auth.BypassPaths, when auth-exempt
+	// paths sat at the top level. Accepted on load, re-emitted under `auth`.
 	PublicPaths []string `yaml:"public_paths,omitempty"`
+}
+
+// UnmarshalYAML decodes a service and migrates legacy top-level `public_paths`
+// into `auth.bypass_paths` (design §3). The migration is one-way and silent:
+// the next mutation rewrites services.yaml wholesale, so the old key simply
+// stops existing — the same accept-both-then-re-emit approach as the manifest
+// and Caddyfile-import renames. An explicit `auth.bypass_paths` wins if a file
+// somehow carries both.
+func (s *Service) UnmarshalYAML(value *yaml.Node) error {
+	var w serviceWire
+	if err := value.Decode(&w); err != nil {
+		return err
+	}
+	*s = Service{
+		FQDN:     w.FQDN,
+		Host:     w.Host,
+		Backend:  w.Backend,
+		Disabled: w.Disabled,
+		Auth:     w.Auth,
+		Public:   w.Public,
+	}
+	if len(w.PublicPaths) > 0 && len(s.Auth.BypassPaths) == 0 {
+		s.Auth.BypassPaths = w.PublicPaths
+	}
+	return nil
+}
+
+// DeclaredPublic reports the service's declared public horizon and whether it
+// was declared at all. Callers must respect the second return: an undeclared
+// service has no intent to compare against reality, so it warrants no advisory.
+func (s Service) DeclaredPublic() (want, declared bool) {
+	if s.Public == nil {
+		return false, false
+	}
+	return *s.Public, true
 }
 
 // Config is the in-memory representation of services.yaml.

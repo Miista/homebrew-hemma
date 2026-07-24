@@ -105,14 +105,14 @@ func (a authelia) ValidateWiring(hostDir, container string, services []Service) 
 		}
 		body := []string{fmt.Sprintf("%s is generated, but Authelia is not configured to load it —", artifact),
 			detail}
-		// public_paths exemptions live ONLY in this artifact's bypass rules
+		// auth.bypass_paths exemptions live ONLY in this artifact's bypass rules
 		// (Caddy renders no per-path branches, design §4.5), so an unwired
 		// artifact does not just leave groups unenforced — it keeps the
 		// declared public paths auth-gated, breaking unauthenticated probes.
 		// One advisory, consequence folded in; no separate warning.
-		if gated := gatedPublicPaths(services); len(gated) > 0 {
+		if gated := gatedBypassPaths(services); len(gated) > 0 {
 			body = append(body,
-				"until it is wired in, public_paths are NOT exempt — these stay behind the login,",
+				"until it is wired in, auth.bypass_paths are NOT exempt — these stay behind the login,",
 				fmt.Sprintf("breaking unauthenticated probes: %s.", strings.Join(gated, ", ")))
 		}
 		w = append(w, Advisory{
@@ -142,16 +142,16 @@ func (a authelia) ValidateWiring(hostDir, container string, services []Service) 
 	return w
 }
 
-// gatedPublicPaths lists, as sorted <fqdn><path> strings, every public_paths
+// gatedBypassPaths lists, as sorted <fqdn><path> strings, every public_paths
 // entry of the forward services — the paths that stay auth-gated while the
 // access-control artifact is unwired.
-func gatedPublicPaths(services []Service) []string {
+func gatedBypassPaths(services []Service) []string {
 	var gated []string
 	for _, s := range services {
 		if s.Mode != ModeForward {
 			continue
 		}
-		for _, p := range s.PublicPaths {
+		for _, p := range s.BypassPaths {
 			gated = append(gated, s.FQDN+p)
 		}
 	}

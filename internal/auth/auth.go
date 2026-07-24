@@ -26,7 +26,7 @@ type Service struct {
 	FQDN        string
 	Mode        string   // ModeForward or ModeOIDC
 	Groups      []string // provider group names allowed access; empty = any authenticated user
-	PublicPaths []string // paths exempt from auth (forward mode only)
+	BypassPaths []string // paths exempt from the auth gate (forward mode only)
 }
 
 // Advisory is one instructive advisory (design §6.4): a finding about a file

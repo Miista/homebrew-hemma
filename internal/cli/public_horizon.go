@@ -11,7 +11,7 @@ import (
 )
 
 // Read-only detection of which services are reachable from the internet, for
-// the EXPOSURE column of `list`.
+// the PUBLIC column of `list`.
 //
 // hemma owns the INTERNAL horizon only (Pi-hole record + Caddy block) and
 // still never writes docker-compose.yml (design §12). But "is this FQDN also
@@ -38,11 +38,11 @@ import (
 // the same <hostDir>/docker-compose.yml the auth wiring check reads.
 const composeFile = "docker-compose.yml"
 
-// Exposure column values.
+// PUBLIC column values, matching the vocabulary of the `public` field.
 const (
-	exposurePublic  = "public"
-	exposureLocal   = "local"
-	exposureUnknown = "?"
+	publicYes     = "yes"
+	publicNo      = "no"
+	publicUnknown = "?"
 )
 
 // composeLabelsDoc is the sliver of docker-compose.yml this read needs: the
@@ -54,10 +54,10 @@ type composeLabelsDoc struct {
 	} `yaml:"services"`
 }
 
-// exposureLookup answers "is this FQDN publicly reachable?" per service,
+// publicLookup answers "is this FQDN publicly reachable?" per service,
 // caching one compose parse per host directory. The zero-value label ("")
 // means the feature is off and every answer is "".
-type exposureLookup struct {
+type publicLookup struct {
 	label    string
 	repoRoot string
 	// public maps a host name to the set of lowercased FQDNs labelled public
@@ -66,24 +66,24 @@ type exposureLookup struct {
 	public map[string]map[string]bool
 }
 
-// newExposureLookup prepares the lookup. It reads nothing yet; compose files
+// newPublicLookup prepares the lookup. It reads nothing yet; compose files
 // are parsed lazily, one per host, on first service from that host.
-func newExposureLookup(repoRoot string, cfg *config.Config) *exposureLookup {
-	return &exposureLookup{
+func newPublicLookup(repoRoot string, cfg *config.Config) *publicLookup {
+	return &publicLookup{
 		label:    cfg.Defaults.ResolvedPublicLabel(),
 		repoRoot: repoRoot,
 		public:   map[string]map[string]bool{},
 	}
 }
 
-// enabled reports whether the EXPOSURE column should be shown at all.
-func (e *exposureLookup) enabled() bool { return e != nil && e.label != "" }
+// enabled reports whether the PUBLIC column should be shown at all.
+func (e *publicLookup) enabled() bool { return e != nil && e.label != "" }
 
 // of returns the exposure of one service: "public" when the host's compose
 // declares the public-ingress label for its FQDN, "local" when it does not,
 // and "?" when that host's compose could not be read. Returns "" when the
 // feature is off.
-func (e *exposureLookup) of(cfg *config.Config, svc config.Service) string {
+func (e *publicLookup) of(cfg *config.Config, svc config.Service) string {
 	if !e.enabled() {
 		return ""
 	}
@@ -95,12 +95,12 @@ func (e *exposureLookup) of(cfg *config.Config, svc config.Service) string {
 		e.public[svc.Host] = set
 	}
 	if set == nil {
-		return exposureUnknown
+		return publicUnknown
 	}
 	if set[strings.ToLower(svc.FQDN)] {
-		return exposurePublic
+		return publicYes
 	}
-	return exposureLocal
+	return publicNo
 }
 
 // labelledHostnames parses the compose file at path and returns the set of

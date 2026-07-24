@@ -79,9 +79,9 @@ func (authelia) AccessControl(services []Service) (path, content string, ok bool
 		for _, s := range forward {
 			// Bypass rules first (one per public path), then the access rule —
 			// Authelia rules are first-match, so the exemptions must precede
-			// the gate. These bypass rules are the ONLY public_paths
+			// the gate. These bypass rules are the ONLY auth.bypass_paths
 			// enforcement; Caddy renders no per-path branches (§4.5).
-			for _, p := range s.PublicPaths {
+			for _, p := range s.BypassPaths {
 				fmt.Fprintf(&b, "    - domain: %s\n", yq(s.FQDN))
 				b.WriteString("      resources:\n")
 				fmt.Fprintf(&b, "        - %s\n", yq(pathResource(p)))
@@ -131,9 +131,9 @@ func writeSubject(b *strings.Builder, indent string, groups []string) {
 	}
 }
 
-// pathResource translates a public_paths entry into an Authelia resources
+// pathResource translates an auth.bypass_paths entry into an Authelia resources
 // regex. These regexes ARE the auth exemption — Caddy does not render
-// public_paths at all (design §4.5), so the bypass gate lives here and only
+// auth.bypass_paths at all (design §4.5), so the bypass gate lives here and only
 // here. Authelia matches resources against the path INCLUDING the query
 // string, hence the optional query tail on both shapes:
 //

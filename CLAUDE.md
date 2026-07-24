@@ -111,10 +111,10 @@ a `cloudflare.io/hostname` label read by cloudflared-wrapper off the docker sock
 hand-maintained `docker-compose.yml` hemma does not own. **Never write a compose file** — that line is
 absolute. See `design.md` §12 for the full rationale.
 
-It does *report* on the public horizon, read-only: `list`'s **EXPOSURE** column (`internal/cli/exposure.go`)
+It does *report* on the public horizon, read-only: `list`'s **PUBLIC** column (`internal/cli/public_horizon.go`)
 parses each host's compose file for the `defaults.public_label` key (default `cloudflare.io/hostname`,
-`none` disables) and marks each service `public` or `local`. The label key is configuration, not code,
-so the generator core stays tunnel-agnostic. An unreadable compose yields `?`, never `local`. This
+`none` disables) and marks each service `yes` or `no`. The label key is configuration, not code,
+so the generator core stays tunnel-agnostic. An unreadable compose yields `?`, never `no`. This
 amends the original §12 absolute ("not even a read-only warning") — see the amendment note there.
-A service can still have a correct internal horizon yet be publicly broken; EXPOSURE makes that visible
+A service can still have a correct internal horizon yet be publicly broken; PUBLIC makes that visible
 but fixing it is a hand edit to the compose file.

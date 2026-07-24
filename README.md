@@ -188,14 +188,14 @@ unprotected one.
 
 The `AUTH` column in `hemma list` shows the mode (`forward` / `oidc` / `-`).
 
-### Local-only or also public? The `EXPOSURE` column
+### Local-only or also public? The `PUBLIC` column
 
 hemma generates the **internal** horizon — the Pi-hole record and the Caddy site block. Whether a
 name is *also* reachable from the internet is the tunnel's business, and hemma never writes that
 config. But it does read it, so `hemma list` can answer the question:
 
 ```
-  NAME       FQDN                 HOST      BACKEND         AUTH     EXPOSURE
+  NAME       FQDN                 HOST      BACKEND         AUTH     PUBLIC
   paperless  docs.guldmund.dk     optiplex  paperless:8000  oidc     public
   pihole     pihole.guldmund.dk   pi        …:8080          forward  local
 ```
@@ -225,7 +225,7 @@ re-emitted as `auth: forward` on the next mutation; `auth: false`/absent = `none
 stored in the object YAML form (`auth: {mode, groups}`; the short `auth: forward` form is kept
 when no groups are set) and flow into a generated Authelia access-control file on the
 `auth_service` host — `authelia/data/config/hemma.access_control.generated.yml` — containing
-`access_control` rules for forward services (bypass rules for their `public_paths`, then a
+`access_control` rules for forward services (bypass rules for their `auth.bypass_paths`, then a
 `one_factor` rule; multiple groups are OR'd) and named
 `identity_providers.oidc.authorization_policies` for oidc services with groups. hemma
 generates the file but does not wire it into Authelia; include it in the Authelia config and
@@ -309,7 +309,7 @@ status.example.com {
 
 Some services need certain paths to be reachable without credentials even when behind
 `auth: forward` — for example a `/health` endpoint that a monitoring tool polls. Add
-`public_paths` to the service entry in `services.yaml`:
+`auth.bypass_paths` to the service entry in `services.yaml`:
 
 ```yaml
 services:
@@ -317,10 +317,11 @@ services:
     fqdn: status.example.com
     host: appbox
     backend: gatus:8080
-    auth: forward
-    public_paths:
-      - /health          # this exact path only (query string allowed)
-      - /api/badges/*    # this path and everything below it
+    auth:
+      mode: forward
+      bypass_paths:
+        - /health          # this exact path only (query string allowed)
+        - /api/badges/*    # this path and everything below it
 ```
 
 Enforcement lives in **Authelia, not Caddy** — one policy engine, so the Caddy matcher and the
@@ -350,7 +351,7 @@ bypassed paths **require the auth provider to be up** — every request still tr
 forward-auth subrequest; Authelia just answers it without demanding a session. If Authelia is
 down, so are the public paths.
 
-`public_paths` is ignored for `auth: none` and `auth: oidc` services (those have no auth gate to
+`auth.bypass_paths` is ignored for `auth: none` and `auth: oidc` services (those have no auth gate to
 exempt from). Set it directly in `services.yaml`; there is no CLI flag for it.
 
 ## Commands
@@ -400,7 +401,7 @@ hemma            completion <bash|zsh>
 | `set auth-service <name>` | Name the service that IS the forward-auth portal (e.g. Authelia); its site block preserves `X-Forwarded-Host` through the hairpin. Pass `-` to clear. |
 | `create app oidc` | Mint OIDC client credentials (id, secret, digest) + a ready-to-paste provider config snippet. Print-only. See [Auth](#auth-optional). |
 | `create user` | Interactively hash a new user's password (argon2id) + print the users-database snippet. Print-only. |
-| `list` | The overview of the home: hosts, domains, services (with an `AUTH` column showing `forward` / `oidc` / `-` and an `EXPOSURE` column showing `public` / `local`), and the auth **groups** — each group's users and the services restricted to it, including orphans (a group with services but no users, or users but no services). The services list defaults to those on **this** host (matched by local IP); `--all` shows every host. Read-only. |
+| `list` | The overview of the home: hosts, domains, services (with an `AUTH` column showing `forward` / `oidc` / `-` and a `PUBLIC` column showing `yes` / `no`), and the auth **groups** — each group's users and the services restricted to it, including orphans (a group with services but no users, or users but no services). The services list defaults to those on **this** host (matched by local IP); `--all` shows every host. Read-only. |
 | `apply` | Make synced config live on THIS host: restart pihole (resolver), `caddy validate` + reload (service hosts), and validate + restart the auth provider (auth host). Refuses on repo drift. Run on each host. |
 | `deploy` | Push-based fan-out over ssh: `git pull --ff-only` on every target host — **any** failure aborts the whole deploy with nothing applied — then `hemma apply` per host, remotes first and this host last. Targets default to every host with a role; names restrict. Refuses if the local repo is dirty or unpushed. See [Deploying the fleet](#deploying-the-fleet-hemma-deploy). |
 | `doctor [--fix]` | Audit the repo: gitignored generated files, Caddyfile imports, generated-file drift, auth config consistency (OIDC clients registered, policies referenced, groups exist on real users). `--fix` reconciles files, .gitignore, and legacy-name migration. |
@@ -440,12 +441,13 @@ services:
     fqdn: docs.example.com
     host: appbox        # host that runs the service; Caddy site block goes in its dir
     backend: paperless:8000
+    public: true        # optional; declared public horizon (true|false); absent = undeclared
     auth: forward       # optional; forward|oidc|none (or legacy true=forward)
-    # auth:               # object form when access is restricted to groups:
+    # auth:               # object form when groups or bypass paths are set:
     #   mode: forward     #   required: forward|oidc|none
     #   groups: [admins]  #   optional; Authelia groups allowed access (OR'd)
-    public_paths:       # optional; paths exempt from auth (only meaningful with auth: forward)
-      - /health
+    #   bypass_paths:     #   optional; paths exempt from the gate (forward mode only)
+    #     - /health
 ```
 
 Output paths are fixed: `<dns-host>/pihole/data/dnsmasq.d/<service>.generated.conf` (directly in

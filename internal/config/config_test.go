@@ -385,3 +385,191 @@ func TestHostSSH_RoundTripAndDefault(t *testing.T) {
 		t.Errorf("empty ssh should be omitted from the YAML:\n%s", b)
 	}
 }
+
+// The `public` field is three-state: a declared true/false round-trips, and an
+// absent key stays absent rather than defaulting to false. The distinction is
+// load-bearing — doctor only compares DECLARED intent against the observed
+// compose label, so an undeclared service must not read as "declared internal".
+func TestServicePublic_ThreeState(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "services.yaml")
+	write(t, path, `hosts: {}
+domains: []
+defaults: {}
+services:
+  wanted:
+    fqdn: a.example.com
+    host: h
+    backend: x:1
+    public: true
+  internal:
+    fqdn: b.example.com
+    host: h
+    backend: x:1
+    public: false
+  undeclared:
+    fqdn: c.example.com
+    host: h
+    backend: x:1
+`)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]struct{ val, declared bool }{
+		"wanted":     {true, true},
+		"internal":   {false, true},
+		"undeclared": {false, false},
+	} {
+		got, declared := c.Services[name].DeclaredPublic()
+		if got != want.val || declared != want.declared {
+			t.Errorf("%s: DeclaredPublic() = (%v, %v), want (%v, %v)", name, got, declared, want.val, want.declared)
+		}
+	}
+
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	out := string(b)
+	if !strings.Contains(out, "public: true") {
+		t.Errorf("declared true must round-trip:\n%s", out)
+	}
+	if !strings.Contains(out, "public: false") {
+		t.Errorf("declared false must round-trip (it is not the zero value):\n%s", out)
+	}
+	// The undeclared service must not gain a `public:` key on rewrite.
+	if n := strings.Count(out, "public:"); n != 2 {
+		t.Errorf("expected exactly 2 public: keys (undeclared stays absent), got %d:\n%s", n, out)
+	}
+}
+
+// Legacy top-level `public_paths` migrates to `auth.bypass_paths` on load and
+// the old key is gone after the next rewrite. The paths themselves, and the
+// auth mode they belong to, are preserved exactly.
+func TestBypassPaths_MigratesFromPublicPaths(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "services.yaml")
+	write(t, path, `hosts: {}
+domains: []
+defaults: {}
+services:
+  gatus:
+    fqdn: status.example.com
+    host: h
+    backend: gatus:8080
+    auth:
+      mode: forward
+      groups: [admins]
+    public_paths:
+      - /health
+      - /api/v1/endpoints/*
+`)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := c.Services["gatus"].Auth
+	if got.Mode != AuthForward || len(got.Groups) != 1 {
+		t.Fatalf("auth mangled by migration: %+v", got)
+	}
+	if len(got.BypassPaths) != 2 || got.BypassPaths[0] != "/health" || got.BypassPaths[1] != "/api/v1/endpoints/*" {
+		t.Fatalf("bypass paths not migrated: %+v", got.BypassPaths)
+	}
+
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	out := string(b)
+	if strings.Contains(out, "public_paths") {
+		t.Errorf("legacy public_paths must not be re-emitted:\n%s", out)
+	}
+	if !strings.Contains(out, "bypass_paths") || !strings.Contains(out, "/health") {
+		t.Errorf("bypass_paths should be emitted under auth:\n%s", out)
+	}
+	// Reloading the rewritten file must yield the same paths (no double migration).
+	c2, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c2.Services["gatus"].Auth.BypassPaths) != 2 {
+		t.Errorf("re-load lost bypass paths: %+v", c2.Services["gatus"].Auth)
+	}
+}
+
+// An explicit auth.bypass_paths wins over a legacy public_paths if a file
+// somehow carries both — the new key is authoritative, never merged.
+func TestBypassPaths_ExplicitWinsOverLegacy(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "services.yaml")
+	write(t, path, `hosts: {}
+domains: []
+defaults: {}
+services:
+  s:
+    fqdn: s.example.com
+    host: h
+    backend: x:1
+    auth:
+      mode: forward
+      bypass_paths: [/new]
+    public_paths: [/old]
+`)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := c.Services["s"].Auth.BypassPaths
+	if len(got) != 1 || got[0] != "/new" {
+		t.Errorf("explicit bypass_paths should win, got %+v", got)
+	}
+}
+
+// bypass_paths alone (no groups) is enough to force the object form — the terse
+// string form cannot carry it.
+func TestBypassPaths_ForcesObjectForm(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "services.yaml")
+	write(t, path, `hosts: {}
+domains: []
+defaults: {}
+services:
+  s:
+    fqdn: s.example.com
+    host: h
+    backend: x:1
+    auth:
+      mode: forward
+      bypass_paths: [/health]
+`)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	out := string(b)
+	if !strings.Contains(out, "mode: forward") || !strings.Contains(out, "bypass_paths") {
+		t.Errorf("bypass_paths must force the object form:\n%s", out)
+	}
+	if strings.Contains(out, "auth: forward") {
+		t.Errorf("short form cannot carry bypass_paths:\n%s", out)
+	}
+}
+
+// public_label resolution: unset falls back to the cloudflared default, "none"
+// disables the lookup, anything else is used verbatim.
+func TestResolvedPublicLabel(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                  DefaultPublicLabel,
+		PublicLabelDisabled: "",
+		"my.tunnel/host":    "my.tunnel/host",
+	} {
+		if got := (Defaults{PublicLabel: in}).ResolvedPublicLabel(); got != want {
+			t.Errorf("ResolvedPublicLabel(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

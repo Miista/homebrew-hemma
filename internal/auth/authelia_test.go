@@ -24,7 +24,7 @@ func provider(t *testing.T) Provider {
 func TestAuthelia_AccessControl(t *testing.T) {
 	p := provider(t)
 	path, got, ok := p.AccessControl([]Service{
-		{Name: "status", FQDN: "status.example.com", Mode: ModeForward, PublicPaths: []string{"/health"}},
+		{Name: "status", FQDN: "status.example.com", Mode: ModeForward, BypassPaths: []string{"/health"}},
 		{Name: "pihole", FQDN: "pihole.example.com", Mode: ModeForward, Groups: []string{"admins"}},
 	})
 	if !ok {

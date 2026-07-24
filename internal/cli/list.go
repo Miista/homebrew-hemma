@@ -87,7 +87,7 @@ func cmdList(cfgPath string, args []string) int {
 	} else {
 		fmt.Printf("\n%s== Services (%d) ==%s\n", boldOn, len(svcNames), boldOff)
 	}
-	printServiceTable(cfg, svcNames, newExposureLookup(filepath.Dir(cfgPath), cfg))
+	printServiceTable(cfg, svcNames, newPublicLookup(filepath.Dir(cfgPath), cfg))
 	if filtered && len(svcNames) < len(cfg.Services) {
 		fmt.Printf("  (%d on other hosts hidden — use --all to show)\n", len(cfg.Services)-len(svcNames))
 	}
@@ -105,19 +105,20 @@ func cmdList(cfgPath string, args []string) int {
 }
 
 // printServiceTable renders the services as an aligned table with an AUTH
-// column showing the auth MODE (forward/oidc/-) and an EXPOSURE column showing
-// whether the FQDN is local-only or also reachable from the internet (read from
-// the host's compose labels — see exposure.go; omitted when that lookup is
-// switched off). Column widths are computed from the data (including headers)
-// so it stays aligned regardless of name/fqdn lengths. Disabled services are
-// marked in a trailing note column. When nothing is selected, prints a
-// placeholder.
-func printServiceTable(cfg *config.Config, svcNames []string, exp *exposureLookup) {
+// column showing the auth MODE (forward/oidc/-) and a PUBLIC column showing
+// whether the FQDN is also reachable from the internet (read from the host's
+// compose labels — see public_horizon.go; omitted when that lookup is switched
+// off). PUBLIC reports OBSERVED reality; whether it contradicts the declared
+// `public` field is doctor's business, since list is inventory and not a status
+// view. Column widths are computed from the data (including headers) so it stays
+// aligned regardless of name/fqdn lengths. Disabled services are marked in a
+// trailing note column. When nothing is selected, prints a placeholder.
+func printServiceTable(cfg *config.Config, svcNames []string, pub *publicLookup) {
 	if len(svcNames) == 0 {
 		fmt.Println("  (none)")
 		return
 	}
-	type row struct{ name, fqdn, host, backend, auth, exposure, note string }
+	type row struct{ name, fqdn, host, backend, auth, public, note string }
 	rows := make([]row, 0, len(svcNames))
 	anyAuth := false
 	anyUnknown, anyKnown := false, false
@@ -132,19 +133,19 @@ func printServiceTable(cfg *config.Config, svcNames []string, exp *exposureLooku
 		if svc.Disabled {
 			note = "[disabled]"
 		}
-		exposure := exp.of(cfg, svc)
-		switch exposure {
-		case exposureUnknown:
+		public := pub.of(cfg, svc)
+		switch public {
+		case publicUnknown:
 			anyUnknown = true
-		case exposurePublic, exposureLocal:
+		case publicYes, publicNo:
 			anyKnown = true
 		}
-		rows = append(rows, row{name, svc.FQDN, svc.Host, svc.Backend, auth, exposure, note})
+		rows = append(rows, row{name, svc.FQDN, svc.Host, svc.Backend, auth, public, note})
 	}
 
-	// Header + width computation. AUTH holds "forward"/"oidc"/"-"; EXPOSURE
-	// holds "public"/"local"/"?" and is dropped entirely when disabled.
-	hName, hFQDN, hHost, hBack, hAuth, hExp := "NAME", "FQDN", "HOST", "BACKEND", "AUTH", "EXPOSURE"
+	// Header + width computation. AUTH holds "forward"/"oidc"/"-"; PUBLIC
+	// holds "yes"/"no"/"?" and is dropped entirely when disabled.
+	hName, hFQDN, hHost, hBack, hAuth, hPub := "NAME", "FQDN", "HOST", "BACKEND", "AUTH", "PUBLIC"
 	wName, wFQDN, wHost, wBack, wAuth := len(hName), len(hFQDN), len(hHost), len(hBack), len(hAuth)
 	for _, r := range rows {
 		wName = max(wName, len(r.name))
@@ -154,22 +155,22 @@ func printServiceTable(cfg *config.Config, svcNames []string, exp *exposureLooku
 		wAuth = max(wAuth, len(r.auth))
 	}
 
-	// Only show EXPOSURE when at least one host's compose file was actually
+	// Only show PUBLIC when at least one host's compose file was actually
 	// readable. A repo whose hosts are not compose-managed (or a test fixture)
 	// would otherwise get a column of "?" that says nothing.
-	showExp := exp.enabled() && anyKnown
-	if showExp {
+	showPub := pub.enabled() && anyKnown
+	if showPub {
 		fmt.Printf("  %s%-*s  %-*s  %-*s  %-*s  %-*s  %s%s\n",
-			boldOn, wName, hName, wFQDN, hFQDN, wHost, hHost, wBack, hBack, wAuth, hAuth, hExp, boldOff)
+			boldOn, wName, hName, wFQDN, hFQDN, wHost, hHost, wBack, hBack, wAuth, hAuth, hPub, boldOff)
 	} else {
 		fmt.Printf("  %s%-*s  %-*s  %-*s  %-*s  %s%s\n",
 			boldOn, wName, hName, wFQDN, hFQDN, wHost, hHost, wBack, hBack, hAuth, boldOff)
 	}
 	for _, r := range rows {
 		var line string
-		if showExp {
+		if showPub {
 			line = fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s  %-*s  %s",
-				wName, r.name, wFQDN, r.fqdn, wHost, r.host, wBack, r.backend, wAuth, r.auth, r.exposure)
+				wName, r.name, wFQDN, r.fqdn, wHost, r.host, wBack, r.backend, wAuth, r.auth, r.public)
 		} else {
 			line = fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s  %s",
 				wName, r.name, wFQDN, r.fqdn, wHost, r.host, wBack, r.backend, r.auth)
@@ -182,11 +183,11 @@ func printServiceTable(cfg *config.Config, svcNames []string, exp *exposureLooku
 	if anyAuth {
 		fmt.Println("  (AUTH: forward = imports the (auth) snippet; oidc = app does OIDC itself, no Caddy gate; change with 'hemma update service <name> --auth-mode <mode>')")
 	}
-	if showExp {
-		fmt.Printf("  (EXPOSURE: public = %s label declares tunnel ingress for the FQDN; local = internal horizon only)\n", exp.label)
+	if showPub {
+		fmt.Printf("  (PUBLIC: yes = a %s label declares tunnel ingress for the FQDN; no = internal horizon only)\n", pub.label)
 	}
-	if showExp && anyUnknown {
-		fmt.Printf("  (%s = that host's %s could not be read)\n", exposureUnknown, composeFile)
+	if showPub && anyUnknown {
+		fmt.Printf("  (%s = that host's %s could not be read)\n", publicUnknown, composeFile)
 	}
 }
 

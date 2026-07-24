@@ -211,7 +211,7 @@ func planAccessControl(c *config.Config, p *Plan) {
 			FQDN:        svc.FQDN,
 			Mode:        string(svc.Auth.Mode),
 			Groups:      svc.Auth.Groups,
-			PublicPaths: svc.PublicPaths,
+			BypassPaths: svc.Auth.BypassPaths,
 		})
 	}
 	relPath, content, ok := auth.Default().AccessControl(svcs)

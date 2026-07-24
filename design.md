@@ -79,7 +79,7 @@ defaults:
   auth_snippet: authelia/forward-auth.caddy  # optional; auth directive copied into (auth) — §4.5
   auth_service: authelia              # optional; the service that IS the auth backend — §4.5
   # public_label: cloudflare.io/hostname  # optional; compose label key that declares public ingress,
-                                          # read-only, for list's EXPOSURE column ('none' disables) — §12
+                                          # read-only, for list's PUBLIC column ('none' disables) — §12
 
 services:
   docs:
@@ -87,7 +87,13 @@ services:
     host: optiplex                    # machine that runs the service; Caddy site block goes in its dir
     backend: paperless:8000
     # disabled: true                  # optional; see §6.1 (enable/disable)
+    # public: true                    # optional; DECLARED public horizon (true|false) — §12.
+                                      # absent = undeclared, which doctor leaves alone
     # auth: forward                   # optional auth mode: forward|oidc (or legacy true=forward) — §4.5
+    # auth:                           # object form when groups or bypass paths are set:
+    #   mode: forward
+    #   groups: [admins]              # provider groups allowed access — §4.5
+    #   bypass_paths: [/health]       # paths exempt from the gate (forward only) — §4.5
 ```
 
 Notes:
@@ -98,6 +104,16 @@ Notes:
 - `dns_host` is a **single repo-wide resolver** (`defaults.dns_host`, set via
   `hemma set dns-host`). Every service's DNS record is routed through it; there is **no
   per-service override**. **Do not hardcode which host that is** — always read `defaults.dns_host`.
+- `public` declares the *intended* public horizon and is deliberately three-state: `true`,
+  `false`, or **absent**. Absent means undeclared — `doctor` compares only a declared value
+  against the observed compose label (§12), so existing repos gain no advisories until they opt in.
+  There is no value meaning "public but not local": every declared service gets a Pi-hole record
+  and a Caddy block, so the internal horizon is a consequence of having an entry, not a choice.
+- `auth.bypass_paths` was a top-level `public_paths` until July 2026. It moved under `auth`
+  because it is only meaningful with mode `forward`, and because the old name collided with the
+  unrelated `public` field. Legacy files are migrated on load and the old key stops being emitted
+  on the next rewrite (`Service.UnmarshalYAML`) — the same accept-both-then-re-emit approach as
+  the manifest and Caddyfile-import renames.
 - A service's domain is chosen by matching its `fqdn`'s longest matching registrable domain
   suffix against the `domains` list; the TLS snippet name (`tls_<domain with dots→underscores>`)
   and cert path are derived from that domain — no per-domain config.
@@ -155,7 +171,7 @@ docs.example.com {
   or none (unset). Legacy `auth: true` still parses as `forward` and is re-emitted as the string
   form. When the mode is `forward`, the site imports the `(auth)` snippet before proxying, so
   Caddy runs the forward-auth check first and only proxies on success — one uniform shape
-  regardless of `public_paths`:
+  regardless of `auth.bypass_paths`:
   ```
   docs.example.com {
   	import tls_example_com
@@ -163,7 +179,7 @@ docs.example.com {
   	reverse_proxy paperless:8000
   }
   ```
-  `public_paths` (§4.5) is **not rendered in Caddy at all**: every request goes through the
+  `auth.bypass_paths` (§4.5) is **not rendered in Caddy at all**: every request goes through the
   forward-auth check, and the exemptions live solely in the generated auth-provider bypass
   rules (§4.6). (**Changed from the original design**, which emitted per-path `handle` blocks
   before an auth-gated catch-all — two matchers for one intent; §4.5 has the rationale.
@@ -285,7 +301,7 @@ does OIDC itself, hemma adds no gate); none/unset is unprotected. Legacy `auth: 
 as `forward` and re-emitted as the string form. The mode is what makes an OIDC service's
 protection legible despite rendering plain Caddy.
 
-**`public_paths`.** A `forward`-auth service may declare a list of URL paths exempt from the
+**`auth.bypass_paths`.** A `forward`-auth service may declare a list of URL paths exempt from the
 auth gate (e.g. a `/health` endpoint polled without credentials). Enforcement lives entirely in
 the **auth provider**: each entry becomes a `bypass` rule in the generated access-control
 artifact (§4.6), and the Caddy site block stays the uniform gated shape of §4.2 — every request
@@ -360,11 +376,11 @@ GC'd like any orphan. Content, in stable alphabetical-by-service order:
 access_control:
   default_policy: 'deny'
   rules:
-    # per forward service: one bypass rule per public_paths entry first
+    # per forward service: one bypass rule per auth.bypass_paths entry first
     # (Authelia rules are first-match, so exemptions must precede the gate)…
     - domain: 'status.example.com'
       resources:
-        - '^/health(\?.*)?$'       # public_paths entry translated to a regex (see below)
+        - '^/health(\?.*)?$'       # bypass_paths entry translated to a regex (see below)
       policy: 'bypass'
     # …then the access rule:
     - domain: 'pihole.example.com'
@@ -383,7 +399,7 @@ identity_providers:
               - 'group:users'
 ```
 
-**Bypass regex semantics.** These regexes are the **actual** public_paths gate — Caddy renders
+**Bypass regex semantics.** These regexes are the **actual** auth.bypass_paths gate — Caddy renders
 no per-path branches (§4.5), so precision here matters. Authelia matches `resources` against
 the request path *including* the query string, hence the optional query tail on both shapes
 (regex meta in the literal path is escaped):
@@ -639,7 +655,7 @@ hemma doctor [--fix]     (-f)
    includes the generated access-control artifact, the auth host's `docker-compose.yml` is
    parsed from the checkout (read-only, no docker calls; env in both map and list form) to find
    the `auth_service`'s container and check that its `X_AUTHELIA_CONFIG` lists the artifact.
-   Warns when the artifact is generated but not loaded — and because public_paths exemptions
+   Warns when the artifact is generated but not loaded — and because auth.bypass_paths exemptions
    live only in the artifact's bypass rules (§4.5), that same advisory additionally lists any
    declared public paths as still auth-gated (unauthenticated probes break) until it is wired
    in — and when a hand-written top-level
@@ -735,7 +751,7 @@ hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>   (-c/--a
   It warns first if `dns_host` is unset, marks disabled services `[disabled]`, and reports repo
   drift at the end. **Services default to the current host** (matched by local IP); `--all` shows
   every host. If the local IP matches no host, it falls back to showing everything.
-  The **EXPOSURE** column marks each service `public` or `local` — read-only, from the host's
+  The **PUBLIC** column marks each service `yes` or `no` — read-only, from the host's
   compose tunnel label (`defaults.public_label`); see the §12 amendment for scope and caveats.
   It is dropped entirely when no host's compose file is readable, so a repo whose hosts are not
   compose-managed sees no change.
@@ -959,7 +975,7 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
   **Amendment (July 2026): read-only reporting is in scope.** This non-goal originally also
   forbade *any* awareness of the public side, "even a read-only warning", on the grounds that it
   would couple hemma to one tunnel tool's private label convention. That absolute is now relaxed:
-  `list` has an **EXPOSURE** column marking each service `public` or `local` (§6.6). The question
+  `list` has a **PUBLIC** column marking each service `yes` or `no` (§6.6). The question
   "is this FQDN internal-only?" is a first-class thing to want from an inventory command, and it
   is unanswerable from `services.yaml` alone. What changed the calculus:
   - The coupling is removed by making the label KEY configuration, not code:
@@ -980,7 +996,7 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
   Gotcha this documents: a service can have a correct *internal* horizon (hemma did its job)
   yet be publicly broken because the `cloudflare.io/hostname` label is missing — the FQDN then
   falls back to the zone apex publicly (e.g. `auth.palmund.net` → `palmund.net`). The label is a
-  manual, per-service step that lives with the compose file, not with hemma; EXPOSURE now makes
+  manual, per-service step that lives with the compose file, not with hemma; PUBLIC now makes
   its absence *visible*, but fixing it is still a hand edit to the compose file.
 
   Known limitation: ingress declared in cloudflared's own `config.yml` `ingress:` list instead of
