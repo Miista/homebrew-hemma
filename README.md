@@ -205,11 +205,44 @@ is that FQDN — the tunnel serves it and upserts its public DNS record. `local`
 the name resolves only inside the LAN. Matching is by FQDN, not container name, since the label often
 sits on the Caddy container rather than the app's.
 
+### Declaring intent, and what `doctor` checks
+
+The `PUBLIC` column reports what **is**. To say what **should be**, set `public` on the service:
+
+```yaml
+services:
+  wiki:
+    public: true      # should be reachable from the internet
+  pihole:
+    public: false     # internal only — warn me if a label ever appears
+  ntfy:               # no `public` key = undeclared; doctor stays quiet
+```
+
+There is no value meaning "public but not local": every service in `services.yaml` gets a Pi-hole
+record and a Caddy block, so the internal horizon is a consequence of being declared at all.
+Leaving `public` off means *undeclared*, which is deliberately distinct from `false` — an existing
+repo gains no advisories until it opts in.
+
+`hemma doctor` then runs three read-only checks over the compose files:
+
+| Check | What it catches | Fails doctor |
+|---|---|---|
+| **Auth bypass** | A `forward`-auth service whose ingress points **direct at the container**. The tunnel never traverses Caddy, so the `(auth)` gate never runs and the service is public with **no authentication**. | yes |
+| **Declared vs observed** | `public: true` with no label (declared public, isn't) or `public: false` with a label (exposed against an explicit declaration). | yes |
+| **Orphan ingress** | A hostname served publicly in a managed domain with **no service entry** — no internal horizon, so on the LAN it resolves via public DNS, leaves the network, and hairpins back through the tunnel. | no |
+
+Each advisory carries the exact label to add or remove, and the suggested snippet is **auth-aware**:
+a `forward`-auth service is told to route through Caddy, because the direct form would create the
+auth bypass of the first check. A missing or unparseable compose file produces no findings at all —
+absence of evidence is not evidence.
+
 Point it at another tunnel tool by setting the label key in `services.yaml`:
 
 ```yaml
 defaults:
-  public_label: my.tunnel/host   # or 'none' to drop the column entirely
+  public_label: my.tunnel/host             # or 'none' to drop the column entirely
+  public_proxy_label: my.tunnel/via-proxy  # the "routed via a proxy" label, for the
+                                           # auth-bypass check ('none' disables just that check)
 ```
 
 The column is dropped when no host's compose file can be read (nothing useful to say), and an

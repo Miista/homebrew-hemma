@@ -118,3 +118,12 @@ so the generator core stays tunnel-agnostic. An unreadable compose yields `?`, n
 amends the original §12 absolute ("not even a read-only warning") — see the amendment note there.
 A service can still have a correct internal horizon yet be publicly broken; PUBLIC makes that visible
 but fixing it is a hand edit to the compose file.
+
+`doctor` adds three advisory-only checks over the same read (`internal/cli/doctor_public.go`):
+**auth bypass** (a `forward`-auth service served direct from the tunnel bypasses Caddy and so the
+`(auth)` gate — the one real security check; uses `defaults.public_proxy_label`), **declared vs
+observed** (`public: true|false` on a service, contradicted by the labels; silent when undeclared,
+so it is opt-in), and **orphan ingress** (publicly served hostname in a managed domain with no
+service entry). The first two fail doctor; the third informs. The suggested label snippet is
+auth-aware on purpose — emitting the direct form for a `forward`-auth service would have doctor
+recommending the very bypass the first check exists to catch.

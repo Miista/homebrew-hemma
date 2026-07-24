@@ -1023,7 +1023,7 @@ Other:
   hemma list [--all]             Overview: hosts, domains, services (with PUBLIC: internet-reachable or local-only, read from compose tunnel labels), and auth groups (users + restricted services). Services default to THIS host; --all shows every host.
   hemma verify [--all] [<fqdn>]  Check live DNS/Caddy per service. Defaults to services this host can check; --all includes the rest. Run on each host; needs docker.
   hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>  Time the request breakdown (dns/connect/tls/ttfb) for a service or any URL. --compare A/Bs split-horizon vs public read-only (dns-host only, services only).
-  hemma doctor [--fix]           Audit the repo (gitignored files, Caddyfile imports, generated-file drift); --fix reconciles files and .gitignore.
+  hemma doctor [--fix]           Audit the repo (gitignored files, Caddyfile imports, generated-file drift, auth wiring, public horizon: auth bypass / declared-vs-actual / orphan ingress); --fix reconciles files and .gitignore.
   hemma version
   hemma completion <bash|zsh>    Print a shell completion script to stdout (see 'hemma help completion' to install).
   hemma help [<command>]         Show this text, or a command's help (same as <command> --help).

@@ -206,11 +206,26 @@ type Defaults struct {
 	// Set to "none" to switch the PUBLIC column off entirely.
 	// Empty means DefaultPublicLabel.
 	PublicLabel string `yaml:"public_label,omitempty"`
+	// PublicProxyLabel is the compose label key that, when present, means the
+	// tunnel routes a hostname through a reverse proxy rather than straight at
+	// the container. doctor needs it for one check only: a forward-auth service
+	// served DIRECT from the tunnel bypasses Caddy, and therefore bypasses the
+	// auth gate hemma generated for it (§12).
+	//
+	// Separate from PublicLabel because they are separate label keys, and
+	// configurable for the same reason: hemma must not hardcode one tunnel
+	// tool's convention. "none" disables the auth-bypass check while leaving
+	// the PUBLIC column working. Empty means DefaultPublicProxyLabel.
+	PublicProxyLabel string `yaml:"public_proxy_label,omitempty"`
 }
 
 // DefaultPublicLabel is the compose label key consulted when
 // defaults.public_label is unset — cloudflared-wrapper's convention.
 const DefaultPublicLabel = "cloudflare.io/hostname"
+
+// DefaultPublicProxyLabel is the proxy-routing label key consulted when
+// defaults.public_proxy_label is unset — cloudflared-wrapper's convention.
+const DefaultPublicProxyLabel = "cloudflare.io/reverseproxy"
 
 // PublicLabelDisabled is the defaults.public_label value that turns the
 // public-horizon reporting off (no PUBLIC column, no compose reads).
@@ -226,6 +241,21 @@ func (d Defaults) ResolvedPublicLabel() string {
 		return ""
 	}
 	return d.PublicLabel
+}
+
+// ResolvedPublicProxyLabel returns the proxy-routing label key to consult, or
+// "" when it (or public-horizon reporting as a whole) is switched off.
+func (d Defaults) ResolvedPublicProxyLabel() string {
+	if d.ResolvedPublicLabel() == "" {
+		return "" // reporting off entirely — nothing reads compose at all.
+	}
+	switch d.PublicProxyLabel {
+	case "":
+		return DefaultPublicProxyLabel
+	case PublicLabelDisabled:
+		return ""
+	}
+	return d.PublicProxyLabel
 }
 
 // Service is one declared service entry. There is no per-service dns_host:

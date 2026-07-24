@@ -153,19 +153,52 @@ func TestList_PublicUnknownPerHost(t *testing.T) {
 	}
 }
 
-// An unparseable compose file is unknown, not local — a YAML error must never
-// be read as "this service is not public".
-func TestLabelledHostnames_UnparseableIsUnknown(t *testing.T) {
+// An unparseable compose file is unknown, not "not public" — a YAML error must
+// never be read as a fact about exposure.
+func TestLabelledIngress_UnparseableIsUnknown(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, composeFile)
 	if err := os.WriteFile(path, []byte("services: [this is: not valid\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := labelledHostnames(path, config.DefaultPublicLabel); got != nil {
+	if got := labelledIngress(path, config.DefaultPublicLabel, config.DefaultPublicProxyLabel); got != nil {
 		t.Errorf("unparseable compose should be nil (unknown), got %v", got)
 	}
-	if got := labelledHostnames(filepath.Join(dir, "absent.yml"), config.DefaultPublicLabel); got != nil {
+	if got := labelledIngress(filepath.Join(dir, "absent.yml"), config.DefaultPublicLabel, config.DefaultPublicProxyLabel); got != nil {
 		t.Errorf("missing compose should be nil (unknown), got %v", got)
+	}
+}
+
+// labelledIngress captures the container, the port suffix, and whether a proxy
+// label routes the hostname through a reverse proxy — the three facts the doctor
+// checks are built on. container_name overrides the compose service key.
+func TestLabelledIngress_CapturesContainerPortAndProxy(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, composeFile)
+	if err := os.WriteFile(path, []byte(`services:
+  gatus:
+    labels:
+      cloudflare.io/hostname: "status.example.com"
+      cloudflare.io/reverseproxy: "https://caddy:443"
+  ha:
+    container_name: homeassistant
+    labels:
+      cloudflare.io/hostname: "ha.example.com:8123"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := labelledIngress(path, config.DefaultPublicLabel, config.DefaultPublicProxyLabel)
+	if in := got["status.example.com"]; in.Container != "gatus" || !in.Proxied || in.Port != "" {
+		t.Errorf("gatus ingress wrong: %+v", in)
+	}
+	if in := got["ha.example.com"]; in.Container != "homeassistant" || in.Proxied || in.Port != "8123" {
+		t.Errorf("ha ingress wrong (container_name should win): %+v", in)
+	}
+	// With the proxy label disabled, nothing is Proxied — which switches the
+	// auth-bypass check off rather than making it fire on everything.
+	off := labelledIngress(path, config.DefaultPublicLabel, "")
+	if off["status.example.com"].Proxied {
+		t.Error("empty proxyLabel must leave Proxied false")
 	}
 }
 
@@ -221,5 +254,33 @@ func TestList_NeverWritesComposeFile(t *testing.T) {
 	}
 	if string(got) != body {
 		t.Errorf("compose content changed:\n--- want ---\n%s\n--- got ---\n%s", body, got)
+	}
+}
+
+// An empty or whitespace-only label value declares no hostname and must be
+// skipped rather than entering the map under the empty key — which would make
+// every service with an empty FQDN look publicly served.
+func TestLabelledIngress_SkipsEmptyLabelValue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, composeFile)
+	if err := os.WriteFile(path, []byte(`services:
+  a:
+    labels:
+      cloudflare.io/hostname: ""
+  b:
+    labels:
+      cloudflare.io/hostname: "   "
+  c:
+    labels:
+      cloudflare.io/hostname: "real.example.com"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := labelledIngress(path, config.DefaultPublicLabel, config.DefaultPublicProxyLabel)
+	if len(got) != 1 {
+		t.Errorf("empty label values must be skipped, got %d entries: %v", len(got), got)
+	}
+	if _, bad := got[""]; bad {
+		t.Error("the empty hostname must never be a key")
 	}
 }

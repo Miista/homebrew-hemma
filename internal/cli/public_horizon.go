@@ -45,69 +45,97 @@ const (
 	publicUnknown = "?"
 )
 
-// composeLabelsDoc is the sliver of docker-compose.yml this read needs: the
-// labels of each service. Labels stay a yaml.Node because compose allows both
-// the map form (key: value) and the list form (- key=value).
+// composeLabelsDoc is the sliver of docker-compose.yml this read needs: each
+// service's labels, plus the container_name override so a suggested label
+// snippet names the right compose service. Labels stay a yaml.Node because
+// compose allows both the map form (key: value) and the list form (- key=value).
 type composeLabelsDoc struct {
 	Services map[string]struct {
-		Labels yaml.Node `yaml:"labels"`
+		ContainerName string    `yaml:"container_name"`
+		Labels        yaml.Node `yaml:"labels"`
 	} `yaml:"services"`
+}
+
+// ingress is one publicly-served hostname as declared in a compose file.
+type ingress struct {
+	// Container is the compose service key (or its container_name override)
+	// carrying the label — what a suggested snippet must be added under.
+	Container string
+	// Port is the backend port from the label value's ":port" suffix, empty
+	// when the label omits it (the tunnel then infers it from the container).
+	Port string
+	// Proxied reports whether a proxy label routes this hostname through a
+	// reverse proxy instead of straight at the container. Any non-empty value
+	// counts: hemma deliberately does not try to verify the target IS the Caddy
+	// it generates config for, because guessing wrong would mean crying wolf on
+	// a working setup. Absence is the unambiguous case, and the only one acted on.
+	Proxied bool
 }
 
 // publicLookup answers "is this FQDN publicly reachable?" per service,
 // caching one compose parse per host directory. The zero-value label ("")
 // means the feature is off and every answer is "".
 type publicLookup struct {
-	label    string
-	repoRoot string
-	// public maps a host name to the set of lowercased FQDNs labelled public
-	// in that host's compose file. A nil set means the file was missing or
-	// unparseable — reported as unknown rather than silently as local.
-	public map[string]map[string]bool
+	label      string
+	proxyLabel string
+	repoRoot   string
+	// public maps a host name to its lowercased publicly-served hostnames. A
+	// nil map means the compose file was missing or unparseable — reported as
+	// unknown rather than silently as not-public.
+	public map[string]map[string]ingress
 }
 
 // newPublicLookup prepares the lookup. It reads nothing yet; compose files
 // are parsed lazily, one per host, on first service from that host.
 func newPublicLookup(repoRoot string, cfg *config.Config) *publicLookup {
 	return &publicLookup{
-		label:    cfg.Defaults.ResolvedPublicLabel(),
-		repoRoot: repoRoot,
-		public:   map[string]map[string]bool{},
+		label:      cfg.Defaults.ResolvedPublicLabel(),
+		proxyLabel: cfg.Defaults.ResolvedPublicProxyLabel(),
+		repoRoot:   repoRoot,
+		public:     map[string]map[string]ingress{},
 	}
 }
 
 // enabled reports whether the PUBLIC column should be shown at all.
 func (e *publicLookup) enabled() bool { return e != nil && e.label != "" }
 
-// of returns the exposure of one service: "public" when the host's compose
-// declares the public-ingress label for its FQDN, "local" when it does not,
-// and "?" when that host's compose could not be read. Returns "" when the
+// hostIngress returns the publicly-served hostnames declared in one host's
+// compose file, parsing it at most once per lookup. A nil result means the file
+// could not be read.
+func (e *publicLookup) hostIngress(cfg *config.Config, host string) map[string]ingress {
+	if set, ok := e.public[host]; ok {
+		return set
+	}
+	dir := cfg.Hosts[host].ResolvedDir(host)
+	set := labelledIngress(filepath.Join(e.repoRoot, dir, composeFile), e.label, e.proxyLabel)
+	e.public[host] = set
+	return set
+}
+
+// of returns the observed public horizon of one service: "yes" when the host's
+// compose declares the public-ingress label for its FQDN, "no" when it does
+// not, and "?" when that host's compose could not be read. Returns "" when the
 // feature is off.
 func (e *publicLookup) of(cfg *config.Config, svc config.Service) string {
 	if !e.enabled() {
 		return ""
 	}
-	set, ok := e.public[svc.Host]
-	if !ok {
-		host := cfg.Hosts[svc.Host]
-		dir := host.ResolvedDir(svc.Host)
-		set = labelledHostnames(filepath.Join(e.repoRoot, dir, composeFile), e.label)
-		e.public[svc.Host] = set
-	}
+	set := e.hostIngress(cfg, svc.Host)
 	if set == nil {
 		return publicUnknown
 	}
-	if set[strings.ToLower(svc.FQDN)] {
+	if _, ok := set[strings.ToLower(svc.FQDN)]; ok {
 		return publicYes
 	}
 	return publicNo
 }
 
-// labelledHostnames parses the compose file at path and returns the set of
-// lowercased hostnames declared by the label key on any of its services. A
-// missing or unparseable file returns nil (unknown), which is deliberately
-// distinct from an empty set (parsed fine, nothing is public).
-func labelledHostnames(path, label string) map[string]bool {
+// labelledIngress parses the compose file at path and returns every hostname
+// declared by the label key, keyed by lowercased hostname. A missing or
+// unparseable file returns nil (unknown), which is deliberately distinct from an
+// empty map (parsed fine, nothing is public). proxyLabel may be empty, which
+// leaves every Proxied false and so disables the auth-bypass check.
+func labelledIngress(path, label, proxyLabel string) map[string]ingress {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
@@ -116,12 +144,19 @@ func labelledHostnames(path, label string) map[string]bool {
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil
 	}
-	out := map[string]bool{}
-	for _, svc := range doc.Services {
+	out := map[string]ingress{}
+	for name, svc := range doc.Services {
+		container := name
+		if svc.ContainerName != "" {
+			container = svc.ContainerName
+		}
+		proxied := proxyLabel != "" && len(labelValues(svc.Labels, proxyLabel)) > 0
 		for _, v := range labelValues(svc.Labels, label) {
-			if h := hostnameFromLabel(v); h != "" {
-				out[h] = true
+			h, port := hostnameAndPort(v)
+			if h == "" {
+				continue
 			}
+			out[h] = ingress{Container: container, Port: port, Proxied: proxied}
 		}
 	}
 	return out
@@ -146,6 +181,15 @@ func labelValues(labels yaml.Node, key string) []string {
 		}
 	}
 	return out
+}
+
+// hostnameAndPort splits a label value into its hostname and optional port.
+func hostnameAndPort(v string) (host, port string) {
+	s := strings.TrimSpace(v)
+	if _, p, ok := strings.Cut(s, ":"); ok {
+		port = strings.TrimSpace(p)
+	}
+	return hostnameFromLabel(s), port
 }
 
 // hostnameFromLabel normalizes a label value to a bare lowercased hostname.

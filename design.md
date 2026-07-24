@@ -78,8 +78,10 @@ defaults:
   dns_host: pi                        # the single resolver host (set via: hemma set dns-host)
   auth_snippet: authelia/forward-auth.caddy  # optional; auth directive copied into (auth) — §4.5
   auth_service: authelia              # optional; the service that IS the auth backend — §4.5
-  # public_label: cloudflare.io/hostname  # optional; compose label key that declares public ingress,
-                                          # read-only, for list's PUBLIC column ('none' disables) — §12
+  # public_label: cloudflare.io/hostname       # optional; compose label key that declares public
+                                               # ingress, read-only — list's PUBLIC column ('none' disables) — §12
+  # public_proxy_label: cloudflare.io/reverseproxy  # optional; label meaning "routed via a proxy",
+                                               # for doctor's auth-bypass check ('none' disables) — §12
 
 services:
   docs:
@@ -987,6 +989,20 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
   - Label presence is trustworthy, not a guess: cloudflared-wrapper upserts the public DNS record
     for every hostname it is given, so a label implies the public name resolves — the two halves
     of "publicly reachable" cannot drift apart.
+
+  `doctor` acts on the same read (three checks, all advisory-only since hemma never writes
+  compose): **auth bypass** — a `forward`-auth service whose ingress points DIRECT at the
+  container, so the tunnel never traverses Caddy and the generated `(auth)` gate never runs
+  (detected via `defaults.public_proxy_label`, default `cloudflare.io/reverseproxy`; the
+  `auth_service` is exempt because `auth: forward` on it is refused by the planner, so no gate
+  exists to bypass); **declared vs observed** — `public: true|false` contradicted by the labels,
+  silent when undeclared so the check is opt-in; and **orphan ingress** — a publicly-served
+  hostname in a managed domain with no service entry, hence no internal horizon at all. The first
+  two count as doctor problems; the third is informational.
+
+  The suggested label snippet is **auth-aware**: a `forward`-auth service is told to route through
+  Caddy, because the direct form would be exactly the auth bypass of the first check. Blindly
+  emitting one recipe for every service would have doctor recommending a security hole.
 
   Matching is by FQDN against the label's value (port suffix stripped), not by container name —
   the label often sits on the Caddy container rather than the app's. A missing or unparseable

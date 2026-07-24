@@ -573,3 +573,25 @@ func TestResolvedPublicLabel(t *testing.T) {
 		}
 	}
 }
+
+// The proxy label resolves independently of public_label, EXCEPT that turning
+// public-horizon reporting off entirely also stops the proxy read — nothing
+// should touch a compose file when the whole feature is disabled.
+func TestResolvedPublicProxyLabel(t *testing.T) {
+	cases := []struct {
+		label, proxy, want string
+	}{
+		{"", "", DefaultPublicProxyLabel},
+		{"", PublicLabelDisabled, ""},
+		{"", "my.tunnel/via", "my.tunnel/via"},
+		{PublicLabelDisabled, "", ""},                   // reporting off ⇒ proxy off too
+		{PublicLabelDisabled, "my.tunnel/via", ""},      // ...even if a proxy key is set
+		{"my.tunnel/host", "", DefaultPublicProxyLabel}, // custom hostname key, default proxy key
+	}
+	for _, c := range cases {
+		got := (Defaults{PublicLabel: c.label, PublicProxyLabel: c.proxy}).ResolvedPublicProxyLabel()
+		if got != c.want {
+			t.Errorf("ResolvedPublicProxyLabel(label=%q, proxy=%q) = %q, want %q", c.label, c.proxy, got, c.want)
+		}
+	}
+}

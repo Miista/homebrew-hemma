@@ -267,6 +267,27 @@ advisory prints a headline (the consequence), the mechanism, and a fixed
 X_AUTHELIA_CONFIG value that wires the generated access-control file into
 the auth container) and the follow-up command (usually 'hemma apply').
 
+The public-horizon checks read each host's docker-compose.yml (never write it)
+and compare the tunnel-ingress labels against services.yaml, in descending
+severity:
+
+  * AUTH BYPASS — a forward-auth service whose ingress points DIRECT at the
+    container. The tunnel never traverses Caddy, so the (auth) gate hemma
+    generated never runs and the service is publicly reachable with no
+    authentication. Counts as a problem.
+  * DECLARED vs OBSERVED — the service says 'public: true|false' and the labels
+    say otherwise. Services with no 'public' field are silent, so the check is
+    opt-in. Counts as a problem.
+  * ORPHAN INGRESS — a hostname served publicly in a managed domain with no
+    service entry, so it has NO internal horizon: on the LAN it resolves via
+    public DNS, leaves the network, and hairpins back through the tunnel.
+    Informational; does not fail doctor.
+
+Each carries the exact label to add or remove. A missing or unparseable compose
+file yields no findings at all — absence of evidence is not evidence. Configure
+the label keys with defaults.public_label and defaults.public_proxy_label
+('none' disables either).
+
 The deploy-readiness check verifies each remote deploy target has a host key
 in THIS machine's known_hosts ('ssh-keygen -F' against the host's ip and its
 ssh destination — either counts). 'hemma deploy' sshes with BatchMode=yes,
