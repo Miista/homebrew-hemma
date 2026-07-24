@@ -180,6 +180,16 @@ Usage: hemma list [--all]
 By default the services list is filtered to those running on THIS host
 (matched by local IP).
 
+The EXPOSURE column says whether an FQDN is reachable from the internet or is
+internal-only. hemma generates the internal horizon (Pi-hole record + Caddy
+block); the public side is the tunnel's business, so this is read — never
+written — from the host's docker-compose.yml: a 'cloudflare.io/hostname' label
+whose value is the FQDN means public, its absence means local. Set
+defaults.public_label in services.yaml to match another tunnel tool's label
+key, or to 'none' to drop the column. The column is also dropped when no host's
+compose file can be read; '?' marks one host whose compose is missing or
+unparseable, so a read failure is never reported as local.
+
 When any auth group exists, a Groups section follows the services table: the
 union of the auth provider's users database (user -> groups, read-only) and
 services.yaml (service -> auth groups), one block per group, showing its users

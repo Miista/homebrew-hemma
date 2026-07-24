@@ -188,6 +188,35 @@ unprotected one.
 
 The `AUTH` column in `hemma list` shows the mode (`forward` / `oidc` / `-`).
 
+### Local-only or also public? The `EXPOSURE` column
+
+hemma generates the **internal** horizon — the Pi-hole record and the Caddy site block. Whether a
+name is *also* reachable from the internet is the tunnel's business, and hemma never writes that
+config. But it does read it, so `hemma list` can answer the question:
+
+```
+  NAME       FQDN                 HOST      BACKEND         AUTH     EXPOSURE
+  paperless  docs.guldmund.dk     optiplex  paperless:8000  oidc     public
+  pihole     pihole.guldmund.dk   pi        …:8080          forward  local
+```
+
+`public` means the host's `docker-compose.yml` carries a `cloudflare.io/hostname` label whose value
+is that FQDN — the tunnel serves it and upserts its public DNS record. `local` means no such label:
+the name resolves only inside the LAN. Matching is by FQDN, not container name, since the label often
+sits on the Caddy container rather than the app's.
+
+Point it at another tunnel tool by setting the label key in `services.yaml`:
+
+```yaml
+defaults:
+  public_label: my.tunnel/host   # or 'none' to drop the column entirely
+```
+
+The column is dropped when no host's compose file can be read (nothing useful to say), and an
+individual host whose compose is missing or unparseable shows `?` — a read failure is never
+reported as `local`. Ingress declared in cloudflared's own `config.yml` rather than by a label is
+not detected.
+
 **Back-compat:** a legacy `auth: true` in services.yaml still parses (as `forward`) and is
 re-emitted as `auth: forward` on the next mutation; `auth: false`/absent = `none`.
 
@@ -371,7 +400,7 @@ hemma            completion <bash|zsh>
 | `set auth-service <name>` | Name the service that IS the forward-auth portal (e.g. Authelia); its site block preserves `X-Forwarded-Host` through the hairpin. Pass `-` to clear. |
 | `create app oidc` | Mint OIDC client credentials (id, secret, digest) + a ready-to-paste provider config snippet. Print-only. See [Auth](#auth-optional). |
 | `create user` | Interactively hash a new user's password (argon2id) + print the users-database snippet. Print-only. |
-| `list` | The overview of the home: hosts, domains, services (with an `AUTH` column showing `forward` / `oidc` / `-`), and the auth **groups** — each group's users and the services restricted to it, including orphans (a group with services but no users, or users but no services). The services list defaults to those on **this** host (matched by local IP); `--all` shows every host. Read-only. |
+| `list` | The overview of the home: hosts, domains, services (with an `AUTH` column showing `forward` / `oidc` / `-` and an `EXPOSURE` column showing `public` / `local`), and the auth **groups** — each group's users and the services restricted to it, including orphans (a group with services but no users, or users but no services). The services list defaults to those on **this** host (matched by local IP); `--all` shows every host. Read-only. |
 | `apply` | Make synced config live on THIS host: restart pihole (resolver), `caddy validate` + reload (service hosts), and validate + restart the auth provider (auth host). Refuses on repo drift. Run on each host. |
 | `deploy` | Push-based fan-out over ssh: `git pull --ff-only` on every target host — **any** failure aborts the whole deploy with nothing applied — then `hemma apply` per host, remotes first and this host last. Targets default to every host with a role; names restrict. Refuses if the local repo is dirty or unpushed. See [Deploying the fleet](#deploying-the-fleet-hemma-deploy). |
 | `doctor [--fix]` | Audit the repo: gitignored generated files, Caddyfile imports, generated-file drift, auth config consistency (OIDC clients registered, policies referenced, groups exist on real users). `--fix` reconciles files, .gitignore, and legacy-name migration. |

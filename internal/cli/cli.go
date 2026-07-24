@@ -1020,7 +1020,7 @@ Credentials (print-only; the auth provider's config and users database are never
 Other:
   hemma apply                    Make config live on THIS host: validate caddy + auth config first, then restart pihole / reload caddy / restart the auth provider. Run on each host. Refuses if the repo has drift.
   hemma deploy [<host> ...]      Push-based fan-out over ssh: 'git pull --ff-only' on every target host (any failure aborts everything), then 'hemma apply' per host, remotes first and this host last. Targets default to all hosts with a role. Requires a clean, pushed local repo.
-  hemma list [--all]             Overview: hosts, domains, services, and auth groups (users + restricted services). Services default to THIS host; --all shows every host.
+  hemma list [--all]             Overview: hosts, domains, services (with EXPOSURE: public vs local-only, read from compose tunnel labels), and auth groups (users + restricted services). Services default to THIS host; --all shows every host.
   hemma verify [--all] [<fqdn>]  Check live DNS/Caddy per service. Defaults to services this host can check; --all includes the rest. Run on each host; needs docker.
   hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>  Time the request breakdown (dns/connect/tls/ttfb) for a service or any URL. --compare A/Bs split-horizon vs public read-only (dns-host only, services only).
   hemma doctor [--fix]           Audit the repo (gitignored files, Caddyfile imports, generated-file drift); --fix reconciles files and .gitignore.

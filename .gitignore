@@ -28,3 +28,8 @@ id_*
 .claude/
 mikrotik_backup
 optiplex_deploy
+
+# Editor swap/backup files.
+*.swp
+*.swo
+*~

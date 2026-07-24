@@ -106,7 +106,15 @@ instead of failing mid-reload; it refuses if the repo has drift.
 ## Scope boundary (do not cross)
 
 hemma manages the **internal horizon only** (Pi-hole record + Caddy block). It deliberately does not
-create, verify, or warn about the **public horizon** (public DNS + tunnel ingress) — on this homelab that is
+create or modify the **public horizon** (public DNS + tunnel ingress) — on this homelab that is
 a `cloudflare.io/hostname` label read by cloudflared-wrapper off the docker socket, and it lives in a
-hand-maintained `docker-compose.yml` hemma does not own. See `design.md` §12 for the full rationale.
-A service can have a correct internal horizon yet be publicly broken because that label is missing.
+hand-maintained `docker-compose.yml` hemma does not own. **Never write a compose file** — that line is
+absolute. See `design.md` §12 for the full rationale.
+
+It does *report* on the public horizon, read-only: `list`'s **EXPOSURE** column (`internal/cli/exposure.go`)
+parses each host's compose file for the `defaults.public_label` key (default `cloudflare.io/hostname`,
+`none` disables) and marks each service `public` or `local`. The label key is configuration, not code,
+so the generator core stays tunnel-agnostic. An unreadable compose yields `?`, never `local`. This
+amends the original §12 absolute ("not even a read-only warning") — see the amendment note there.
+A service can still have a correct internal horizon yet be publicly broken; EXPOSURE makes that visible
+but fixing it is a hand edit to the compose file.

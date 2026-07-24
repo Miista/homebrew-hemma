@@ -185,6 +185,36 @@ type Defaults struct {
 	// Parallels dns_host: one repo-wide role, named by service, set via
 	// `hemma set auth-service <name>`.
 	AuthService string `yaml:"auth_service,omitempty"`
+	// PublicLabel is the docker-compose label key whose presence on a
+	// container declares public (tunnel) ingress for an FQDN. Read-only and
+	// display-only: `list` uses it to tell local-only services from publicly
+	// reachable ones (design §12). It is configurable — rather than
+	// hardcoded — so hemma stays generator-agnostic: the default matches
+	// cloudflared-wrapper's convention on this homelab, but any tunnel tool
+	// that declares ingress by compose label works by setting this key.
+	// Set to "none" to switch the EXPOSURE column off entirely.
+	// Empty means DefaultPublicLabel.
+	PublicLabel string `yaml:"public_label,omitempty"`
+}
+
+// DefaultPublicLabel is the compose label key consulted when
+// defaults.public_label is unset — cloudflared-wrapper's convention.
+const DefaultPublicLabel = "cloudflare.io/hostname"
+
+// PublicLabelDisabled is the defaults.public_label value that turns the
+// public/local distinction off (no EXPOSURE column, no compose reads).
+const PublicLabelDisabled = "none"
+
+// ResolvedPublicLabel returns the compose label key to consult, or "" when the
+// feature is switched off.
+func (d Defaults) ResolvedPublicLabel() string {
+	switch d.PublicLabel {
+	case "":
+		return DefaultPublicLabel
+	case PublicLabelDisabled:
+		return ""
+	}
+	return d.PublicLabel
 }
 
 // Service is one declared service entry. There is no per-service dns_host:

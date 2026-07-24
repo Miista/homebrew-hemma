@@ -78,6 +78,8 @@ defaults:
   dns_host: pi                        # the single resolver host (set via: hemma set dns-host)
   auth_snippet: authelia/forward-auth.caddy  # optional; auth directive copied into (auth) — §4.5
   auth_service: authelia              # optional; the service that IS the auth backend — §4.5
+  # public_label: cloudflare.io/hostname  # optional; compose label key that declares public ingress,
+                                          # read-only, for list's EXPOSURE column ('none' disables) — §12
 
 services:
   docs:
@@ -733,6 +735,10 @@ hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>   (-c/--a
   It warns first if `dns_host` is unset, marks disabled services `[disabled]`, and reports repo
   drift at the end. **Services default to the current host** (matched by local IP); `--all` shows
   every host. If the local IP matches no host, it falls back to showing everything.
+  The **EXPOSURE** column marks each service `public` or `local` — read-only, from the host's
+  compose tunnel label (`defaults.public_label`); see the §12 amendment for scope and caveats.
+  It is dropped entirely when no host's compose file is readable, so a repo whose hosts are not
+  compose-managed sees no change.
   When `auth_snippet` or `auth_service` is configured, an `== Auth ==` section (showing both,
   with a set-command hint for a missing one) precedes the services table, and the §4.5
   half-configured-auth warnings are printed at the end.
@@ -937,26 +943,50 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
   `doctor --fix`.
 - No parsing/validation of the auth snippet body — it is copied verbatim and is opaque
   to hemma (§4.5).
-- **No public-horizon management.** hemma sets up the *internal* horizon only (Pi-hole record
-  + Caddy block). It deliberately does **not** create, verify, or warn about the *public*
+- **No public-horizon *management* — but it is *reported*.** hemma sets up the *internal* horizon
+  only (Pi-hole record + Caddy block). It deliberately does **not** create or modify the *public*
   horizon — the public DNS + tunnel ingress that must already exist for a split-horizon setup to
   be meaningful. On this homelab that public side is a `cloudflare.io/hostname` label on the
   service's container, read off the docker socket by cloudflared-wrapper. Rationale for keeping
-  it out of hemma:
+  management of it out of hemma:
   - hemma only writes files it *owns* (its Pi-hole/Caddy subdirs). The tunnel label lives in
     a hand-maintained `docker-compose.yml` — a foreign, human-owned file. Surgically editing it
     (preserving comments/formatting) is a categorically riskier operation than rewriting an owned
     file wholesale.
-  - Any awareness of the public side (even a read-only warning) couples hemma to one specific
-    tunnel tool's private label convention, eroding its generator-agnostic core (Pi-hole + Caddy,
-    nothing else). Swap tunnels and hemma would be wrong.
-  - The tunnel tool already reads the docker socket and is better placed to warn when a container
+  - The tunnel tool already reads the docker socket and is better placed to *act* when a container
     is served but has no ingress.
+
+  **Amendment (July 2026): read-only reporting is in scope.** This non-goal originally also
+  forbade *any* awareness of the public side, "even a read-only warning", on the grounds that it
+  would couple hemma to one tunnel tool's private label convention. That absolute is now relaxed:
+  `list` has an **EXPOSURE** column marking each service `public` or `local` (§6.6). The question
+  "is this FQDN internal-only?" is a first-class thing to want from an inventory command, and it
+  is unanswerable from `services.yaml` alone. What changed the calculus:
+  - The coupling is removed by making the label KEY configuration, not code:
+    `defaults.public_label` (default `cloudflare.io/hostname`, `none` to disable). Swap tunnels and
+    you change one line of YAML — the generator core still knows nothing but Pi-hole and Caddy.
+  - Reading a foreign compose file read-only was already precedent, not a new boundary crossing:
+    `auth.ValidateWiring` (§4.6) parses `<hostDir>/docker-compose.yml` for `X_AUTHELIA_CONFIG`.
+    The line that matters is **never write compose**, which still holds absolutely.
+  - Label presence is trustworthy, not a guess: cloudflared-wrapper upserts the public DNS record
+    for every hostname it is given, so a label implies the public name resolves — the two halves
+    of "publicly reachable" cannot drift apart.
+
+  Matching is by FQDN against the label's value (port suffix stripped), not by container name —
+  the label often sits on the Caddy container rather than the app's. A missing or unparseable
+  compose file yields `?`, never `local`: a read failure must not be reported as a fact about
+  exposure. When no host's compose can be read at all, the column is dropped.
 
   Gotcha this documents: a service can have a correct *internal* horizon (hemma did its job)
   yet be publicly broken because the `cloudflare.io/hostname` label is missing — the FQDN then
   falls back to the zone apex publicly (e.g. `auth.palmund.net` → `palmund.net`). The label is a
-  manual, per-service step that lives with the compose file, not with hemma.
+  manual, per-service step that lives with the compose file, not with hemma; EXPOSURE now makes
+  its absence *visible*, but fixing it is still a hand edit to the compose file.
+
+  Known limitation: ingress declared in cloudflared's own `config.yml` `ingress:` list instead of
+  by a compose label is invisible to this check, and such a service would read `local`. That is
+  accepted — on this homelab static ingress entries are considered legacy and should be migrated
+  to labels.
 
 - **No writing of the users database — deferred, designed (July 2026).** User→group membership
   (`users_database.yml`) is read-only to hemma today: `list` joins it, `doctor` cross-checks it,
