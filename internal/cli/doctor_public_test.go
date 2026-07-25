@@ -178,10 +178,10 @@ func TestDoctorPublic_SuggestedSnippetIsAuthAware(t *testing.T) {
 	}
 }
 
-// Exposure WITHOUT an opt-in is deliberately not reported. `public` says "this
-// should be public", not "every other service must not be" — reporting the
-// reverse would fire on every already-exposed service in an existing repo.
-func TestDoctorPublic_ExposedWithoutOptInIsSilent(t *testing.T) {
+// Exposure with no opt-in is a finding: absent `public` means local-only, so a
+// label on such a service made it public without that being written down. This
+// is the accidental-exposure check.
+func TestDoctorPublic_ExposedWithoutOptIn(t *testing.T) {
 	dir := doctorSetup(t)
 	setAuthMode(t, dir, "docs", "none") // isolate from the bypass check
 	writeCompose(t, dir, "appbox", `services:
@@ -190,31 +190,87 @@ func TestDoctorPublic_ExposedWithoutOptInIsSilent(t *testing.T) {
       cloudflare.io/hostname: "docs.example.com"
 `)
 	out, code := doctorOut(t, dir)
-	if strings.Contains(out, "declared public") {
-		t.Errorf("un-opted-in exposure must be silent, got:\n%s", out)
+	if !strings.Contains(out, "1 service is publicly exposed without `public: true`") {
+		t.Errorf("expected the undeclared-exposure advisory, got:\n%s", out)
 	}
-	if code != 0 {
-		t.Errorf("un-opted-in exposure must not fail doctor, exit %d:\n%s", code, out)
+	if !strings.Contains(out, "docs") || !strings.Contains(out, "docs.example.com") {
+		t.Errorf("advisory should name the service and fqdn, got:\n%s", out)
+	}
+	if code == 0 {
+		t.Error("accidental exposure must be a doctor problem")
 	}
 }
 
-// A service with no opt-in and no label is silent, which is every service in a
-// repo that has not adopted the field.
-func TestDoctorPublic_UndeclaredIsSilent(t *testing.T) {
+// Opting in resolves it — the same fleet state, now declared, is silent.
+func TestDoctorPublic_OptInResolvesUndeclaredExposure(t *testing.T) {
 	dir := doctorSetup(t)
-	// Label the NON-auth service: labelling the forward-auth one would (rightly)
-	// trip the bypass check and muddy what this test is asserting.
+	setAuthMode(t, dir, "docs", "none")
 	writeCompose(t, dir, "appbox", `services:
+  paperless:
+    labels:
+      cloudflare.io/hostname: "docs.example.com"
+`)
+	if code := Run([]string{"-C", dir, "update", "service", "docs", "--public"}); code != 0 {
+		t.Fatalf("--public exit %d", code)
+	}
+	out, _ := doctorOut(t, dir)
+	if strings.Contains(out, "without `public: true`") {
+		t.Errorf("opting in must resolve the finding, got:\n%s", out)
+	}
+}
+
+// Several undeclared exposures group into ONE advisory with plural agreement —
+// this fires in bulk when a repo first adopts the field, and N advisories would
+// bury everything else.
+func TestDoctorPublic_UndeclaredExposureGrouped(t *testing.T) {
+	dir := doctorSetup(t)
+	setAuthMode(t, dir, "docs", "none")
+	writeCompose(t, dir, "appbox", `services:
+  paperless:
+    labels:
+      cloudflare.io/hostname: "docs.example.com"
   ghost:
     labels:
       cloudflare.io/hostname: "blog.example.com"
 `)
-	out, code := doctorOut(t, dir)
-	if strings.Contains(out, "declares public") {
-		t.Errorf("undeclared services must produce no declaration advisory, got:\n%s", out)
+	out, _ := doctorOut(t, dir)
+	if !strings.Contains(out, "2 services are publicly exposed without `public: true`") {
+		t.Errorf("expected one grouped plural advisory, got:\n%s", out)
 	}
-	if code != 0 {
-		t.Errorf("undeclared services must not make doctor fail, exit %d:\n%s", code, out)
+	if n := strings.Count(out, "publicly exposed without"); n != 1 {
+		t.Errorf("expected exactly 1 grouped advisory, got %d:\n%s", n, out)
+	}
+	// Both resolutions offered, removal first — declaring an accidental label is
+	// the wrong repair, so the advisory must not read as "just run this".
+	if !strings.Contains(out, "if the exposure is NOT intended, remove the label") {
+		t.Errorf("advisory must offer removing the label first, got:\n%s", out)
+	}
+	for _, want := range []string{"hemma update service docs --public", "hemma update service blog --public"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("advisory should carry %q, got:\n%s", want, out)
+		}
+	}
+}
+
+// --fix must NOT adopt observed exposure into services.yaml. hemma owns that
+// file and could write it, but auto-declaring would silence the alarm in exactly
+// the case it exists for.
+func TestDoctorPublic_FixDoesNotAdoptExposure(t *testing.T) {
+	dir := doctorSetup(t)
+	setAuthMode(t, dir, "docs", "none")
+	writeCompose(t, dir, "appbox", `services:
+  paperless:
+    labels:
+      cloudflare.io/hostname: "docs.example.com"
+`)
+	captureStdout(t, func() { Run([]string{"-C", dir, "doctor", "--fix"}) })
+	if declaredOf(t, dir, "docs") {
+		t.Error("--fix must not write public: true from an observed label")
+	}
+	// And the finding survives --fix, so it cannot be silently cleared.
+	out, code := doctorOut(t, dir)
+	if !strings.Contains(out, "without `public: true`") || code == 0 {
+		t.Errorf("finding must survive --fix, exit %d:\n%s", code, out)
 	}
 }
 

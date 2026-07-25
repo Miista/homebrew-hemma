@@ -113,9 +113,10 @@ Notes:
   reachable on the LAN either way, directly via its Pi-hole record or by hairpin through the
   tunnel. And there is no value for "public but not local" — a declared service always gets a
   Pi-hole record and a Caddy block.
-  `doctor` uses it in **one direction**: a service that opted in is checked against whether it
-  actually is served. Exposure that was never opted into is not reported, so adopting the field
-  costs an existing repo nothing.
+  `doctor` compares it against the labels in **both** directions (§12): an opt-in with no ingress,
+  and — because absent means local-only — ingress with no opt-in, which is the accidental-exposure
+  case. Adopting the field therefore means declaring the existing public surface once; until then
+  the second check reports it.
 - `auth.bypass_paths` was a top-level `public_paths` until July 2026. It moved under `auth`
   because it is only meaningful with mode `forward`, and because the old name collided with the
   unrelated `public` field. Legacy files are migrated on load and the old key stops being emitted
@@ -1000,8 +1001,11 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
   container, so the tunnel never traverses Caddy and the generated `(auth)` gate never runs
   (detected via `defaults.public_proxy_label`, default `cloudflare.io/reverseproxy`; the
   `auth_service` is exempt because `auth: forward` on it is refused by the planner, so no gate
-  exists to bypass); **declared but not served** — `public: true` with no label backing it,
-  one direction only so exposure that was never opted into stays unreported; and **orphan ingress** — a publicly-served
+  exists to bypass); **declared but not served** — `public: true` with no label backing it;
+  **undeclared exposure** — a label on a service that never opted in, i.e. exposure nobody wrote
+  down (grouped into one advisory, since it fires in bulk on first adoption, and deliberately not
+  `--fix`-able: auto-adopting an observed label would silence the alarm in the one case it exists
+  for); and **orphan ingress** — a publicly-served
   hostname in a managed domain with no service entry, hence no split-horizon record (it still
   works on the LAN, by hairpin). The first
   two count as doctor problems; the third is informational.

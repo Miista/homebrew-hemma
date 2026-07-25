@@ -220,7 +220,7 @@ which records:
 services:
   wiki:
     public: true      # meant to be public as well
-  pihole:             # no key = local only
+  pihole:             # no key = local only, and a label on it is a doctor finding
 ```
 
 There is no value for "local", because locality is never in question: every service is reachable
@@ -234,12 +234,18 @@ a Caddy block. So `public` is a plain opt-in: set, or not set.
 |---|---|---|
 | **Auth bypass** | A `forward`-auth service whose ingress points **direct at the container**. The tunnel never traverses Caddy, so the `(auth)` gate never runs and the service is public with **no authentication**. | yes |
 | **Declared but not served** | `public: true` with no tunnel label backing it — hemma wired the internal half, the public half was never done. | yes |
+| **Undeclared exposure** | A label on a service that never opted in. No `public: true` means local-only, so the label exposed it without that being written down — **this is the accidental-exposure check.** | yes |
 | **Orphan ingress** | A hostname served publicly in a managed domain with **no service entry**, so hemma generated no split-horizon record. It still works on the LAN, but by hairpin. | no |
 
-The declaration check runs in **one direction only**: a service exposed without having opted in is
-not reported. `public: true` says "this should be public", not "everything else must not be" — so
-adopting the field costs an existing repo nothing and `doctor` stays green until an opt-in is
-actually contradicted.
+**Adopting `public` means declaring your existing public surface once.** Until you do, the
+undeclared-exposure check reports every already-exposed service — grouped into a single advisory
+with the commands to run. That is the cost of the field meaning something: once absent genuinely
+means "should be local", a label appearing on `pihole` is a finding rather than a shrug.
+
+`doctor --fix` deliberately does **not** resolve it, even though the fix (`public: true`) is to
+`services.yaml`, a file hemma owns and could safely write. Auto-adopting an observed label would
+silence the alarm in exactly the case it exists for — a label nobody meant to add. So the advisory
+offers removing the label *first*, and declaring second.
 
 Each advisory carries the exact label to add, and the suggested snippet is **auth-aware**: a
 `forward`-auth service is told to route through Caddy, because the direct form would create the

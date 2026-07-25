@@ -278,8 +278,9 @@ X_AUTHELIA_CONFIG value that wires the generated access-control file into
 the auth container) and the follow-up command (usually 'hemma apply').
 
 The public-horizon checks read each host's docker-compose.yml (never write it)
-and compare the tunnel-ingress labels against services.yaml, in descending
-severity:
+and compare the tunnel-ingress labels against services.yaml. A service with
+'public: true' is meant to be reachable from the internet; without it, local
+only. In descending severity:
 
   * AUTH BYPASS — a forward-auth service whose ingress points DIRECT at the
     container. The tunnel never traverses Caddy, so the (auth) gate hemma
@@ -287,9 +288,14 @@ severity:
     authentication. Counts as a problem.
   * DECLARED BUT NOT SERVED — the service says 'public: true' and no tunnel
     label backs that up: hemma wired the internal half, the public half was
-    never done. One direction only — exposure that was never opted into is not
-    reported, so adopting 'public' costs an existing repo nothing. Counts as a
-    problem.
+    never done. Counts as a problem.
+  * UNDECLARED EXPOSURE — the tunnel serves a service that never opted in. No
+    'public: true' means local-only, so the label exposed it without that being
+    written down anywhere — this is the accidental-exposure check. Grouped into
+    one advisory, since it fires in bulk when a repo first declares its existing
+    public surface. Counts as a problem, and 'doctor --fix' deliberately does
+    NOT resolve it: auto-adopting an observed label would silence the alarm in
+    exactly the case it exists for.
   * ORPHAN INGRESS — a hostname served publicly in a managed domain with no
     service entry, so hemma generated no split-horizon record for it. It still
     works on the LAN, but by hairpin: the name resolves via public DNS, so

@@ -15,28 +15,29 @@ import (
 // carries the exact label snippet and where to paste it, in the same
 // instructive style as the auth-config advisories.
 //
-// Three checks, in descending severity:
+// Four checks, in descending severity:
 //
 //  1. AUTH BYPASS — a forward-auth service whose tunnel ingress points DIRECT
 //     at the container. The tunnel never traverses Caddy, so the (auth) snippet
 //     never runs and the service is publicly reachable with no authentication
 //     at all. This is the only check here that reports a live security hole.
 //  2. DECLARED BUT NOT SERVED — the service says `public: true` and no tunnel
-//     label backs that up. One direction only, on purpose: exposure that was
-//     never opted into is NOT reported. The field is an opt-in, so adopting it
-//     costs an existing repo nothing and doctor stays green until a declaration
-//     is actually contradicted.
-//  3. ORPHAN INGRESS — a hostname served publicly in a managed domain with no
+//     label backs that up: hemma wired the internal half, the public half was
+//     never done.
+//  3. UNDECLARED EXPOSURE — the tunnel serves a service that never opted in.
+//     Absent `public` means local-only, so this is exposure nobody wrote down —
+//     the check that catches an ACCIDENTAL label. Fires in bulk exactly once,
+//     when a repo first declares its existing public surface.
+//  4. ORPHAN INGRESS — a hostname served publicly in a managed domain with no
 //     services.yaml entry, so hemma generated no split-horizon record for it.
 //     It is still reachable on the LAN, but by hairpin: the name resolves via
 //     PUBLIC DNS, so traffic leaves the network and comes back through the
 //     tunnel. It works, which is why it goes unnoticed.
 //
-// Checks 1 and 2 count as doctor problems (non-zero exit): one is a security
-// hole, the other an explicit declaration being violated. Check 3 does not —
-// nothing was declared, and the hostname is not hemma's to own.
+// Checks 1-3 count as doctor problems (non-zero exit). Check 4 does not: the
+// hostname has no services.yaml entry at all, so it is not hemma's to own.
 
-// publicHorizonWarnings runs the three public-horizon checks. Silent when
+// publicHorizonWarnings runs the four public-horizon checks. Silent when
 // public-horizon reporting is off, and per-host silent when that host's compose
 // file cannot be read (an unreadable file is not evidence of anything).
 func publicHorizonWarnings(repoRoot string, cfg *config.Config) (advs []auth.Advisory, problems int) {
@@ -44,6 +45,7 @@ func publicHorizonWarnings(repoRoot string, cfg *config.Config) (advs []auth.Adv
 	if !pub.enabled() {
 		return nil, 0
 	}
+	var undeclared []exposedService
 
 	// Services this check considers: enabled ones only. A disabled service
 	// generates no Caddy block, so its label state says nothing about hemma.
@@ -70,16 +72,81 @@ func publicHorizonWarnings(repoRoot string, cfg *config.Config) (advs []auth.Adv
 			problems++
 		}
 
-		// --- 2. declared vs observed ---
+		// --- 2. opted in but not served ---
 		if a, hit := declaredPublicAdvisory(cfg, name, svc, served, composePath, pub); hit {
 			advs = append(advs, a)
 			problems++
 		}
+
+		// --- 3. served but never opted in ---
+		if served && !svc.Public {
+			undeclared = append(undeclared, exposedService{name: name, fqdn: svc.FQDN, compose: composePath})
+		}
+	}
+	if a, hit := undeclaredExposureAdvisory(undeclared, pub); hit {
+		advs = append(advs, a)
+		problems++
 	}
 
-	// --- 3. orphan ingress (per host, not per service) ---
+	// --- 4. orphan ingress (per host, not per service) ---
 	advs = append(advs, orphanIngressAdvisories(repoRoot, cfg, pub)...)
 	return advs, problems
+}
+
+// exposedService is one service reachable from the internet without having
+// opted in.
+type exposedService struct{ name, fqdn, compose string }
+
+// undeclaredExposureAdvisory reports services the tunnel serves that never
+// declared `public: true`. Under "assume local, opt in to public", absent IS the
+// statement that a service should be LAN-only — so a label on one of them means
+// it became publicly reachable without that being written down anywhere. This is
+// the check that catches ACCIDENTAL exposure, which is the failure that actually
+// costs something (an admin UI reachable from the internet).
+//
+// Grouped into ONE advisory rather than one per service, because it fires in
+// bulk exactly once — when a repo first adopts the field and has to declare its
+// existing public surface. After that it is normally a single entry.
+//
+// Deliberately NOT --fix-able even though the fix (adding `public: true`) is to
+// services.yaml, a file hemma owns and could safely write. Auto-adopting
+// observed exposure into the declaration would silence this alarm by definition:
+// the one case it exists for — a label nobody meant to add — would be rewritten
+// into "intended" without a human ever seeing it. So the advisory presents BOTH
+// resolutions, and removing the label comes first: if the exposure is a mistake,
+// declaring it is the wrong repair.
+func undeclaredExposureAdvisory(exposed []exposedService, pub *publicLookup) (auth.Advisory, bool) {
+	if len(exposed) == 0 {
+		return auth.Advisory{}, false
+	}
+	sort.Slice(exposed, func(i, j int) bool { return exposed[i].name < exposed[j].name })
+
+	verb := "is"
+	if len(exposed) > 1 {
+		verb = "are"
+	}
+	body := []string{
+		fmt.Sprintf("each of these carries a %s label, making it reachable from the", pub.label),
+		"internet, but nothing in services.yaml says that was intended:",
+	}
+	for _, e := range exposed {
+		body = append(body, fmt.Sprintf("  %-14s %s", e.name, e.fqdn))
+	}
+	body = append(body,
+		"No `public: true` means local-only, so as far as hemma is concerned each of",
+		"these is exposed by accident until you say otherwise.")
+
+	fix := []string{"if the exposure is NOT intended, remove the label from that host's compose file;"}
+	fix = append(fix, "if it IS intended, record it so this stops being a finding:")
+	for _, e := range exposed {
+		fix = append(fix, fmt.Sprintf("  hemma update service %s --public", e.name))
+	}
+	return auth.Advisory{
+		Headline: fmt.Sprintf("%d %s %s publicly exposed without `public: true`",
+			len(exposed), plural(len(exposed), "service"), verb),
+		Body: body,
+		Fix:  fix,
+	}, true
 }
 
 // authBypassAdvisory reports a forward-auth service served DIRECT from the
@@ -126,12 +193,10 @@ func authBypassAdvisory(cfg *config.Config, name string, svc config.Service, in 
 // (`public: true`) but has no tunnel label to back it up — the §12 gotcha, made
 // visible: hemma did its job internally while the public half was never wired.
 //
-// Deliberately ONE direction. A service that is exposed without having opted in
-// is not reported, because `public` is an opt-in rather than an assertion about
-// every service: reporting the reverse would fire on every already-exposed
-// service in an existing repo and demand a declaration sweep before doctor could
-// pass again. Locality is never part of the comparison — every service is
-// reachable on the LAN either way, directly via Pi-hole or by hairpin.
+// This is the "wanted public, did not get it" direction; the reverse — served
+// without an opt-in — is undeclaredExposureAdvisory. Locality is never part of
+// either comparison: every service is reachable on the LAN regardless, directly
+// via Pi-hole or by hairpin.
 func declaredPublicAdvisory(cfg *config.Config, name string, svc config.Service, served bool, composePath string, pub *publicLookup) (auth.Advisory, bool) {
 	if !svc.Public || served {
 		return auth.Advisory{}, false
