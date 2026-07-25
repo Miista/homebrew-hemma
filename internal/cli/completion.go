@@ -23,7 +23,7 @@ _hemma() {
     local verbs="add update remove create enable disable set list verify apply deploy doctor measure version help completion"
     local nouns="service host domain"
     local set_keys="dns-host auth-snippet auth-service"
-    local flags="--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --ip --ssh --all -a --fix --chdir -C --help -h"
+    local flags="--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --public --ip --ssh --all -a --fix --chdir -C --help -h"
 
     # First word: a verb (allow -C <dir> to precede it).
     if [[ $cword -eq 1 ]]; then
@@ -69,7 +69,7 @@ _hemma() {
     verbs=(add update remove create enable disable set list verify apply deploy doctor measure version help completion)
     nouns=(service host domain)
     set_keys=(dns-host auth-snippet auth-service)
-    flags=(--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --ip --ssh --all -a --fix --chdir -C --help -h)
+    flags=(--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --public --ip --ssh --all -a --fix --chdir -C --help -h)
 
     if (( CURRENT == 2 )); then
         _describe 'command' verbs

@@ -107,7 +107,8 @@ Notes:
   `hemma set dns-host`). Every service's DNS record is routed through it; there is **no
   per-service override**. **Do not hardcode which host that is** — always read `defaults.dns_host`.
 - `public` declares the *intended* public horizon and is deliberately three-state: `true`,
-  `false`, or **absent**. Absent means undeclared — `doctor` compares only a declared value
+  `false`, or **absent**. Set via `add/update service --public[=false|unset]` (§6.1); `unset`
+  removes the declaration, which is why the flag cannot be a plain bool. Absent means undeclared — `doctor` compares only a declared value
   against the observed compose label (§12), so existing repos gain no advisories until they opt in.
   There is no value meaning "public but not local": every declared service gets a Pi-hole record
   and a Caddy block, so the internal horizon is a consequence of having an entry, not a choice.

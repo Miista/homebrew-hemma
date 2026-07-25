@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"hemma/internal/auth"
@@ -263,6 +264,8 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	authFlag := fs.Bool("auth", false, "shorthand for --auth-mode forward")
 	authMode := fs.String("auth-mode", "", "auth mode: forward|oidc|none")
 	authGroups := fs.String("auth-groups", "", "comma-separated auth provider groups allowed access")
+	public := &publicFlag{}
+	fs.Var(public, "public", "declare the public horizon: --public, --public=false, --public=unset")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -307,7 +310,8 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 		return 1
 	}
 	return persistNewService(repoRoot, cfg, name,
-		config.Service{FQDN: *fqdn, Host: *host, Backend: *backend, Auth: config.Auth{Mode: mode, Groups: groups}})
+		config.Service{FQDN: *fqdn, Host: *host, Backend: *backend,
+			Auth: config.Auth{Mode: mode, Groups: groups}, Public: public.val})
 }
 
 // persistNewService is the shared tail of `add service`: both the flags form
@@ -543,6 +547,45 @@ func resolveAuthMode(fs *flag.FlagSet, auth bool, authMode string) (config.AuthM
 // splitGroups parses a comma-separated --auth-groups value into a clean slice
 // (whitespace trimmed, empties dropped). An empty/blank input returns nil,
 // which clears the groups.
+// publicFlag is the --public flag's value: a THREE-state declaration of the
+// public horizon (§12), which no built-in flag type covers.
+//
+//	--public          declare public (true)
+//	--public=false    declare internal-only (false)
+//	--public=unset    un-declare it (nil) — also accepts '-' and 'none'
+//
+// IsBoolFlag makes the bare form work without consuming the next argument,
+// while Set still receives an explicit =value. Un-declaring needs its own value
+// because nil is not "false": an undeclared service produces no doctor
+// advisories at all, whereas `public: false` asserts it must stay internal.
+type publicFlag struct{ val *bool }
+
+func (p *publicFlag) String() string {
+	if p == nil || p.val == nil {
+		return "unset"
+	}
+	return strconv.FormatBool(*p.val)
+}
+
+func (p *publicFlag) Set(s string) error {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "true", "yes":
+		p.val = new(bool)
+		*p.val = true
+	case "false", "no":
+		p.val = new(bool)
+		*p.val = false
+	case "unset", "none", "-":
+		p.val = nil
+	default:
+		return fmt.Errorf("expected true, false, or unset (got %q)", s)
+	}
+	return nil
+}
+
+// IsBoolFlag lets `--public` stand alone; `--public=false` still reaches Set.
+func (p *publicFlag) IsBoolFlag() bool { return true }
+
 func splitGroups(s string) []string {
 	var out []string
 	for _, g := range strings.Split(s, ",") {
@@ -570,6 +613,8 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	authFlag := fs.Bool("auth", false, "shorthand for --auth-mode forward (--auth=false clears)")
 	authMode := fs.String("auth-mode", "", "auth mode: forward|oidc|none")
 	authGroups := fs.String("auth-groups", "", "comma-separated auth provider groups ('' clears)")
+	public := &publicFlag{}
+	fs.Var(public, "public", "declare the public horizon: --public, --public=false, --public=unset")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -610,6 +655,10 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 		case "auth-groups":
 			// Empty string clears the groups.
 			svc.Auth.Groups = splitGroups(*authGroups)
+		case "public":
+			// nil here is meaningful: --public=unset removes the declaration
+			// rather than declaring false.
+			svc.Public = public.val
 		}
 	})
 	// Shared tail with the interactive editor: validate-before-persist, save,

@@ -441,3 +441,187 @@ func TestDoctorPublic_OrphansGroupedPerHostWithPluralAgreement(t *testing.T) {
 		}
 	}
 }
+
+// declaredOf reads a service's declared public horizon straight from the
+// persisted YAML, so these tests assert what was actually written.
+func declaredOf(t *testing.T, dir, svc string) (want, declared bool) {
+	t.Helper()
+	cfg, err := config.Load(filepath.Join(dir, "services.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, ok := cfg.Services[svc]
+	if !ok {
+		t.Fatalf("service %q missing", svc)
+	}
+	return s.DeclaredPublic()
+}
+
+// --public on `add service` declares the public horizon at creation time, in
+// all three forms.
+func TestAddService_PublicFlag(t *testing.T) {
+	cases := []struct {
+		name, arg             string
+		wantVal, wantDeclared bool
+	}{
+		{"bare", "--public", true, true},
+		{"explicit-true", "--public=true", true, true},
+		{"explicit-false", "--public=false", false, true},
+		{"unset", "--public=unset", false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			mkdirs(t, dir, "resolver", "appbox")
+			seed(t, dir)
+			args := []string{"-C", dir, "add", "service", "svc",
+				"--fqdn", "svc.example.com", "--host", "appbox", "--backend", "app:1234", c.arg}
+			if code := Run(args); code != 0 {
+				t.Fatalf("add with %s exit %d", c.arg, code)
+			}
+			got, declared := declaredOf(t, dir, "svc")
+			if got != c.wantVal || declared != c.wantDeclared {
+				t.Errorf("%s: got (%v, %v), want (%v, %v)", c.arg, got, declared, c.wantVal, c.wantDeclared)
+			}
+		})
+	}
+}
+
+// --public on `update service` sets the declaration, and --public=unset REMOVES
+// it — nil is not false, so this must return the service to undeclared (no
+// doctor advisories) rather than declaring it internal-only.
+func TestUpdateService_PublicFlagIncludingUnset(t *testing.T) {
+	dir := doctorSetup(t)
+
+	if code := Run([]string{"-C", dir, "update", "service", "blog", "--public"}); code != 0 {
+		t.Fatalf("--public exit %d", code)
+	}
+	if got, declared := declaredOf(t, dir, "blog"); !got || !declared {
+		t.Fatalf("after --public: got (%v, %v), want (true, true)", got, declared)
+	}
+
+	if code := Run([]string{"-C", dir, "update", "service", "blog", "--public=false"}); code != 0 {
+		t.Fatalf("--public=false exit %d", code)
+	}
+	if got, declared := declaredOf(t, dir, "blog"); got || !declared {
+		t.Fatalf("after --public=false: got (%v, %v), want (false, true)", got, declared)
+	}
+
+	if code := Run([]string{"-C", dir, "update", "service", "blog", "--public=unset"}); code != 0 {
+		t.Fatalf("--public=unset exit %d", code)
+	}
+	if got, declared := declaredOf(t, dir, "blog"); got || declared {
+		t.Fatalf("after --public=unset: got (%v, %v), want (false, false)", got, declared)
+	}
+	// The key must be gone from the file, not written as `public: false`.
+	b, err := os.ReadFile(filepath.Join(dir, "services.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "public:") {
+		t.Errorf("--public=unset must remove the key entirely:\n%s", b)
+	}
+}
+
+// Not passing --public leaves an existing declaration alone: update only
+// touches the fields given on the command line.
+func TestUpdateService_PublicUntouchedWhenFlagAbsent(t *testing.T) {
+	dir := doctorSetup(t)
+	if code := Run([]string{"-C", dir, "update", "service", "blog", "--public"}); code != 0 {
+		t.Fatalf("setup --public exit %d", code)
+	}
+	if code := Run([]string{"-C", dir, "update", "service", "blog", "--backend", "ghost:9999"}); code != 0 {
+		t.Fatalf("update backend exit %d", code)
+	}
+	if got, declared := declaredOf(t, dir, "blog"); !got || !declared {
+		t.Errorf("unrelated update must not clear the declaration: got (%v, %v)", got, declared)
+	}
+}
+
+// An invalid --public value is a usage error, before anything is persisted.
+func TestUpdateService_PublicInvalidValue(t *testing.T) {
+	dir := doctorSetup(t)
+	if code := Run([]string{"-C", dir, "update", "service", "blog", "--public=maybe"}); code != 2 {
+		t.Errorf("invalid --public should exit 2, got %d", code)
+	}
+	if _, declared := declaredOf(t, dir, "blog"); declared {
+		t.Error("a rejected flag must not persist a declaration")
+	}
+}
+
+// The flag composes with the doctor check it exists to feed: declare, then get
+// the advisory.
+func TestPublicFlag_FeedsDoctorCheck(t *testing.T) {
+	dir := doctorSetup(t)
+	setAuthMode(t, dir, "docs", "none")
+	if code := Run([]string{"-C", dir, "update", "service", "docs", "--public=false"}); code != 0 {
+		t.Fatalf("--public=false exit %d", code)
+	}
+	writeCompose(t, dir, "appbox", `services:
+  paperless:
+    labels:
+      cloudflare.io/hostname: "docs.example.com"
+`)
+	out, code := doctorOut(t, dir)
+	if !strings.Contains(out, "declares public: false but IS exposed") {
+		t.Errorf("flag-set declaration should drive the check, got:\n%s", out)
+	}
+	if code == 0 {
+		t.Error("expected non-zero exit")
+	}
+}
+
+// publicFlag is the tri-state flag behind --public. Its String() feeds `-h`
+// output, and IsBoolFlag is what lets the bare `--public` form work without
+// swallowing the next argument.
+func TestPublicFlag_ValueSemantics(t *testing.T) {
+	var p publicFlag
+	if got := p.String(); got != "unset" {
+		t.Errorf("zero value should render as unset, got %q", got)
+	}
+	if !p.IsBoolFlag() {
+		t.Error("must be a bool flag so `--public` needs no value")
+	}
+	for _, in := range []string{"", "true", "TRUE", " yes "} {
+		var f publicFlag
+		if err := f.Set(in); err != nil {
+			t.Fatalf("Set(%q): %v", in, err)
+		}
+		if f.val == nil || !*f.val {
+			t.Errorf("Set(%q) should declare true, got %v", in, f.val)
+		}
+		if got := f.String(); got != "true" {
+			t.Errorf("String() after Set(%q) = %q, want true", in, got)
+		}
+	}
+	for _, in := range []string{"false", "No"} {
+		var f publicFlag
+		if err := f.Set(in); err != nil {
+			t.Fatalf("Set(%q): %v", in, err)
+		}
+		if f.val == nil || *f.val {
+			t.Errorf("Set(%q) should declare false, got %v", in, f.val)
+		}
+		if got := f.String(); got != "false" {
+			t.Errorf("String() after Set(%q) = %q, want false", in, got)
+		}
+	}
+	// Un-declaring must yield nil, not false — the whole point of the type.
+	for _, in := range []string{"unset", "none", "-"} {
+		f := publicFlag{val: new(bool)}
+		*f.val = true
+		if err := f.Set(in); err != nil {
+			t.Fatalf("Set(%q): %v", in, err)
+		}
+		if f.val != nil {
+			t.Errorf("Set(%q) should clear to nil, got %v", in, *f.val)
+		}
+		if got := f.String(); got != "unset" {
+			t.Errorf("String() after Set(%q) = %q, want unset", in, got)
+		}
+	}
+	var bad publicFlag
+	if err := bad.Set("maybe"); err == nil {
+		t.Error("an unrecognized value must be an error, not silently ignored")
+	}
+}

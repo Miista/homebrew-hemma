@@ -17,7 +17,7 @@ type HelpTopic struct {
 var HelpTopics = []HelpTopic{
 	{"add service", `hemma add service — declare a service and generate its DNS/Caddy config
 
-Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc] [--auth-groups <g1,g2>]
+Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc] [--auth-groups <g1,g2>] [--public]
 
 With no flags (and stdin a terminal) an interactive editor opens instead: the
 fqdn is pre-filled with <name>.<domain> when exactly one domain is defined and
@@ -42,12 +42,17 @@ Flags:
                           the generated access-control rules (multiple groups are OR'd).
                           Requires an auth mode (forward or oidc).
       --auth              Back-compat shorthand for --auth-mode forward.
+      --public            Declare that this service SHOULD be reachable from the
+                          internet. --public=false declares it internal-only;
+                          --public=unset leaves it undeclared (the default).
+                          Declaration only — hemma never writes the tunnel's
+                          compose labels; 'hemma doctor' reports any mismatch.
 
 Regenerates files immediately, then prints which hosts need 'hemma apply'.`},
 
 	{"update service", `hemma update service — change a service's fqdn, host, backend, or auth
 
-Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|none] [--auth-groups <g1,g2>]
+Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|none] [--auth-groups <g1,g2>] [--public[=false|unset]]
 
 With no flags (and stdin a terminal) an interactive editor opens instead:
 every field is pre-filled with the service's current values (Enter keeps
@@ -68,6 +73,12 @@ Flags:
                           generated access-control rules). '' clears them. Requires an
                           auth mode (forward or oidc).
       --auth[=false]      Back-compat shorthand: --auth = forward, --auth=false = none.
+      --public            Declare the public horizon: --public = should be public,
+                          --public=false = internal only, --public=unset = remove the
+                          declaration. 'unset' is NOT the same as false — an
+                          undeclared service produces no doctor advisories, while
+                          public: false asserts it must stay internal. Declaration
+                          only; hemma never writes the tunnel's compose labels.
 
 Only the given flags change; regenerated files and apply-hints follow.`},
 

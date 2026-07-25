@@ -209,6 +209,14 @@ sits on the Caddy container rather than the app's.
 
 The `PUBLIC` column reports what **is**. To say what **should be**, set `public` on the service:
 
+```sh
+hemma update service wiki   --public          # should be reachable from the internet
+hemma update service pihole --public=false    # internal only — warn me if a label appears
+hemma update service ntfy   --public=unset    # remove the declaration (back to quiet)
+```
+
+which records:
+
 ```yaml
 services:
   wiki:
@@ -217,6 +225,10 @@ services:
     public: false     # internal only — warn me if a label ever appears
   ntfy:               # no `public` key = undeclared; doctor stays quiet
 ```
+
+`--public` also works on `add service`. Note that `--public=unset` is **not** the same as
+`--public=false`: `unset` removes the declaration entirely (no advisories either way), while
+`false` asserts the service must stay internal and is a finding if a label appears.
 
 There is no value meaning "public but not local": every service in `services.yaml` gets a Pi-hole
 record and a Caddy block, so the internal horizon is a consequence of being declared at all.
