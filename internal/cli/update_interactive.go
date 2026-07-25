@@ -65,6 +65,9 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 	}
 	selGroups := append([]string(nil), svc.Auth.Groups...)
 	newGroup := ""
+	public := svc.Public
+	disabled := svc.Disabled
+	bypass := strings.Join(svc.Auth.BypassPaths, "\n")
 
 	hosts := sortedKeysOf(cfg.Hosts)
 	if _, ok := cfg.Hosts[host]; !ok && host != "" {
@@ -104,6 +107,14 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 		huh.NewInput().Title("fqdn").Value(&fqdn).Validate(nonEmpty("the fqdn")),
 		huh.NewSelect[string]().Title("host").Options(huh.NewOptions(hosts...)...).Value(&host),
 		huh.NewInput().Title("backend").Value(&backend),
+		huh.NewConfirm().Title("public").
+			Description("Reachable from the internet too? Records intent only — hemma never writes the tunnel's compose labels; 'hemma doctor' reports a mismatch either way.").
+			Affirmative("public").Negative("local only").
+			Value(&public),
+		huh.NewConfirm().Title("disabled").
+			Description("Stop generating config for this service. It stays in services.yaml; its generated files are removed.").
+			Affirmative("disabled").Negative("enabled").
+			Value(&disabled),
 	}
 	if !isAuthService {
 		fields = append(fields,
@@ -114,6 +125,9 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 				Description(groupsDesc+" Ignored when auth mode is none.").
 				Options(groupOpts...).
 				Value(&selGroups),
+			huh.NewText().Title("auth bypass paths").
+				Description("One path per line, served without passing the gate (e.g. /health). Forward mode only.").
+				Value(&bypass),
 		)
 	}
 	groups := []*huh.Group{huh.NewGroup(fields...)}
@@ -145,6 +159,8 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 	updated.FQDN = strings.TrimSpace(fqdn)
 	updated.Host = host
 	updated.Backend = strings.TrimSpace(backend)
+	updated.Public = public
+	updated.Disabled = disabled
 	if !isAuthService {
 		if mode == "none" {
 			// Selecting none clears the groups too — the only combination the
@@ -164,6 +180,7 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 			}
 			sort.Strings(gs)
 			updated.Auth.Groups = gs
+			updated.Auth.BypassPaths = splitLines(bypass)
 		}
 	}
 
@@ -180,8 +197,16 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 
 // persistUpdatedService is the shared tail of `update service`: both the
 // flags form (cmdUpdate) and the interactive editor funnel through it —
-// validate the resulting entry, persist, and run the single sync path
-// (Incremental, design §6.1). Zero mutation logic lives in the editor.
+// validate the resulting entry, persist, and run the right sync path
+// (design §6.1). Zero mutation logic lives in the editor.
+//
+// Sync mode is chosen by the shape of the change, exactly as it is for the
+// mutation verbs. Almost every edit is Incremental (it cannot orphan a file),
+// but flipping `disabled` on CAN: a disabled service generates nothing, so its
+// existing files must be deleted, and Incremental never deletes. Leaving them
+// behind would be drift, which makes `apply` refuse. So a newly-disabled
+// service goes through the targeted RemoveService primitive — the same one
+// `hemma disable service` uses — rather than a plain reconcile.
 func persistUpdatedService(repoRoot string, cfg *config.Config, name string, svc config.Service) int {
 	// Groups only make sense with an auth gate — refuse the resulting combo
 	// before persisting (validate-before-persist), whichever flag caused it.
@@ -189,12 +214,25 @@ func persistUpdatedService(repoRoot string, cfg *config.Config, name string, svc
 		errf("Auth groups without an auth mode — pass --auth-mode forward|oidc, or clear the groups with --auth-groups ''.")
 		return 2
 	}
+	wasDisabled := cfg.Services[name].Disabled
 	cfg.Services[name] = svc
 	if err := cfg.Save(); err != nil {
 		errf("%v", err)
 		return 1
 	}
 	fmt.Printf(tick+" Updated service %q\n", name)
+
+	if svc.Disabled && !wasDisabled {
+		mf := loadManifest(repoRoot, cfg)
+		eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: mf}
+		res, err := eng.RemoveService(name)
+		if err != nil {
+			errf("%v", err)
+			return 1
+		}
+		fmt.Printf("Disabled — removed %d generated %s.\n", len(res.Deleted), plural(len(res.Deleted), "file"))
+		return 0
+	}
 	return runSync(repoRoot, cfg, syncpkg.Incremental)
 }
 
@@ -262,6 +300,18 @@ func summarizeServiceChanges(oldSvc, newSvc config.Service) []string {
 		}
 		return string(m)
 	}
+	displayBool := func(b bool) string {
+		if b {
+			return "yes"
+		}
+		return "no"
+	}
+	displayPublic := func(p bool) string {
+		if p {
+			return "yes"
+		}
+		return "local only"
+	}
 	displayGroups := func(gs []string) string {
 		if len(gs) == 0 {
 			return "(none)"
@@ -280,7 +330,24 @@ func summarizeServiceChanges(oldSvc, newSvc config.Service) []string {
 	add("fqdn", oldSvc.FQDN, newSvc.FQDN)
 	add("host", oldSvc.Host, newSvc.Host)
 	add("backend", oldSvc.Backend, newSvc.Backend)
+	add("public", displayPublic(oldSvc.Public), displayPublic(newSvc.Public))
+	add("disabled", displayBool(oldSvc.Disabled), displayBool(newSvc.Disabled))
 	add("auth mode", displayMode(oldSvc.Auth.Mode), displayMode(newSvc.Auth.Mode))
 	add("auth groups", displayGroups(oldSvc.Auth.Groups), displayGroups(newSvc.Auth.Groups))
+	add("auth bypass paths", displayGroups(oldSvc.Auth.BypassPaths), displayGroups(newSvc.Auth.BypassPaths))
 	return lines
+}
+
+// splitLines turns the bypass-paths text area into a trimmed, de-duplicated,
+// order-preserving list. Order is preserved because Authelia rules are
+// first-match, so the sequence the user typed is meaningful (unlike groups,
+// which are OR'd and therefore sorted).
+func splitLines(s string) []string {
+	var out []string
+	for _, l := range strings.Split(s, "\n") {
+		if l = strings.TrimSpace(l); l != "" && !slices.Contains(out, l) {
+			out = append(out, l)
+		}
+	}
+	return out
 }

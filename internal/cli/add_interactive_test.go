@@ -72,18 +72,47 @@ func TestSummarizeNewService(t *testing.T) {
 		"  fqdn: a.example.com",
 		"  host: appbox",
 		"  backend: a:80",
+		"  public: local only",
 	}
 	if got := summarizeNewService(plain); !reflect.DeepEqual(got, want) {
 		t.Errorf("summary mismatch:\n got  %v\n want %v", got, want)
 	}
 
+	// public is always shown — it is a decision the editor asked for, so it
+	// belongs in the confirmation even when the answer was "no".
+	pub := plain
+	pub.Public = true
+	if got := summarizeNewService(pub); got[3] != "  public: yes" {
+		t.Errorf("public line = %q, want \"  public: yes\"", got[3])
+	}
+
 	gated := plain
-	gated.Auth = config.Auth{Mode: config.AuthForward, Groups: []string{"family", "admins"}}
+	gated.Auth = config.Auth{
+		Mode:        config.AuthForward,
+		Groups:      []string{"family", "admins"},
+		BypassPaths: []string{"/health", "/api/*"},
+	}
 	want = append(want,
 		"  auth mode: forward",
 		"  auth groups: admins, family",
+		// Bypass paths keep the entered ORDER (Authelia rules are first-match),
+		// unlike groups which are OR'd and therefore sorted.
+		"  auth bypass paths: /health, /api/*",
 	)
 	if got := summarizeNewService(gated); !reflect.DeepEqual(got, want) {
 		t.Errorf("summary mismatch:\n got  %v\n want %v", got, want)
+	}
+}
+
+// splitLines turns the bypass-paths text area into a list: trimmed, blanks
+// dropped, duplicates removed, ORDER PRESERVED (first-match rule semantics).
+func TestSplitLines(t *testing.T) {
+	got := splitLines("  /health \n\n/api/*\n/health\n   \n/z")
+	want := []string{"/health", "/api/*", "/z"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("splitLines = %v, want %v", got, want)
+	}
+	if got := splitLines("   \n\n"); got != nil {
+		t.Errorf("all-blank input should yield nil, got %v", got)
 	}
 }

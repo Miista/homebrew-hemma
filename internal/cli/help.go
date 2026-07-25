@@ -22,12 +22,14 @@ Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port
 With no flags (and stdin a terminal) an interactive editor opens instead: the
 fqdn is pre-filled with <name>.<domain> when exactly one domain is defined and
 validated live (must match a domain, must not collide with another service),
-the host and auth mode are pickers, and auth groups are a multi-select built
-from the groups that actually exist — on users in the auth provider's users
-database (members shown per group) and on other services — plus a 'new group…'
-escape hatch. On submit it prints the collected fields and runs the exact same
-validation and sync path as the flags form; Ctrl-C touches nothing.
-Non-interactive callers must pass flags.
+the host and auth mode are pickers, public is a confirm, auth groups are a
+multi-select built from the groups that actually exist — on users in the auth
+provider's users database (members shown per group) and on other services —
+plus a 'new group…' escape hatch, and auth bypass paths are one per line. On
+submit it prints the collected fields and runs the exact same validation and
+sync path as the flags form; Ctrl-C touches nothing. Non-interactive callers
+must pass flags. ('disabled' is not offered when adding — a service is added to
+work; turn it off later with 'hemma disable service'.)
 
 Flags:
   -f, --fqdn <fqdn>       Public name the service is reached at (must match a declared domain).
@@ -55,13 +57,17 @@ Regenerates files immediately, then prints which hosts need 'hemma apply'.`},
 Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|none] [--auth-groups <g1,g2>] [--public]
 
 With no flags (and stdin a terminal) an interactive editor opens instead:
-every field is pre-filled with the service's current values (Enter keeps
-them), the host and auth mode are pickers, and auth groups are a multi-select
-built from the groups that actually exist — on users in the auth provider's
-users database (members shown per group) and on other services — plus a
-'new group…' escape hatch. On submit it prints the changed fields (old → new)
-and runs the exact same validation and sync path as the flags form; 'no
-changes' or Ctrl-C touches nothing. Non-interactive callers must pass flags.
+EVERY field is pre-filled with the service's current values and editable
+(Enter keeps them): fqdn, host, backend, public, disabled, auth mode, auth
+groups, and auth bypass paths. The host and auth mode are pickers, public and
+disabled are confirms, auth groups are a multi-select built from the groups
+that actually exist — on users in the auth provider's users database (members
+shown per group) and on other services — plus a 'new group…' escape hatch, and
+bypass paths are one per line. Turning 'disabled' on removes the service's
+generated files, exactly as 'hemma disable service' does. On submit it prints
+the changed fields (old → new) and runs the same validation and sync path as
+the flags form; 'no changes' or Ctrl-C touches nothing. Non-interactive callers
+must pass flags.
 
 Flags:
   -f, --fqdn <fqdn>       New public name (must match a declared domain).

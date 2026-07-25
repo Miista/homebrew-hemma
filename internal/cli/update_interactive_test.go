@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -143,5 +145,115 @@ func TestSummarizeServiceChanges(t *testing.T) {
 	}
 	if !reflect.DeepEqual(lines, want) {
 		t.Errorf("summary mismatch:\n got  %v\n want %v", lines, want)
+	}
+}
+
+// Flipping `disabled` through the shared update tail must DELETE the generated
+// files, not merely stop regenerating them. persistUpdatedService syncs
+// Incremental, which never deletes — so without the RemoveService branch the
+// files would be orphaned, the repo would show drift, and `apply` would refuse.
+// This is the trap that makes `disabled` different from every other field the
+// interactive editor can now set.
+func TestPersistUpdatedService_DisablingRemovesGeneratedFiles(t *testing.T) {
+	dir := t.TempDir()
+	mkdirs(t, dir, "resolver", "appbox")
+	seed(t, dir)
+	if code := Run([]string{"-C", dir, "add", "service", "docs",
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"}); code != 0 {
+		t.Fatalf("add exit %d", code)
+	}
+	site := filepath.Join(dir, "appbox", "caddy", "data", "sites", "docs.caddy")
+	rec := filepath.Join(dir, "resolver", "pihole", "data", "dnsmasq.d", "docs.generated.conf")
+	for _, p := range []string{site, rec} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("expected %s after add: %v", p, err)
+		}
+	}
+
+	cfg, err := config.Load(filepath.Join(dir, "services.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := cfg.Services["docs"]
+	svc.Disabled = true
+	captureStdout(t, func() {
+		if code := persistUpdatedService(dir, cfg, "docs", svc); code != 0 {
+			t.Errorf("persistUpdatedService exit %d", code)
+		}
+	})
+
+	for _, p := range []string{site, rec} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s should be deleted when the service is disabled (err=%v)", p, err)
+		}
+	}
+	// The repo must be clean afterwards — orphaned files here would make
+	// `hemma apply` refuse to run.
+	out := captureStdout(t, func() { Run([]string{"-C", dir, "doctor"}) })
+	if strings.Contains(out, "out of sync") {
+		t.Errorf("disabling must not leave drift:\n%s", out)
+	}
+}
+
+// Re-enabling regenerates: the ordinary Incremental path handles it, so the
+// round trip must land back where it started.
+func TestPersistUpdatedService_ReEnablingRegenerates(t *testing.T) {
+	dir := t.TempDir()
+	mkdirs(t, dir, "resolver", "appbox")
+	seed(t, dir)
+	if code := Run([]string{"-C", dir, "add", "service", "docs",
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"}); code != 0 {
+		t.Fatalf("add exit %d", code)
+	}
+	site := filepath.Join(dir, "appbox", "caddy", "data", "sites", "docs.caddy")
+	before, err := os.ReadFile(site)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	set := func(disabled bool) {
+		cfg, err := config.Load(filepath.Join(dir, "services.yaml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		svc := cfg.Services["docs"]
+		svc.Disabled = disabled
+		captureStdout(t, func() { persistUpdatedService(dir, cfg, "docs", svc) })
+	}
+	set(true)
+	set(false)
+
+	after, err := os.ReadFile(site)
+	if err != nil {
+		t.Fatalf("re-enabling should regenerate the site file: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("regenerated content differs:\n--- before ---\n%s\n--- after ---\n%s", before, after)
+	}
+}
+
+// A plain field edit still takes the Incremental path and leaves the other
+// generated files alone — the RemoveService branch must be narrow.
+func TestPersistUpdatedService_OrdinaryEditKeepsFiles(t *testing.T) {
+	dir := t.TempDir()
+	mkdirs(t, dir, "resolver", "appbox")
+	seed(t, dir)
+	if code := Run([]string{"-C", dir, "add", "service", "docs",
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"}); code != 0 {
+		t.Fatalf("add exit %d", code)
+	}
+	cfg, err := config.Load(filepath.Join(dir, "services.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := cfg.Services["docs"]
+	svc.Public = true // the kind of edit the editor now allows
+	captureStdout(t, func() {
+		if code := persistUpdatedService(dir, cfg, "docs", svc); code != 0 {
+			t.Errorf("exit %d", code)
+		}
+	})
+	if _, err := os.Stat(filepath.Join(dir, "appbox", "caddy", "data", "sites", "docs.caddy")); err != nil {
+		t.Errorf("ordinary edit must not delete generated files: %v", err)
 	}
 }
