@@ -106,12 +106,16 @@ Notes:
 - `dns_host` is a **single repo-wide resolver** (`defaults.dns_host`, set via
   `hemma set dns-host`). Every service's DNS record is routed through it; there is **no
   per-service override**. **Do not hardcode which host that is** — always read `defaults.dns_host`.
-- `public` declares the *intended* public horizon and is deliberately three-state: `true`,
-  `false`, or **absent**. Set via `add/update service --public[=false|unset]` (§6.1); `unset`
-  removes the declaration, which is why the flag cannot be a plain bool. Absent means undeclared — `doctor` compares only a declared value
-  against the observed compose label (§12), so existing repos gain no advisories until they opt in.
-  There is no value meaning "public but not local": every declared service gets a Pi-hole record
-  and a Caddy block, so the internal horizon is a consequence of having an entry, not a choice.
+- `public` **opts a service into the public horizon**: `true` means it is meant to be reachable
+  from the internet as well; absent means local only. Set via `add/update service --public`
+  (§6.1). A plain bool, not a tri-state — absent and `false` are the same statement.
+  There is no value for "local", because locality is never in question: every service is
+  reachable on the LAN either way, directly via its Pi-hole record or by hairpin through the
+  tunnel. And there is no value for "public but not local" — a declared service always gets a
+  Pi-hole record and a Caddy block.
+  `doctor` uses it in **one direction**: a service that opted in is checked against whether it
+  actually is served. Exposure that was never opted into is not reported, so adopting the field
+  costs an existing repo nothing.
 - `auth.bypass_paths` was a top-level `public_paths` until July 2026. It moved under `auth`
   because it is only meaningful with mode `forward`, and because the old name collided with the
   unrelated `public` field. Legacy files are migrated on load and the old key stops being emitted
@@ -996,9 +1000,10 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
   container, so the tunnel never traverses Caddy and the generated `(auth)` gate never runs
   (detected via `defaults.public_proxy_label`, default `cloudflare.io/reverseproxy`; the
   `auth_service` is exempt because `auth: forward` on it is refused by the planner, so no gate
-  exists to bypass); **declared vs observed** — `public: true|false` contradicted by the labels,
-  silent when undeclared so the check is opt-in; and **orphan ingress** — a publicly-served
-  hostname in a managed domain with no service entry, hence no internal horizon at all. The first
+  exists to bypass); **declared but not served** — `public: true` with no label backing it,
+  one direction only so exposure that was never opted into stays unreported; and **orphan ingress** — a publicly-served
+  hostname in a managed domain with no service entry, hence no split-horizon record (it still
+  works on the LAN, by hairpin). The first
   two count as doctor problems; the third is informational.
 
   The suggested label snippet is **auth-aware**: a `forward`-auth service is told to route through

@@ -275,18 +275,17 @@ type Service struct {
 	// mapping when either carries data. Legacy `auth: true` is accepted on load
 	// and re-emitted as `auth: forward`.
 	Auth Auth `yaml:"auth,omitempty"`
-	// Public declares the INTENDED public horizon: true = should be reachable
-	// from the internet, false = internal only. There is no "public" value that
-	// excludes the internal horizon — every service with an entry here gets a
-	// Pi-hole record and a Caddy block, so "local" is a consequence of being
-	// declared at all, not a choice (design §12).
+	// Public opts the service into the public horizon: true = it is meant to be
+	// reachable from the internet as well, absent = local only. Every service
+	// is local either way — directly via Pi-hole, or by hairpin through the
+	// tunnel — so locality is never in question and has no value here (§12).
 	//
-	// It is a *bool because THREE states matter, and they are not
-	// true/false/"whatever": nil means undeclared, and only a DECLARED value is
-	// compared against the observed compose label. Were this a plain bool,
-	// every existing service would silently declare itself internal-only and
-	// doctor would warn on every publicly-labelled one.
-	Public *bool `yaml:"public,omitempty"`
+	// A plain bool, because this is an OPT-IN and not a tri-state: absent and
+	// false mean the same thing. `doctor` uses it in one direction only — a
+	// service that says it should be public is checked against whether it
+	// actually is. Exposure that was never opted into is not reported, so
+	// adopting the field costs an existing repo nothing.
+	Public bool `yaml:"public,omitempty"`
 }
 
 // serviceWire is the on-disk form of Service, carrying the legacy keys that are
@@ -298,14 +297,16 @@ type serviceWire struct {
 	Backend  string `yaml:"backend"`
 	Disabled bool   `yaml:"disabled,omitempty"`
 	Auth     Auth   `yaml:"auth,omitempty"`
-	Public   *bool  `yaml:"public,omitempty"`
+	Public   bool   `yaml:"public,omitempty"`
 	// PublicPaths is the pre-move name of Auth.BypassPaths, when auth-exempt
 	// paths sat at the top level. Accepted on load, re-emitted under `auth`.
 	PublicPaths []string `yaml:"public_paths,omitempty"`
 }
 
 // UnmarshalYAML decodes a service and migrates legacy top-level `public_paths`
-// into `auth.bypass_paths` (design §3). The migration is one-way and silent:
+// into `auth.bypass_paths` (design §3). A legacy `public: false` (from the brief
+// tri-state era) decodes to the zero value and omitempty drops the key on the
+// next rewrite — false and absent are the same statement now. The migration is one-way and silent:
 // the next mutation rewrites services.yaml wholesale, so the old key simply
 // stops existing — the same accept-both-then-re-emit approach as the manifest
 // and Caddyfile-import renames. An explicit `auth.bypass_paths` wins if a file
@@ -327,16 +328,6 @@ func (s *Service) UnmarshalYAML(value *yaml.Node) error {
 		s.Auth.BypassPaths = w.PublicPaths
 	}
 	return nil
-}
-
-// DeclaredPublic reports the service's declared public horizon and whether it
-// was declared at all. Callers must respect the second return: an undeclared
-// service has no intent to compare against reality, so it warrants no advisory.
-func (s Service) DeclaredPublic() (want, declared bool) {
-	if s.Public == nil {
-		return false, false
-	}
-	return *s.Public, true
 }
 
 // Config is the in-memory representation of services.yaml.

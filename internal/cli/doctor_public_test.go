@@ -18,9 +18,9 @@ func doctorSetup(t *testing.T) string {
 	return dir
 }
 
-// setPublic sets (or clears) the declared `public` field on a service by
-// editing services.yaml through the config package — there is no CLI flag.
-func setPublic(t *testing.T, dir, svc string, want *bool) {
+// setPublic sets the `public` opt-in on a service directly through the config
+// package (the CLI flag is exercised separately).
+func setPublic(t *testing.T, dir, svc string, want bool) {
 	t.Helper()
 	cfg, err := config.Load(filepath.Join(dir, "services.yaml"))
 	if err != nil {
@@ -49,8 +49,6 @@ func doctorOut(t *testing.T, dir string) (string, int) {
 	out := captureStdout(t, func() { code = Run([]string{"-C", dir, "doctor"}) })
 	return out, code
 }
-
-func ptr(b bool) *bool { return &b }
 
 // A forward-auth service served DIRECT from the tunnel is publicly reachable
 // with the auth gate bypassed. This is the highest-severity check here, and it
@@ -140,14 +138,14 @@ func TestDoctorPublic_AuthBypassExemptsAuthService(t *testing.T) {
 func TestDoctorPublic_DeclaredPublicButNotServed(t *testing.T) {
 	dir := doctorSetup(t)
 	setAuthMode(t, dir, "docs", "none") // keep the bypass check out of this test
-	setPublic(t, dir, "blog", ptr(true))
+	setPublic(t, dir, "blog", true)
 	writeCompose(t, dir, "appbox", `services:
   paperless:
     labels:
       cloudflare.io/hostname: "docs.example.com"
 `)
 	out, code := doctorOut(t, dir)
-	if !strings.Contains(out, "declares public: true but has no public ingress") {
+	if !strings.Contains(out, "is declared public but has no public ingress") {
 		t.Errorf("expected declared-but-unserved advisory, got:\n%s", out)
 	}
 	// Snippet names the container from `backend: ghost:2368` and its port.
@@ -164,7 +162,7 @@ func TestDoctorPublic_DeclaredPublicButNotServed(t *testing.T) {
 func TestDoctorPublic_SuggestedSnippetIsAuthAware(t *testing.T) {
 	dir := doctorSetup(t)
 	setAuthMode(t, dir, "docs", "forward")
-	setPublic(t, dir, "docs", ptr(true))
+	setPublic(t, dir, "docs", true)
 	writeCompose(t, dir, "appbox", `services:
   ghost:
     labels:
@@ -180,28 +178,28 @@ func TestDoctorPublic_SuggestedSnippetIsAuthAware(t *testing.T) {
 	}
 }
 
-// public: false with a label present is the security-relevant direction:
-// exposed against an explicit declaration.
-func TestDoctorPublic_DeclaredInternalButExposed(t *testing.T) {
+// Exposure WITHOUT an opt-in is deliberately not reported. `public` says "this
+// should be public", not "every other service must not be" — reporting the
+// reverse would fire on every already-exposed service in an existing repo.
+func TestDoctorPublic_ExposedWithoutOptInIsSilent(t *testing.T) {
 	dir := doctorSetup(t)
 	setAuthMode(t, dir, "docs", "none") // isolate from the bypass check
-	setPublic(t, dir, "docs", ptr(false))
 	writeCompose(t, dir, "appbox", `services:
   paperless:
     labels:
       cloudflare.io/hostname: "docs.example.com"
 `)
 	out, code := doctorOut(t, dir)
-	if !strings.Contains(out, "declares public: false but IS exposed") {
-		t.Errorf("expected exposed-against-declaration advisory, got:\n%s", out)
+	if strings.Contains(out, "declared public") {
+		t.Errorf("un-opted-in exposure must be silent, got:\n%s", out)
 	}
-	if code == 0 {
-		t.Error("exposure against declaration must be a doctor problem")
+	if code != 0 {
+		t.Errorf("un-opted-in exposure must not fail doctor, exit %d:\n%s", code, out)
 	}
 }
 
-// Undeclared services are silent in BOTH directions — this is what keeps the
-// checks opt-in for an existing repo.
+// A service with no opt-in and no label is silent, which is every service in a
+// repo that has not adopted the field.
 func TestDoctorPublic_UndeclaredIsSilent(t *testing.T) {
 	dir := doctorSetup(t)
 	// Label the NON-auth service: labelling the forward-auth one would (rightly)
@@ -231,7 +229,7 @@ func TestDoctorPublic_OrphanIngress(t *testing.T) {
 `)
 	out, code := doctorOut(t, dir)
 	// Singular subject takes a singular verb ("1 hostname has", not "have").
-	if !strings.Contains(out, "1 public hostname on appbox has no internal horizon") {
+	if !strings.Contains(out, "1 public hostname on appbox has no split-horizon record") {
 		t.Errorf("expected the orphan-ingress advisory, got:\n%s", out)
 	}
 	// The suggested command should be complete: name, fqdn, host, backend:port.
@@ -253,7 +251,7 @@ func TestDoctorPublic_OrphanIgnoresUnmanagedDomains(t *testing.T) {
       cloudflare.io/hostname: "thing.elsewhere.net"
 `)
 	out, _ := doctorOut(t, dir)
-	if strings.Contains(out, "internal horizon") {
+	if strings.Contains(out, "split-horizon record") {
 		t.Errorf("unmanaged domain must be ignored, got:\n%s", out)
 	}
 }
@@ -262,9 +260,9 @@ func TestDoctorPublic_OrphanIgnoresUnmanagedDomains(t *testing.T) {
 // not evidence of misconfiguration.
 func TestDoctorPublic_UnreadableComposeIsSilent(t *testing.T) {
 	dir := doctorSetup(t)
-	setPublic(t, dir, "docs", ptr(true))
+	setPublic(t, dir, "docs", true)
 	out, _ := doctorOut(t, dir)
-	if strings.Contains(out, "declares public") || strings.Contains(out, "internal horizon") {
+	if strings.Contains(out, "declared public") || strings.Contains(out, "split-horizon record") {
 		t.Errorf("no compose file must yield no public-horizon advisories, got:\n%s", out)
 	}
 }
@@ -273,10 +271,10 @@ func TestDoctorPublic_UnreadableComposeIsSilent(t *testing.T) {
 // be reported as "your service is not exposed".
 func TestDoctorPublic_UnparseableComposeIsSilent(t *testing.T) {
 	dir := doctorSetup(t)
-	setPublic(t, dir, "docs", ptr(true))
+	setPublic(t, dir, "docs", true)
 	writeCompose(t, dir, "appbox", "services: [broken: yaml\n")
 	out, _ := doctorOut(t, dir)
-	if strings.Contains(out, "declares public") {
+	if strings.Contains(out, "declared public") {
 		t.Errorf("unparseable compose must be silent, got:\n%s", out)
 	}
 }
@@ -285,7 +283,7 @@ func TestDoctorPublic_UnparseableComposeIsSilent(t *testing.T) {
 func TestDoctorPublic_DisabledByConfig(t *testing.T) {
 	dir := doctorSetup(t)
 	setAuthMode(t, dir, "docs", "forward")
-	setPublic(t, dir, "docs", ptr(false))
+	setPublic(t, dir, "docs", true)
 	writeCompose(t, dir, "appbox", `services:
   paperless:
     labels:
@@ -300,7 +298,7 @@ func TestDoctorPublic_DisabledByConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, _ := doctorOut(t, dir)
-	for _, s := range []string{"WITHOUT auth", "declares public", "internal horizon"} {
+	for _, s := range []string{"WITHOUT auth", "declared public", "split-horizon record"} {
 		if strings.Contains(out, s) {
 			t.Errorf("public_label: none must silence %q, got:\n%s", s, out)
 		}
@@ -308,11 +306,11 @@ func TestDoctorPublic_DisabledByConfig(t *testing.T) {
 }
 
 // public_proxy_label: none disables ONLY the auth-bypass check; the
-// declared-vs-observed check keeps working.
+// declared-but-not-served check keeps working.
 func TestDoctorPublic_ProxyLabelDisabledKeepsOtherChecks(t *testing.T) {
 	dir := doctorSetup(t)
 	setAuthMode(t, dir, "docs", "forward")
-	setPublic(t, dir, "docs", ptr(false))
+	setPublic(t, dir, "blog", true) // opted in, but no label for blog below
 	writeCompose(t, dir, "appbox", `services:
   paperless:
     labels:
@@ -327,11 +325,12 @@ func TestDoctorPublic_ProxyLabelDisabledKeepsOtherChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, _ := doctorOut(t, dir)
+	// docs IS served direct and IS forward-auth, but the bypass check is off.
 	if strings.Contains(out, "WITHOUT auth") {
 		t.Errorf("proxy label disabled must silence the bypass check, got:\n%s", out)
 	}
-	if !strings.Contains(out, "declares public: false but IS exposed") {
-		t.Errorf("the declaration check must still run, got:\n%s", out)
+	if !strings.Contains(out, "blog is declared public but has no public ingress") {
+		t.Errorf("the opt-in check must still run, got:\n%s", out)
 	}
 }
 
@@ -340,7 +339,7 @@ func TestDoctorPublic_ProxyLabelDisabledKeepsOtherChecks(t *testing.T) {
 func TestDoctorPublic_SkipsDisabledServices(t *testing.T) {
 	dir := doctorSetup(t)
 	setAuthMode(t, dir, "docs", "forward")
-	setPublic(t, dir, "docs", ptr(false))
+	setPublic(t, dir, "docs", true)
 	if code := Run([]string{"-C", dir, "disable", "service", "docs"}); code != 0 {
 		t.Fatalf("disable exit %d", code)
 	}
@@ -350,7 +349,7 @@ func TestDoctorPublic_SkipsDisabledServices(t *testing.T) {
       cloudflare.io/hostname: "docs.example.com"
 `)
 	out, _ := doctorOut(t, dir)
-	if strings.Contains(out, "WITHOUT auth") || strings.Contains(out, "declares public") {
+	if strings.Contains(out, "WITHOUT auth") || strings.Contains(out, "declared public") {
 		t.Errorf("disabled service must be skipped, got:\n%s", out)
 	}
 }
@@ -359,7 +358,7 @@ func TestDoctorPublic_SkipsDisabledServices(t *testing.T) {
 func TestDoctorPublic_NeverWritesCompose(t *testing.T) {
 	dir := doctorSetup(t)
 	setAuthMode(t, dir, "docs", "forward")
-	setPublic(t, dir, "blog", ptr(true))
+	setPublic(t, dir, "blog", true)
 	body := `services:
   paperless:
     labels:
@@ -428,7 +427,7 @@ func TestDoctorPublic_OrphansGroupedPerHostWithPluralAgreement(t *testing.T) {
       cloudflare.io/hostname: "two.example.com:82"
 `)
 	out, _ := doctorOut(t, dir)
-	if !strings.Contains(out, "2 public hostnames on appbox have no internal horizon") {
+	if !strings.Contains(out, "2 public hostnames on appbox have no split-horizon record") {
 		t.Errorf("expected one grouped plural advisory, got:\n%s", out)
 	}
 	// Count HEADLINES, not the phrase — the body repeats "no internal horizon".
@@ -442,9 +441,9 @@ func TestDoctorPublic_OrphansGroupedPerHostWithPluralAgreement(t *testing.T) {
 	}
 }
 
-// declaredOf reads a service's declared public horizon straight from the
-// persisted YAML, so these tests assert what was actually written.
-func declaredOf(t *testing.T, dir, svc string) (want, declared bool) {
+// declaredOf reads a service's public opt-in straight from the persisted YAML,
+// so these tests assert what was actually written.
+func declaredOf(t *testing.T, dir, svc string) bool {
 	t.Helper()
 	cfg, err := config.Load(filepath.Join(dir, "services.yaml"))
 	if err != nil {
@@ -454,77 +453,67 @@ func declaredOf(t *testing.T, dir, svc string) (want, declared bool) {
 	if !ok {
 		t.Fatalf("service %q missing", svc)
 	}
-	return s.DeclaredPublic()
+	return s.Public
 }
 
-// --public on `add service` declares the public horizon at creation time, in
-// all three forms.
+// --public on `add service` opts in at creation time; without it the service is
+// local-only and no key is written.
 func TestAddService_PublicFlag(t *testing.T) {
-	cases := []struct {
-		name, arg             string
-		wantVal, wantDeclared bool
+	for _, c := range []struct {
+		label string
+		args  []string
+		want  bool
 	}{
-		{"bare", "--public", true, true},
-		{"explicit-true", "--public=true", true, true},
-		{"explicit-false", "--public=false", false, true},
-		{"unset", "--public=unset", false, false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
+		{"opted in", []string{"--public"}, true},
+		{"explicit true", []string{"--public=true"}, true},
+		{"explicit false", []string{"--public=false"}, false},
+		{"omitted", nil, false},
+	} {
+		t.Run(c.label, func(t *testing.T) {
 			dir := t.TempDir()
 			mkdirs(t, dir, "resolver", "appbox")
 			seed(t, dir)
-			args := []string{"-C", dir, "add", "service", "svc",
-				"--fqdn", "svc.example.com", "--host", "appbox", "--backend", "app:1234", c.arg}
+			args := append([]string{"-C", dir, "add", "service", "svc",
+				"--fqdn", "svc.example.com", "--host", "appbox", "--backend", "app:1234"}, c.args...)
 			if code := Run(args); code != 0 {
-				t.Fatalf("add with %s exit %d", c.arg, code)
+				t.Fatalf("add %v exit %d", c.args, code)
 			}
-			got, declared := declaredOf(t, dir, "svc")
-			if got != c.wantVal || declared != c.wantDeclared {
-				t.Errorf("%s: got (%v, %v), want (%v, %v)", c.arg, got, declared, c.wantVal, c.wantDeclared)
+			if got := declaredOf(t, dir, "svc"); got != c.want {
+				t.Errorf("add %v: Public = %v, want %v", c.args, got, c.want)
 			}
 		})
 	}
 }
 
-// --public on `update service` sets the declaration, and --public=unset REMOVES
-// it — nil is not false, so this must return the service to undeclared (no
-// doctor advisories) rather than declaring it internal-only.
-func TestUpdateService_PublicFlagIncludingUnset(t *testing.T) {
+// --public opts in on update, and --public=false opts back out — omitempty then
+// drops the key, so opting out and never having opted in are identical on disk.
+func TestUpdateService_PublicFlag(t *testing.T) {
 	dir := doctorSetup(t)
 
 	if code := Run([]string{"-C", dir, "update", "service", "blog", "--public"}); code != 0 {
 		t.Fatalf("--public exit %d", code)
 	}
-	if got, declared := declaredOf(t, dir, "blog"); !got || !declared {
-		t.Fatalf("after --public: got (%v, %v), want (true, true)", got, declared)
+	if !declaredOf(t, dir, "blog") {
+		t.Fatal("--public should opt in")
 	}
 
 	if code := Run([]string{"-C", dir, "update", "service", "blog", "--public=false"}); code != 0 {
 		t.Fatalf("--public=false exit %d", code)
 	}
-	if got, declared := declaredOf(t, dir, "blog"); got || !declared {
-		t.Fatalf("after --public=false: got (%v, %v), want (false, true)", got, declared)
+	if declaredOf(t, dir, "blog") {
+		t.Fatal("--public=false should opt back out")
 	}
-
-	if code := Run([]string{"-C", dir, "update", "service", "blog", "--public=unset"}); code != 0 {
-		t.Fatalf("--public=unset exit %d", code)
-	}
-	if got, declared := declaredOf(t, dir, "blog"); got || declared {
-		t.Fatalf("after --public=unset: got (%v, %v), want (false, false)", got, declared)
-	}
-	// The key must be gone from the file, not written as `public: false`.
 	b, err := os.ReadFile(filepath.Join(dir, "services.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(b), "public:") {
-		t.Errorf("--public=unset must remove the key entirely:\n%s", b)
+		t.Errorf("opting out must remove the key, not write public: false:\n%s", b)
 	}
 }
 
-// Not passing --public leaves an existing declaration alone: update only
-// touches the fields given on the command line.
+// Not passing --public leaves an existing opt-in alone: update only touches the
+// fields given on the command line.
 func TestUpdateService_PublicUntouchedWhenFlagAbsent(t *testing.T) {
 	dir := doctorSetup(t)
 	if code := Run([]string{"-C", dir, "update", "service", "blog", "--public"}); code != 0 {
@@ -533,95 +522,29 @@ func TestUpdateService_PublicUntouchedWhenFlagAbsent(t *testing.T) {
 	if code := Run([]string{"-C", dir, "update", "service", "blog", "--backend", "ghost:9999"}); code != 0 {
 		t.Fatalf("update backend exit %d", code)
 	}
-	if got, declared := declaredOf(t, dir, "blog"); !got || !declared {
-		t.Errorf("unrelated update must not clear the declaration: got (%v, %v)", got, declared)
+	if !declaredOf(t, dir, "blog") {
+		t.Error("an unrelated update must not clear the opt-in")
 	}
 }
 
-// An invalid --public value is a usage error, before anything is persisted.
-func TestUpdateService_PublicInvalidValue(t *testing.T) {
-	dir := doctorSetup(t)
-	if code := Run([]string{"-C", dir, "update", "service", "blog", "--public=maybe"}); code != 2 {
-		t.Errorf("invalid --public should exit 2, got %d", code)
-	}
-	if _, declared := declaredOf(t, dir, "blog"); declared {
-		t.Error("a rejected flag must not persist a declaration")
-	}
-}
-
-// The flag composes with the doctor check it exists to feed: declare, then get
-// the advisory.
+// The flag composes with the check it exists to feed: opt in, then be told the
+// public half was never wired.
 func TestPublicFlag_FeedsDoctorCheck(t *testing.T) {
 	dir := doctorSetup(t)
 	setAuthMode(t, dir, "docs", "none")
-	if code := Run([]string{"-C", dir, "update", "service", "docs", "--public=false"}); code != 0 {
-		t.Fatalf("--public=false exit %d", code)
+	if code := Run([]string{"-C", dir, "update", "service", "docs", "--public"}); code != 0 {
+		t.Fatalf("--public exit %d", code)
 	}
 	writeCompose(t, dir, "appbox", `services:
-  paperless:
+  ghost:
     labels:
-      cloudflare.io/hostname: "docs.example.com"
+      cloudflare.io/hostname: "blog.example.com"
 `)
 	out, code := doctorOut(t, dir)
-	if !strings.Contains(out, "declares public: false but IS exposed") {
-		t.Errorf("flag-set declaration should drive the check, got:\n%s", out)
+	if !strings.Contains(out, "docs is declared public but has no public ingress") {
+		t.Errorf("flag-set opt-in should drive the check, got:\n%s", out)
 	}
 	if code == 0 {
 		t.Error("expected non-zero exit")
-	}
-}
-
-// publicFlag is the tri-state flag behind --public. Its String() feeds `-h`
-// output, and IsBoolFlag is what lets the bare `--public` form work without
-// swallowing the next argument.
-func TestPublicFlag_ValueSemantics(t *testing.T) {
-	var p publicFlag
-	if got := p.String(); got != "unset" {
-		t.Errorf("zero value should render as unset, got %q", got)
-	}
-	if !p.IsBoolFlag() {
-		t.Error("must be a bool flag so `--public` needs no value")
-	}
-	for _, in := range []string{"", "true", "TRUE", " yes "} {
-		var f publicFlag
-		if err := f.Set(in); err != nil {
-			t.Fatalf("Set(%q): %v", in, err)
-		}
-		if f.val == nil || !*f.val {
-			t.Errorf("Set(%q) should declare true, got %v", in, f.val)
-		}
-		if got := f.String(); got != "true" {
-			t.Errorf("String() after Set(%q) = %q, want true", in, got)
-		}
-	}
-	for _, in := range []string{"false", "No"} {
-		var f publicFlag
-		if err := f.Set(in); err != nil {
-			t.Fatalf("Set(%q): %v", in, err)
-		}
-		if f.val == nil || *f.val {
-			t.Errorf("Set(%q) should declare false, got %v", in, f.val)
-		}
-		if got := f.String(); got != "false" {
-			t.Errorf("String() after Set(%q) = %q, want false", in, got)
-		}
-	}
-	// Un-declaring must yield nil, not false — the whole point of the type.
-	for _, in := range []string{"unset", "none", "-"} {
-		f := publicFlag{val: new(bool)}
-		*f.val = true
-		if err := f.Set(in); err != nil {
-			t.Fatalf("Set(%q): %v", in, err)
-		}
-		if f.val != nil {
-			t.Errorf("Set(%q) should clear to nil, got %v", in, *f.val)
-		}
-		if got := f.String(); got != "unset" {
-			t.Errorf("String() after Set(%q) = %q, want unset", in, got)
-		}
-	}
-	var bad publicFlag
-	if err := bad.Set("maybe"); err == nil {
-		t.Error("an unrecognized value must be an error, not silently ignored")
 	}
 }

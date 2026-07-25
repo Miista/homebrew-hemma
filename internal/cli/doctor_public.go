@@ -21,12 +21,15 @@ import (
 //     at the container. The tunnel never traverses Caddy, so the (auth) snippet
 //     never runs and the service is publicly reachable with no authentication
 //     at all. This is the only check here that reports a live security hole.
-//  2. DECLARED vs OBSERVED — the service declares `public: true|false` and the
-//     compose label says otherwise. Undeclared services are silent: intent is
-//     opt-in, so existing repos gain no advisories until they say what they want.
+//  2. DECLARED BUT NOT SERVED — the service says `public: true` and no tunnel
+//     label backs that up. One direction only, on purpose: exposure that was
+//     never opted into is NOT reported. The field is an opt-in, so adopting it
+//     costs an existing repo nothing and doctor stays green until a declaration
+//     is actually contradicted.
 //  3. ORPHAN INGRESS — a hostname served publicly in a managed domain with no
-//     services.yaml entry, so it has NO internal horizon. Internally the name
-//     resolves via public DNS, leaves the LAN, and hairpins back through the
+//     services.yaml entry, so hemma generated no split-horizon record for it.
+//     It is still reachable on the LAN, but by hairpin: the name resolves via
+//     PUBLIC DNS, so traffic leaves the network and comes back through the
 //     tunnel. It works, which is why it goes unnoticed.
 //
 // Checks 1 and 2 count as doctor problems (non-zero exit): one is a security
@@ -119,39 +122,28 @@ func authBypassAdvisory(cfg *config.Config, name string, svc config.Service, in 
 	}, true
 }
 
-// declaredPublicAdvisory compares a DECLARED public horizon against the observed
-// compose label. Undeclared services return no advisory: with no stated intent
-// there is nothing to contradict.
+// declaredPublicAdvisory reports a service that opted into the public horizon
+// (`public: true`) but has no tunnel label to back it up — the §12 gotcha, made
+// visible: hemma did its job internally while the public half was never wired.
+//
+// Deliberately ONE direction. A service that is exposed without having opted in
+// is not reported, because `public` is an opt-in rather than an assertion about
+// every service: reporting the reverse would fire on every already-exposed
+// service in an existing repo and demand a declaration sweep before doctor could
+// pass again. Locality is never part of the comparison — every service is
+// reachable on the LAN either way, directly via Pi-hole or by hairpin.
 func declaredPublicAdvisory(cfg *config.Config, name string, svc config.Service, served bool, composePath string, pub *publicLookup) (auth.Advisory, bool) {
-	want, declared := svc.DeclaredPublic()
-	if !declared || want == served {
+	if !svc.Public || served {
 		return auth.Advisory{}, false
 	}
-	if want {
-		// Declared public, not labelled — the §12 gotcha, made visible.
-		return auth.Advisory{
-			Headline: fmt.Sprintf("%s declares public: true but has no public ingress", name),
-			Body: []string{
-				fmt.Sprintf("no %s label in %s names %s,", pub.label, composePath, svc.FQDN),
-				"so the tunnel does not serve it and the name has no public DNS record.",
-				"Internally it resolves (hemma generated that); from the internet it does not.",
-			},
-			Fix:  publicLabelSnippet(cfg, name, svc, pub),
-			Then: "docker restart cloudflared",
-		}, true
-	}
-	// Declared internal-only, but labelled — the security-relevant direction.
 	return auth.Advisory{
-		Headline: fmt.Sprintf("%s declares public: false but IS exposed to the internet", name),
+		Headline: fmt.Sprintf("%s is declared public but has no public ingress", name),
 		Body: []string{
-			fmt.Sprintf("%s carries a %s label for %s,", composePath, pub.label, svc.FQDN),
-			"which the tunnel serves and publishes a public DNS record for.",
-			"The declaration says this service should be reachable on the LAN only.",
+			fmt.Sprintf("no %s label in %s names %s,", pub.label, composePath, svc.FQDN),
+			"so the tunnel does not serve it and the name has no public DNS record.",
+			"On the LAN it resolves (hemma generated that); from the internet it does not.",
 		},
-		Fix: []string{
-			fmt.Sprintf("remove the %s label from %s in %s,", pub.label, svc.FQDN, composePath),
-			fmt.Sprintf("or, if the exposure is intended, declare it: public: true on %s", name),
-		},
+		Fix:  publicLabelSnippet(cfg, name, svc, pub),
 		Then: "docker restart cloudflared",
 	}, true
 }
@@ -232,8 +224,9 @@ func orphanIngressAdvisories(repoRoot string, cfg *config.Config, pub *publicLoo
 			body = append(body, "  "+h)
 		}
 		body = append(body,
-			"They have no internal horizon, so on the LAN they resolve via PUBLIC DNS —",
-			"traffic leaves the network and hairpins back through the tunnel.")
+			"With no split-horizon record they still work on the LAN, but by hairpin:",
+			"the name resolves via PUBLIC DNS, so traffic leaves the network and",
+			"comes back in through the tunnel.")
 
 		fix := make([]string, 0, len(orphans))
 		for _, h := range orphans {
@@ -252,7 +245,7 @@ func orphanIngressAdvisories(repoRoot string, cfg *config.Config, pub *publicLoo
 			verb = "has"
 		}
 		advs = append(advs, auth.Advisory{
-			Headline: fmt.Sprintf("%d public %s on %s %s no internal horizon",
+			Headline: fmt.Sprintf("%d public %s on %s %s no split-horizon record",
 				len(orphans), plural(len(orphans), "hostname"), host, verb),
 			Body: body,
 			Fix:  fix,

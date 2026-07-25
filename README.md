@@ -207,12 +207,11 @@ sits on the Caddy container rather than the app's.
 
 ### Declaring intent, and what `doctor` checks
 
-The `PUBLIC` column reports what **is**. To say what **should be**, set `public` on the service:
+The `PUBLIC` column reports what **is**. To say what **should be**, opt a service in:
 
 ```sh
-hemma update service wiki   --public          # should be reachable from the internet
-hemma update service pihole --public=false    # internal only — warn me if a label appears
-hemma update service ntfy   --public=unset    # remove the declaration (back to quiet)
+hemma update service wiki --public        # meant to be reachable from the internet too
+hemma update service wiki --public=false  # opt back out
 ```
 
 which records:
@@ -220,31 +219,30 @@ which records:
 ```yaml
 services:
   wiki:
-    public: true      # should be reachable from the internet
-  pihole:
-    public: false     # internal only — warn me if a label ever appears
-  ntfy:               # no `public` key = undeclared; doctor stays quiet
+    public: true      # meant to be public as well
+  pihole:             # no key = local only
 ```
 
-`--public` also works on `add service`. Note that `--public=unset` is **not** the same as
-`--public=false`: `unset` removes the declaration entirely (no advisories either way), while
-`false` asserts the service must stay internal and is a finding if a label appears.
-
-There is no value meaning "public but not local": every service in `services.yaml` gets a Pi-hole
-record and a Caddy block, so the internal horizon is a consequence of being declared at all.
-Leaving `public` off means *undeclared*, which is deliberately distinct from `false` — an existing
-repo gains no advisories until it opts in.
+There is no value for "local", because locality is never in question: every service is reachable
+on the LAN either way — directly via its Pi-hole record, or by hairpin through the tunnel. And
+there is no "public but not local", since a declared service always gets both a Pi-hole record and
+a Caddy block. So `public` is a plain opt-in: set, or not set.
 
 `hemma doctor` then runs three read-only checks over the compose files:
 
 | Check | What it catches | Fails doctor |
 |---|---|---|
 | **Auth bypass** | A `forward`-auth service whose ingress points **direct at the container**. The tunnel never traverses Caddy, so the `(auth)` gate never runs and the service is public with **no authentication**. | yes |
-| **Declared vs observed** | `public: true` with no label (declared public, isn't) or `public: false` with a label (exposed against an explicit declaration). | yes |
-| **Orphan ingress** | A hostname served publicly in a managed domain with **no service entry** — no internal horizon, so on the LAN it resolves via public DNS, leaves the network, and hairpins back through the tunnel. | no |
+| **Declared but not served** | `public: true` with no tunnel label backing it — hemma wired the internal half, the public half was never done. | yes |
+| **Orphan ingress** | A hostname served publicly in a managed domain with **no service entry**, so hemma generated no split-horizon record. It still works on the LAN, but by hairpin. | no |
 
-Each advisory carries the exact label to add or remove, and the suggested snippet is **auth-aware**:
-a `forward`-auth service is told to route through Caddy, because the direct form would create the
+The declaration check runs in **one direction only**: a service exposed without having opted in is
+not reported. `public: true` says "this should be public", not "everything else must not be" — so
+adopting the field costs an existing repo nothing and `doctor` stays green until an opt-in is
+actually contradicted.
+
+Each advisory carries the exact label to add, and the suggested snippet is **auth-aware**: a
+`forward`-auth service is told to route through Caddy, because the direct form would create the
 auth bypass of the first check. A missing or unparseable compose file produces no findings at all —
 absence of evidence is not evidence.
 

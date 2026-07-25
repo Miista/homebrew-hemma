@@ -386,11 +386,11 @@ func TestHostSSH_RoundTripAndDefault(t *testing.T) {
 	}
 }
 
-// The `public` field is three-state: a declared true/false round-trips, and an
-// absent key stays absent rather than defaulting to false. The distinction is
-// load-bearing — doctor only compares DECLARED intent against the observed
-// compose label, so an undeclared service must not read as "declared internal".
-func TestServicePublic_ThreeState(t *testing.T) {
+// `public` is a plain opt-in bool: true round-trips, and absent stays absent
+// rather than being written back as `public: false`. A legacy `public: false`
+// from the brief tri-state era decodes to the zero value and the key is dropped
+// on rewrite — false and absent are the same statement.
+func TestServicePublic_OptIn(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "services.yaml")
 	write(t, path, `hosts: {}
@@ -402,7 +402,7 @@ services:
     host: h
     backend: x:1
     public: true
-  internal:
+  legacyfalse:
     fqdn: b.example.com
     host: h
     backend: x:1
@@ -416,14 +416,9 @@ services:
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, want := range map[string]struct{ val, declared bool }{
-		"wanted":     {true, true},
-		"internal":   {false, true},
-		"undeclared": {false, false},
-	} {
-		got, declared := c.Services[name].DeclaredPublic()
-		if got != want.val || declared != want.declared {
-			t.Errorf("%s: DeclaredPublic() = (%v, %v), want (%v, %v)", name, got, declared, want.val, want.declared)
+	for name, want := range map[string]bool{"wanted": true, "legacyfalse": false, "undeclared": false} {
+		if got := c.Services[name].Public; got != want {
+			t.Errorf("%s: Public = %v, want %v", name, got, want)
 		}
 	}
 
@@ -433,14 +428,11 @@ services:
 	b, _ := os.ReadFile(path)
 	out := string(b)
 	if !strings.Contains(out, "public: true") {
-		t.Errorf("declared true must round-trip:\n%s", out)
+		t.Errorf("opt-in must round-trip:\n%s", out)
 	}
-	if !strings.Contains(out, "public: false") {
-		t.Errorf("declared false must round-trip (it is not the zero value):\n%s", out)
-	}
-	// The undeclared service must not gain a `public:` key on rewrite.
-	if n := strings.Count(out, "public:"); n != 2 {
-		t.Errorf("expected exactly 2 public: keys (undeclared stays absent), got %d:\n%s", n, out)
+	// Exactly one `public:` key — the false and the absent both emit nothing.
+	if n := strings.Count(out, "public:"); n != 1 {
+		t.Errorf("expected exactly 1 public: key, got %d:\n%s", n, out)
 	}
 }
 

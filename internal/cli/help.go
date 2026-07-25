@@ -42,17 +42,17 @@ Flags:
                           the generated access-control rules (multiple groups are OR'd).
                           Requires an auth mode (forward or oidc).
       --auth              Back-compat shorthand for --auth-mode forward.
-      --public            Declare that this service SHOULD be reachable from the
-                          internet. --public=false declares it internal-only;
-                          --public=unset leaves it undeclared (the default).
-                          Declaration only — hemma never writes the tunnel's
-                          compose labels; 'hemma doctor' reports any mismatch.
+      --public            Opt this service into the public horizon: it is meant to be
+                          reachable from the internet as well. Omit for local-only
+                          (every service is reachable on the LAN either way).
+                          Intent only — hemma never writes the tunnel's compose
+                          labels; 'hemma doctor' reports if the intent is unmet.
 
 Regenerates files immediately, then prints which hosts need 'hemma apply'.`},
 
 	{"update service", `hemma update service — change a service's fqdn, host, backend, or auth
 
-Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|none] [--auth-groups <g1,g2>] [--public[=false|unset]]
+Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|none] [--auth-groups <g1,g2>] [--public]
 
 With no flags (and stdin a terminal) an interactive editor opens instead:
 every field is pre-filled with the service's current values (Enter keeps
@@ -73,12 +73,11 @@ Flags:
                           generated access-control rules). '' clears them. Requires an
                           auth mode (forward or oidc).
       --auth[=false]      Back-compat shorthand: --auth = forward, --auth=false = none.
-      --public            Declare the public horizon: --public = should be public,
-                          --public=false = internal only, --public=unset = remove the
-                          declaration. 'unset' is NOT the same as false — an
-                          undeclared service produces no doctor advisories, while
-                          public: false asserts it must stay internal. Declaration
-                          only; hemma never writes the tunnel's compose labels.
+      --public            Opt into the public horizon (meant to be reachable from the
+                          internet as well); --public=false opts back out. Intent
+                          only — hemma never writes the tunnel's compose labels;
+                          'hemma doctor' reports a service that opted in but has no
+                          tunnel ingress backing it up.
 
 Only the given flags change; regenerated files and apply-hints follow.`},
 
@@ -286,12 +285,15 @@ severity:
     container. The tunnel never traverses Caddy, so the (auth) gate hemma
     generated never runs and the service is publicly reachable with no
     authentication. Counts as a problem.
-  * DECLARED vs OBSERVED — the service says 'public: true|false' and the labels
-    say otherwise. Services with no 'public' field are silent, so the check is
-    opt-in. Counts as a problem.
+  * DECLARED BUT NOT SERVED — the service says 'public: true' and no tunnel
+    label backs that up: hemma wired the internal half, the public half was
+    never done. One direction only — exposure that was never opted into is not
+    reported, so adopting 'public' costs an existing repo nothing. Counts as a
+    problem.
   * ORPHAN INGRESS — a hostname served publicly in a managed domain with no
-    service entry, so it has NO internal horizon: on the LAN it resolves via
-    public DNS, leaves the network, and hairpins back through the tunnel.
+    service entry, so hemma generated no split-horizon record for it. It still
+    works on the LAN, but by hairpin: the name resolves via public DNS, so
+    traffic leaves the network and comes back through the tunnel.
     Informational; does not fail doctor.
 
 Each carries the exact label to add or remove. A missing or unparseable compose
