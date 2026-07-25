@@ -201,6 +201,14 @@ func declaredPublicAdvisory(cfg *config.Config, name string, svc config.Service,
 	if !svc.Public || served {
 		return auth.Advisory{}, false
 	}
+	// Both resolutions, for the same reason the reverse check offers both: if
+	// the opt-in was the mistake, adding a label is the wrong repair — and this
+	// is the direction where following the advice blindly puts a service on the
+	// internet, so the alternative must be visible rather than inferred.
+	fix := publicLabelSnippet(cfg, name, svc, pub)
+	fix = append(fix,
+		"or, if it is not meant to be public after all, opt back out:",
+		fmt.Sprintf("  hemma update service %s --public=false", name))
 	return auth.Advisory{
 		Headline: fmt.Sprintf("%s is declared public but has no public ingress", name),
 		Body: []string{
@@ -208,7 +216,7 @@ func declaredPublicAdvisory(cfg *config.Config, name string, svc config.Service,
 			"so the tunnel does not serve it and the name has no public DNS record.",
 			"On the LAN it resolves (hemma generated that); from the internet it does not.",
 		},
-		Fix:  publicLabelSnippet(cfg, name, svc, pub),
+		Fix:  fix,
 		Then: "docker restart cloudflared",
 	}, true
 }

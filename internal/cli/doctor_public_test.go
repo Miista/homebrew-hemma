@@ -152,6 +152,11 @@ func TestDoctorPublic_DeclaredPublicButNotServed(t *testing.T) {
 	if !strings.Contains(out, `"ghost"`) || !strings.Contains(out, "blog.example.com:2368") {
 		t.Errorf("advisory should suggest the ghost container and port, got:\n%s", out)
 	}
+	// Both resolutions offered: following "add the label" blindly is what puts a
+	// service on the internet, so opting back out must be visible too.
+	if !strings.Contains(out, "hemma update service blog --public=false") {
+		t.Errorf("advisory must also offer opting back out, got:\n%s", out)
+	}
 	if code == 0 {
 		t.Error("a violated declaration must be a doctor problem")
 	}
