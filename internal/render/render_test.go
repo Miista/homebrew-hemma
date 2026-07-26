@@ -134,13 +134,32 @@ func TestAuthSnippet_Body(t *testing.T) {
 
 // external renders exactly like none/oidc — a plain reverse_proxy, no import auth.
 // It is a declaration, not a gate.
+//
+// All THREE non-forward modes must be byte-identical: forward is the only one
+// where hemma itself is the gate. They still differ in services.yaml and in
+// `list`, which is the point — identical Caddy output must not collapse into an
+// identical-LOOKING service.
 func TestCaddySite_ExternalRendersPlain(t *testing.T) {
-	ext := CaddySite("app.example.com", "tls_example_com", "app:3000", config.AuthExternal, false)
-	none := CaddySite("app.example.com", "tls_example_com", "app:3000", config.AuthNone, false)
+	site := func(m config.AuthMode) string {
+		return CaddySite("app.example.com", "tls_example_com", "app:3000", m, false)
+	}
+	none, oidc, ext := site(config.AuthNone), site(config.AuthOIDC), site(config.AuthExternal)
 	if ext != none {
 		t.Errorf("external must render identically to none:\n--- external ---\n%s\n--- none ---\n%s", ext, none)
 	}
-	if strings.Contains(ext, "import auth") {
-		t.Errorf("external must not emit an auth gate:\n%s", ext)
+	if ext != oidc {
+		t.Errorf("external must render identically to oidc:\n--- external ---\n%s\n--- oidc ---\n%s", ext, oidc)
+	}
+	for m, out := range map[config.AuthMode]string{
+		config.AuthNone: none, config.AuthOIDC: oidc, config.AuthExternal: ext,
+	} {
+		if strings.Contains(out, "import "+AuthSnippetName) {
+			t.Errorf("mode %q must not emit an auth gate:\n%s", m, out)
+		}
+	}
+	// forward must NOT match them — without this, the assertions above would
+	// still pass on a build where the gate had been dropped entirely.
+	if fwd := site(config.AuthForward); fwd == none {
+		t.Errorf("forward must differ from the ungated modes:\n%s", fwd)
 	}
 }
