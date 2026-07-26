@@ -121,14 +121,17 @@ but fixing it is a hand edit to the compose file.
 
 `public: true` on a service opts it into the public horizon; absent means local-only (a plain bool
 — locality is never in question, since every service is reachable on the LAN either directly or by
-hairpin). `doctor` adds four advisory-only checks over the same compose read
-(`internal/cli/doctor_public.go`): **auth bypass** (a `forward`-auth service served direct from the
-tunnel bypasses Caddy and so the `(auth)` gate — the one real security check; uses
-`defaults.public_proxy_label`), **declared but not served** (`public: true`, no label),
-**undeclared exposure** (a label on a service that never opted in — accidental exposure; grouped
-into one advisory because it fires in bulk on first adoption), and **orphan ingress** (publicly
-served hostname in a managed domain with no service entry). The first three fail doctor; the last
-informs. Two deliberate refusals: the suggested label snippet is auth-aware, because emitting the
+hairpin). `doctor` adds three advisory-only checks over the same compose read
+(`internal/cli/doctor_public.go`), ALL scoped to services declared in services.yaml — hemma reports
+on what it manages, not on the tunnel's whole surface: **auth bypass** (a `forward`-auth service
+served direct from the tunnel bypasses Caddy and so the `(auth)` gate — the one real security
+check; uses `defaults.public_proxy_label`), **declared but not served** (`public: true`, no label),
+and **undeclared exposure** (a label on a declared service that never opted in — accidental
+exposure; grouped into one advisory because it fires in bulk on first adoption). All three fail
+doctor. (An "orphan ingress" check for hostnames with no service entry was removed as scope
+overreach — hemma should not report on what it does not manage.)
+
+Two deliberate refusals: the suggested label snippet is auth-aware, because emitting the
 direct form for a `forward`-auth service would have doctor recommending the very bypass the first
 check exists to catch; and `--fix` never writes `public: true` from an observed label, even though
 hemma owns services.yaml, because auto-adopting would silence the accidental-exposure alarm.

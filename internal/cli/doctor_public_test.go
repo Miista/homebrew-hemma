@@ -279,9 +279,11 @@ func TestDoctorPublic_FixDoesNotAdoptExposure(t *testing.T) {
 	}
 }
 
-// A publicly-served hostname in a managed domain with no service entry has no
-// internal horizon. It is informational only — it must NOT fail doctor.
-func TestDoctorPublic_OrphanIngress(t *testing.T) {
+// hemma reports ONLY on services declared in services.yaml. A publicly-served
+// hostname with no service entry is out of scope by definition — the removed
+// "orphan ingress" check used to warn about exactly this, and its removal is the
+// scope boundary: hemma does not police the tunnel's surface, only its own.
+func TestDoctorPublic_UndeclaredHostnameIsIgnored(t *testing.T) {
 	dir := doctorSetup(t)
 	writeCompose(t, dir, "appbox", `services:
   anisette:
@@ -289,31 +291,12 @@ func TestDoctorPublic_OrphanIngress(t *testing.T) {
       cloudflare.io/hostname: "anisette.example.com:8080"
 `)
 	out, code := doctorOut(t, dir)
-	// Singular subject takes a singular verb ("1 hostname has", not "have").
-	if !strings.Contains(out, "1 public hostname on appbox has no split-horizon record") {
-		t.Errorf("expected the orphan-ingress advisory, got:\n%s", out)
-	}
-	// The suggested command should be complete: name, fqdn, host, backend:port.
-	if !strings.Contains(out, "hemma add service anisette --fqdn anisette.example.com --host appbox --backend anisette:8080") {
-		t.Errorf("orphan advisory should carry a ready add command, got:\n%s", out)
+	// anisette.example.com is not a hemma service — hemma must say nothing.
+	if strings.Contains(out, "anisette") {
+		t.Errorf("a hostname with no service entry must not be reported, got:\n%s", out)
 	}
 	if code != 0 {
-		t.Errorf("orphan ingress is informational and must not fail doctor, exit %d", code)
-	}
-}
-
-// Hostnames outside the managed domains are none of hemma's business — a
-// homelab compose file legitimately serves other zones.
-func TestDoctorPublic_OrphanIgnoresUnmanagedDomains(t *testing.T) {
-	dir := doctorSetup(t)
-	writeCompose(t, dir, "appbox", `services:
-  other:
-    labels:
-      cloudflare.io/hostname: "thing.elsewhere.net"
-`)
-	out, _ := doctorOut(t, dir)
-	if strings.Contains(out, "split-horizon record") {
-		t.Errorf("unmanaged domain must be ignored, got:\n%s", out)
+		t.Errorf("an undeclared hostname must not affect doctor's exit, got %d:\n%s", code, out)
 	}
 }
 
@@ -323,7 +306,7 @@ func TestDoctorPublic_UnreadableComposeIsSilent(t *testing.T) {
 	dir := doctorSetup(t)
 	setPublic(t, dir, "docs", true)
 	out, _ := doctorOut(t, dir)
-	if strings.Contains(out, "declared public") || strings.Contains(out, "split-horizon record") {
+	if strings.Contains(out, "declared public") {
 		t.Errorf("no compose file must yield no public-horizon advisories, got:\n%s", out)
 	}
 }
@@ -359,7 +342,7 @@ func TestDoctorPublic_DisabledByConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, _ := doctorOut(t, dir)
-	for _, s := range []string{"WITHOUT auth", "declared public", "split-horizon record"} {
+	for _, s := range []string{"WITHOUT auth", "declared public"} {
 		if strings.Contains(out, s) {
 			t.Errorf("public_label: none must silence %q, got:\n%s", s, out)
 		}
@@ -464,40 +447,6 @@ func TestContainerAndPort(t *testing.T) {
 		c, p := containerAndPort(in)
 		if c != want[0] || p != want[1] {
 			t.Errorf("containerAndPort(%q) = (%q, %q), want (%q, %q)", in, c, p, want[0], want[1])
-		}
-	}
-}
-
-// suggestName derives a service name from a hostname's first label.
-func TestSuggestName(t *testing.T) {
-	if got := suggestName("status.guldmund.dk"); got != "status" {
-		t.Errorf("suggestName = %q, want status", got)
-	}
-}
-
-// Two orphans on one host produce ONE advisory listing both, with plural
-// agreement — N separate advisories would bury the rest of doctor's output.
-func TestDoctorPublic_OrphansGroupedPerHostWithPluralAgreement(t *testing.T) {
-	dir := doctorSetup(t)
-	writeCompose(t, dir, "appbox", `services:
-  one:
-    labels:
-      cloudflare.io/hostname: "one.example.com:81"
-  two:
-    labels:
-      cloudflare.io/hostname: "two.example.com:82"
-`)
-	out, _ := doctorOut(t, dir)
-	if !strings.Contains(out, "2 public hostnames on appbox have no split-horizon record") {
-		t.Errorf("expected one grouped plural advisory, got:\n%s", out)
-	}
-	// Count HEADLINES, not the phrase — the body repeats "no internal horizon".
-	if n := strings.Count(out, "public hostnames on appbox"); n != 1 {
-		t.Errorf("expected exactly 1 grouped advisory, got %d:\n%s", n, out)
-	}
-	for _, want := range []string{"one.example.com", "two.example.com"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("advisory should list %s, got:\n%s", want, out)
 		}
 	}
 }

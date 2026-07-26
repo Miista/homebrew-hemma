@@ -243,7 +243,6 @@ a Caddy block. So `public` is a plain opt-in: set, or not set.
 | **Auth bypass** | A `forward`-auth service whose ingress points **direct at the container**. The tunnel never traverses Caddy, so the `(auth)` gate never runs and the service is public with **no authentication**. | yes |
 | **Declared but not served** | `public: true` with no tunnel label backing it — hemma wired the internal half, the public half was never done. | yes |
 | **Undeclared exposure** | A label on a service that never opted in. No `public: true` means local-only, so the label exposed it without that being written down — **this is the accidental-exposure check.** | yes |
-| **Orphan ingress** | A hostname served publicly in a managed domain with **no service entry**, so hemma generated no split-horizon record. It still works on the LAN, but by hairpin. | no |
 
 **Adopting `public` means declaring your existing public surface once.** Until you do, the
 undeclared-exposure check reports every already-exposed service — grouped into a single advisory

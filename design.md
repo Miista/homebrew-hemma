@@ -1007,18 +1007,22 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
     of "publicly reachable" cannot drift apart.
 
   `doctor` acts on the same read (three checks, all advisory-only since hemma never writes
-  compose): **auth bypass** — a `forward`-auth service whose ingress points DIRECT at the
-  container, so the tunnel never traverses Caddy and the generated `(auth)` gate never runs
-  (detected via `defaults.public_proxy_label`, default `cloudflare.io/reverseproxy`; the
-  `auth_service` is exempt because `auth: forward` on it is refused by the planner, so no gate
-  exists to bypass); **declared but not served** — `public: true` with no label backing it;
-  **undeclared exposure** — a label on a service that never opted in, i.e. exposure nobody wrote
-  down (grouped into one advisory, since it fires in bulk on first adoption, and deliberately not
-  `--fix`-able: auto-adopting an observed label would silence the alarm in the one case it exists
-  for); and **orphan ingress** — a publicly-served
-  hostname in a managed domain with no service entry, hence no split-horizon record (it still
-  works on the LAN, by hairpin). The first
-  two count as doctor problems; the third is informational.
+  compose, and all scoped to a service DECLARED in services.yaml — hemma reports on what it
+  manages, never on hostnames outside its source of truth): **auth bypass** — a `forward`-auth
+  service whose ingress points DIRECT at the container, so the tunnel never traverses Caddy and
+  the generated `(auth)` gate never runs (detected via `defaults.public_proxy_label`, default
+  `cloudflare.io/reverseproxy`; the `auth_service` is exempt because `auth: forward` on it is
+  refused by the planner, so no gate exists to bypass); **declared but not served** — `public:
+  true` with no label backing it; and **undeclared exposure** — a label on a declared service
+  that never opted in, i.e. exposure nobody wrote down (grouped into one advisory, since it fires
+  in bulk on first adoption, and deliberately not `--fix`-able: auto-adopting an observed label
+  would silence the alarm in the one case it exists for). All three count as doctor problems.
+
+  There is deliberately NO check for a publicly-served hostname that has no service entry at all.
+  An earlier "orphan ingress" check did that, and it was removed: it reported on something hemma
+  neither manages nor could always generate (a service may need custom Caddy hemma cannot yet
+  express), and its suggested `hemma add service …` fix could therefore make things worse. A
+  hostname absent from services.yaml is out of scope by definition.
 
   The suggested label snippet is **auth-aware**: a `forward`-auth service is told to route through
   Caddy, because the direct form would be exactly the auth bypass of the first check. Blindly

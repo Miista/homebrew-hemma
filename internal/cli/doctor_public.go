@@ -15,7 +15,15 @@ import (
 // carries the exact label snippet and where to paste it, in the same
 // instructive style as the auth-config advisories.
 //
-// Four checks, in descending severity:
+// Every check here is scoped to a service DECLARED in services.yaml — hemma
+// reports on what it manages, never on hostnames outside its source of truth.
+// (There was once an "orphan ingress" check that flagged publicly-served
+// hostnames with no service entry; it was removed because it reported on
+// something hemma neither manages nor could generate, and its suggested fix —
+// `hemma add service …` — could not always be fulfilled. A hostname absent from
+// services.yaml is out of scope by definition.)
+//
+// Three checks, in descending severity, all counting as doctor problems:
 //
 //  1. AUTH BYPASS — a forward-auth service whose tunnel ingress points DIRECT
 //     at the container. The tunnel never traverses Caddy, so the (auth) snippet
@@ -24,18 +32,10 @@ import (
 //  2. DECLARED BUT NOT SERVED — the service says `public: true` and no tunnel
 //     label backs that up: hemma wired the internal half, the public half was
 //     never done.
-//  3. UNDECLARED EXPOSURE — the tunnel serves a service that never opted in.
-//     Absent `public` means local-only, so this is exposure nobody wrote down —
-//     the check that catches an ACCIDENTAL label. Fires in bulk exactly once,
-//     when a repo first declares its existing public surface.
-//  4. ORPHAN INGRESS — a hostname served publicly in a managed domain with no
-//     services.yaml entry, so hemma generated no split-horizon record for it.
-//     It is still reachable on the LAN, but by hairpin: the name resolves via
-//     PUBLIC DNS, so traffic leaves the network and comes back through the
-//     tunnel. It works, which is why it goes unnoticed.
-//
-// Checks 1-3 count as doctor problems (non-zero exit). Check 4 does not: the
-// hostname has no services.yaml entry at all, so it is not hemma's to own.
+//  3. UNDECLARED EXPOSURE — the tunnel serves a declared service that never
+//     opted in. Absent `public` means local-only, so this is exposure nobody
+//     wrote down — the check that catches an ACCIDENTAL label. Fires in bulk
+//     exactly once, when a repo first declares its existing public surface.
 
 // publicHorizonWarnings runs the four public-horizon checks. Silent when
 // public-horizon reporting is off, and per-host silent when that host's compose
@@ -87,9 +87,6 @@ func publicHorizonWarnings(repoRoot string, cfg *config.Config) (advs []auth.Adv
 		advs = append(advs, a)
 		problems++
 	}
-
-	// --- 4. orphan ingress (per host, not per service) ---
-	advs = append(advs, orphanIngressAdvisories(repoRoot, cfg, pub)...)
 	return advs, problems
 }
 
@@ -254,92 +251,4 @@ func containerAndPort(backend string) (container, port string) {
 		return c, p
 	}
 	return backend, ""
-}
-
-// orphanIngressAdvisories reports hostnames served publicly, in a domain hemma
-// manages, that have no services.yaml entry — so hemma generated no internal
-// horizon for them. Scoped to managed domains on purpose: a homelab compose file
-// legitimately serves names in other zones, and warning about those would be
-// noise about something outside hemma's remit.
-//
-// One advisory per host, listing every orphan, rather than one per hostname:
-// these are usually discovered in batches (a whole compose file predating hemma)
-// and N separate advisories would bury the rest of doctor's output.
-func orphanIngressAdvisories(repoRoot string, cfg *config.Config, pub *publicLookup) []auth.Advisory {
-	declared := map[string]bool{}
-	for _, svc := range cfg.Services {
-		declared[strings.ToLower(svc.FQDN)] = true
-	}
-
-	var advs []auth.Advisory
-	for _, host := range sortedKeysOf(cfg.Hosts) {
-		set := pub.hostIngress(cfg, host)
-		if set == nil {
-			continue
-		}
-		var orphans []string
-		for h := range set {
-			if declared[h] || !inManagedDomain(cfg, h) {
-				continue
-			}
-			orphans = append(orphans, h)
-		}
-		if len(orphans) == 0 {
-			continue
-		}
-		sort.Strings(orphans)
-
-		composePath := filepath.Join(repoRoot, cfg.Hosts[host].ResolvedDir(host), composeFile)
-		body := []string{
-			fmt.Sprintf("%s serves these publicly, but no service declares them:", composePath),
-		}
-		for _, h := range orphans {
-			body = append(body, "  "+h)
-		}
-		body = append(body,
-			"With no split-horizon record they still work on the LAN, but by hairpin:",
-			"the name resolves via PUBLIC DNS, so traffic leaves the network and",
-			"comes back in through the tunnel.")
-
-		fix := make([]string, 0, len(orphans))
-		for _, h := range orphans {
-			in := set[h]
-			backend := in.Container
-			if in.Port != "" {
-				backend += ":" + in.Port
-			} else {
-				backend += ":<port>"
-			}
-			fix = append(fix, fmt.Sprintf("hemma add service %s --fqdn %s --host %s --backend %s",
-				suggestName(h), h, host, backend))
-		}
-		verb := "have"
-		if len(orphans) == 1 {
-			verb = "has"
-		}
-		advs = append(advs, auth.Advisory{
-			Headline: fmt.Sprintf("%d public %s on %s %s no split-horizon record",
-				len(orphans), plural(len(orphans), "hostname"), host, verb),
-			Body: body,
-			Fix:  fix,
-		})
-	}
-	return advs
-}
-
-// inManagedDomain reports whether fqdn falls under one of the declared domains.
-func inManagedDomain(cfg *config.Config, fqdn string) bool {
-	for domain := range cfg.Domains {
-		if strings.HasSuffix(fqdn, "."+strings.ToLower(domain)) {
-			return true
-		}
-	}
-	return false
-}
-
-// suggestName proposes a service name from a hostname's first label, which is
-// the convention across this fleet (status.example.com -> status).
-func suggestName(fqdn string) string {
-	label, _, _ := strings.Cut(fqdn, ".")
-	return label
 }
