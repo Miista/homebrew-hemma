@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"hemma/internal/config"
 )
 
 // captureStdout runs fn with os.Stdout redirected to a pipe and returns
@@ -175,5 +177,60 @@ func TestList_AuthSection(t *testing.T) {
 	// With no auth service, the disable hint must NOT appear.
 	if strings.Contains(out2, "imports the auth snippet") {
 		t.Errorf("disable hint should be absent when no service uses auth, got:\n%s", out2)
+	}
+}
+
+// The auth_service is the one row where "-" actively misinforms: it is the
+// login portal, so it would read as unprotected while being the thing doing the
+// protecting. No auth MODE fits it, so the ROLE is shown instead — parenthesised
+// like the (dns_host) marker in the Hosts section.
+func TestList_AuthServiceShowsPortal(t *testing.T) {
+	dir := listSetup(t, "snip.caddy")
+	// docs is created with --auth by listSetup; clear it so the auth_service is
+	// in its normal state (a mode on the portal is refused by the planner).
+	if code := Run([]string{"-C", dir, "update", "service", "docs", "--auth-mode", "none"}); code != 0 {
+		t.Fatalf("clear auth exit %d", code)
+	}
+	if code := Run([]string{"-C", dir, "set", "auth-service", "docs"}); code != 0 {
+		t.Fatalf("set auth-service exit %d", code)
+	}
+	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
+
+	docs := serviceLine(out, "docs.example.com")
+	if !strings.Contains(docs, "(portal)") {
+		t.Errorf("auth_service row should show (portal), got %q", docs)
+	}
+	// It must not still read as unprotected.
+	if f := strings.Fields(docs); len(f) > 0 && f[len(f)-1] == "-" {
+		t.Errorf("auth_service row must not end in \"-\", got %q", docs)
+	}
+	// A non-portal service is unaffected.
+	if blog := serviceLine(out, "blog.example.com"); strings.Contains(blog, "portal") {
+		t.Errorf("only the auth_service gets the marker, got %q", blog)
+	}
+	if !strings.Contains(out, "(portal) = this service IS the auth provider") {
+		t.Errorf("legend should explain the marker, got:\n%s", out)
+	}
+}
+
+// A mode set on the auth_service anyway (odd, but representable — the planner
+// refuses it at sync time, not on persist) must not be hidden by the marker.
+func TestList_AuthServiceKeepsExplicitMode(t *testing.T) {
+	dir := listSetup(t, "")
+	cfg, err := config.Load(filepath.Join(dir, "services.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := cfg.Services["blog"]
+	svc.Auth.Mode = config.AuthOIDC
+	cfg.Services["blog"] = svc
+	cfg.Defaults.AuthService = "blog"
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
+	line := serviceLine(out, "blog.example.com")
+	if !strings.Contains(line, "oidc") || !strings.Contains(line, "(portal)") {
+		t.Errorf("declared mode must survive alongside the marker, got %q", line)
 	}
 }

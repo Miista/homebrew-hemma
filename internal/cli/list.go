@@ -105,7 +105,8 @@ func cmdList(cfgPath string, args []string) int {
 }
 
 // printServiceTable renders the services as an aligned table with an AUTH
-// column showing the auth MODE (forward/oidc/-) and a PUBLIC column showing
+// column showing the auth MODE (forward/oidc/external/-, or (portal) for the
+// service that IS the auth provider) and a PUBLIC column showing
 // whether the FQDN is also reachable from the internet (read from the host's
 // compose labels — see public_horizon.go; omitted when that lookup is switched
 // off). PUBLIC reports OBSERVED reality; whether it contradicts the declared
@@ -129,6 +130,23 @@ func printServiceTable(cfg *config.Config, svcNames []string, pub *publicLookup)
 			auth = string(svc.Auth.Mode)
 			anyAuth = true
 		}
+		// The auth_service is the one row where "-" actively misinforms: it is
+		// the login portal, so it looks unprotected while being the thing doing
+		// the protecting. No auth MODE fits it — forward is refused (gating the
+		// portal loops), oidc means "an Authelia client" when it IS Authelia,
+		// and external means "not Authelia", the exact opposite. So the role is
+		// shown instead of inventing a mode for it, parenthesised like the
+		// (dns_host) marker in the Hosts section above. A mode set anyway (an
+		// odd but representable state) is kept and the marker appended, so the
+		// declaration is never hidden.
+		if name == cfg.Defaults.AuthService {
+			if svc.Auth.Mode == config.AuthNone {
+				auth = "(portal)"
+			} else {
+				auth += " (portal)"
+			}
+			anyAuth = true
+		}
 		note := ""
 		if svc.Disabled {
 			note = "[disabled]"
@@ -143,7 +161,7 @@ func printServiceTable(cfg *config.Config, svcNames []string, pub *publicLookup)
 		rows = append(rows, row{name, svc.FQDN, svc.Host, svc.Backend, auth, public, note})
 	}
 
-	// Header + width computation. AUTH holds "forward"/"oidc"/"-"; PUBLIC
+	// Header + width computation. AUTH holds a mode, "-", or "(portal)"; PUBLIC
 	// holds "yes"/"no"/"?" and is dropped entirely when disabled.
 	hName, hFQDN, hHost, hBack, hAuth, hPub := "NAME", "FQDN", "HOST", "BACKEND", "AUTH", "PUBLIC"
 	wName, wFQDN, wHost, wBack, wAuth := len(hName), len(hFQDN), len(hHost), len(hBack), len(hAuth)
@@ -181,7 +199,7 @@ func printServiceTable(cfg *config.Config, svcNames []string, pub *publicLookup)
 		fmt.Println(line)
 	}
 	if anyAuth {
-		fmt.Println("  (AUTH: forward = imports the (auth) snippet; oidc = Authelia, app does OIDC itself; external = authenticated outside Authelia (app login / token / edge); change with 'hemma update service <name> --auth-mode <mode>')")
+		fmt.Println("  (AUTH: forward = imports the (auth) snippet; oidc = Authelia, app does OIDC itself; external = authenticated outside Authelia (app login / token / edge); (portal) = this service IS the auth provider; change with 'hemma update service <name> --auth-mode <mode>')")
 	}
 	if showPub {
 		fmt.Printf("  (PUBLIC: yes = a %s label declares tunnel ingress for the FQDN; no = internal horizon only)\n", pub.label)
