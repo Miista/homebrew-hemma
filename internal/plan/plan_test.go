@@ -307,7 +307,7 @@ func TestBuild_AuthGroupsOnNoneSkipped(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected skip, got files: %+v", p.Files["svc"])
 	}
-	if !strings.Contains(reason, "auth groups set but auth mode is none") {
+	if !strings.Contains(reason, "auth groups set but auth mode does not use") {
 		t.Errorf("wrong skip reason: %q", reason)
 	}
 }

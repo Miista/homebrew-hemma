@@ -16,6 +16,8 @@ import (
 const (
 	ModeForward = "forward"
 	ModeOIDC    = "oidc"
+	// No ModeExternal: external services are never handed to the provider
+	// (config.AuthMode.UsesProvider is false), so it never sees the string.
 )
 
 // Service is the provider-facing view of one auth-enabled service. It carries
@@ -24,7 +26,7 @@ const (
 type Service struct {
 	Name        string
 	FQDN        string
-	Mode        string   // ModeForward or ModeOIDC
+	Mode        string   // ModeForward or ModeOIDC (external/none never reach the provider)
 	Groups      []string // provider group names allowed access; empty = any authenticated user
 	BypassPaths []string // paths exempt from the auth gate (forward mode only)
 }

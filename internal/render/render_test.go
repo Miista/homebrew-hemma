@@ -131,3 +131,16 @@ func TestAuthSnippet_Body(t *testing.T) {
 		t.Fatalf("AuthSnippet body mismatch:\n got: %q\nwant: %q", got, want)
 	}
 }
+
+// external renders exactly like none/oidc — a plain reverse_proxy, no import auth.
+// It is a declaration, not a gate.
+func TestCaddySite_ExternalRendersPlain(t *testing.T) {
+	ext := CaddySite("app.example.com", "tls_example_com", "app:3000", config.AuthExternal, false)
+	none := CaddySite("app.example.com", "tls_example_com", "app:3000", config.AuthNone, false)
+	if ext != none {
+		t.Errorf("external must render identically to none:\n--- external ---\n%s\n--- none ---\n%s", ext, none)
+	}
+	if strings.Contains(ext, "import auth") {
+		t.Errorf("external must not emit an auth gate:\n%s", ext)
+	}
+}

@@ -214,7 +214,7 @@ func usersDBWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 	providerCfg := filepath.Join(repoRoot, hostM.ResolvedDir(authSvc.Host), provider.ConfigPath())
 	var svcs []auth.Service
 	for name, s := range cfg.Services {
-		if s.Auth.Mode == config.AuthNone {
+		if !s.Auth.Mode.UsesProvider() {
 			continue
 		}
 		svcs = append(svcs, auth.Service{Name: name, FQDN: s.FQDN, Mode: string(s.Auth.Mode), Groups: s.Auth.Groups})

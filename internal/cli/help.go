@@ -17,7 +17,7 @@ type HelpTopic struct {
 var HelpTopics = []HelpTopic{
 	{"add service", `hemma add service — declare a service and generate its DNS/Caddy config
 
-Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc] [--auth-groups <g1,g2>] [--public]
+Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--public]
 
 With no flags (and stdin a terminal) an interactive editor opens instead: the
 fqdn is pre-filled with <name>.<domain> when exactly one domain is defined and
@@ -35,11 +35,17 @@ Flags:
   -f, --fqdn <fqdn>       Public name the service is reached at (must match a declared domain).
   -H, --host <host>       Host (repo directory) that runs the service.
   -b, --backend <n:port>  reverse_proxy upstream, e.g. mealie:9000.
-      --auth-mode <mode>  How the service authenticates: forward, oidc, or none (default none).
-                          forward imports the (auth) snippet (Caddy forward-auth);
-                          requires 'hemma set auth-snippet <path>'. oidc renders a
-                          PLAIN reverse_proxy (the app speaks OIDC itself — hemma adds
-                          no gate) and verifies read-only that an Authelia OIDC client exists.
+      --auth-mode <mode>  How the service authenticates (default none):
+                            none      no authentication.
+                            forward   Authelia forward-auth — imports the (auth) snippet
+                                      (a gate); requires 'hemma set auth-snippet <path>'.
+                            oidc      Authelia, but the app speaks OIDC itself — no gate,
+                                      and hemma verifies an Authelia OIDC client exists.
+                            external  authenticated by something that is NOT Authelia (the
+                                      app's own login, an API token, an edge proxy like
+                                      Cloudflare Access). Renders like oidc — no gate — but
+                                      hemma verifies nothing. Use this, NOT oidc, when
+                                      Authelia is not involved.
       --auth-groups <gs>  Comma-separated auth provider group names allowed access; flows into
                           the generated access-control rules (multiple groups are OR'd).
                           Requires an auth mode (forward or oidc).
@@ -54,7 +60,7 @@ Regenerates files immediately, then prints which hosts need 'hemma apply'.`},
 
 	{"update service", `hemma update service — change a service's fqdn, host, backend, or auth
 
-Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|none] [--auth-groups <g1,g2>] [--public]
+Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--public]
 
 With no flags (and stdin a terminal) an interactive editor opens instead:
 EVERY field is pre-filled with the service's current values and editable
@@ -73,8 +79,12 @@ Flags:
   -f, --fqdn <fqdn>       New public name (must match a declared domain).
   -H, --host <host>       New host (repo directory).
   -b, --backend <n:port>  New reverse_proxy upstream.
-      --auth-mode <mode>  Set the auth mode: forward (import (auth) snippet), oidc
-                          (plain reverse_proxy; app does OIDC itself), or none (clear).
+      --auth-mode <mode>  Set the auth mode: forward (Authelia gate via the (auth)
+                          snippet), oidc (Authelia, app speaks OIDC itself — no gate),
+                          external (authenticated outside Authelia — app login / token /
+                          edge; no gate, nothing verified), or none (clear). oidc and
+                          external render identically but mean opposites — oidc IS
+                          Authelia, external is explicitly not.
       --auth-groups <gs>  Set the comma-separated auth provider groups (OR'd in the
                           generated access-control rules). '' clears them. Requires an
                           auth mode (forward or oidc).

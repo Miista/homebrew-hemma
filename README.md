@@ -178,15 +178,23 @@ Each service records **how** it authenticates via an auth **mode**, set with
 |------|---------------|----------------|-----------------|
 | `none` (default) | *(omitted)* | plain `reverse_proxy` | nothing |
 | `forward` | `auth: forward` | `import auth` before `reverse_proxy` | adds the forward-auth gate (the `(auth)` snippet) |
-| `oidc` | `auth: oidc` | **plain** `reverse_proxy` (no `import auth`) | adds **no** gate; the app speaks OIDC itself. hemma only **validates** (read-only) that an Authelia OIDC client exists |
+| `oidc` | `auth: oidc` | **plain** `reverse_proxy` (no `import auth`) | Authelia, but the app speaks OIDC itself. hemma adds **no** gate; only **validates** (read-only) that an Authelia OIDC client exists |
+| `external` | `auth: external` | **plain** `reverse_proxy` (no `import auth`) | authenticated by something that is **not** Authelia (the app's own login, an API token, an edge proxy like Cloudflare Access). hemma adds no gate and **verifies nothing** |
 
-`oidc` renders a plain `reverse_proxy` — identical to `none` in Caddy — because the app
-performs the OIDC flow itself; hemma must not add a second (forward-auth) gate in front of
-it. Recording the mode as `oidc` (rather than leaving it `none`) keeps the intent legible: the
-`list` `AUTH` column and services.yaml show `oidc`, so a protected service never looks like an
-unprotected one.
+`oidc`, `external`, and `none` all render an identical plain `reverse_proxy` — hemma adds no gate
+for any of them. What differs is the **declaration**, and that is the point: recording which one
+keeps a protected service from looking unprotected. The distinction that traps people is
+`oidc` vs `external`, because they render the same but mean **opposites**:
 
-The `AUTH` column in `hemma list` shows the mode (`forward` / `oidc` / `-`).
+- `oidc` — Authelia IS involved; the app just drives the OIDC flow itself. hemma checks that an
+  Authelia OIDC client is registered.
+- `external` — Authelia is **not** involved at all. hemma checks nothing, because the auth lives
+  outside its provider boundary.
+
+Rule of thumb: *is Authelia in the picture?* If yes but the app speaks OIDC, use `oidc`. If the
+service is authenticated some other way entirely, use `external`. If it is genuinely open, `none`.
+
+The `AUTH` column in `hemma list` shows the mode (`forward` / `oidc` / `external` / `-`).
 
 ### Local-only or also public? The `PUBLIC` column
 
@@ -406,8 +414,8 @@ exempt from). Set it directly in `services.yaml`; there is no CLI flag for it.
 ## Commands
 
 ```
-hemma [-C <dir>] add    service <name> --fqdn <f> --host <h> --backend <b> [--auth-mode forward|oidc] [--auth-groups <g1,g2>]
-hemma [-C <dir>] update service <name> [--fqdn ...] [--host ...] [--backend ...] [--auth-mode forward|oidc|none] [--auth-groups <g1,g2>]
+hemma [-C <dir>] add    service <name> --fqdn <f> --host <h> --backend <b> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>]
+hemma [-C <dir>] update service <name> [--fqdn ...] [--host ...] [--backend ...] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>]
 hemma [-C <dir>] remove service <name>
 hemma [-C <dir>] enable  service <name>
 hemma [-C <dir>] disable service <name>
@@ -450,7 +458,7 @@ hemma            completion <bash|zsh>
 | `set auth-service <name>` | Name the service that IS the forward-auth portal (e.g. Authelia); its site block preserves `X-Forwarded-Host` through the hairpin. Pass `-` to clear. |
 | `create app oidc` | Mint OIDC client credentials (id, secret, digest) + a ready-to-paste provider config snippet. Print-only. See [Auth](#auth-optional). |
 | `create user` | Interactively hash a new user's password (argon2id) + print the users-database snippet. Print-only. |
-| `list` | The overview of the home: hosts, domains, services (with an `AUTH` column showing `forward` / `oidc` / `-` and a `PUBLIC` column showing `yes` / `no`), and the auth **groups** — each group's users and the services restricted to it, including orphans (a group with services but no users, or users but no services). The services list defaults to those on **this** host (matched by local IP); `--all` shows every host. Read-only. |
+| `list` | The overview of the home: hosts, domains, services (with an `AUTH` column showing `forward` / `oidc` / `external` / `-` and a `PUBLIC` column showing `yes` / `no`), and the auth **groups** — each group's users and the services restricted to it, including orphans (a group with services but no users, or users but no services). The services list defaults to those on **this** host (matched by local IP); `--all` shows every host. Read-only. |
 | `apply` | Make synced config live on THIS host: restart pihole (resolver), `caddy validate` + reload (service hosts), and validate + restart the auth provider (auth host). Refuses on repo drift. Run on each host. |
 | `deploy` | Push-based fan-out over ssh: `git pull --ff-only` on every target host — **any** failure aborts the whole deploy with nothing applied — then `hemma apply` per host, remotes first and this host last. Targets default to every host with a role; names restrict. Refuses if the local repo is dirty or unpushed. See [Deploying the fleet](#deploying-the-fleet-hemma-deploy). |
 | `doctor [--fix]` | Audit the repo: gitignored generated files, Caddyfile imports, generated-file drift, auth config consistency (OIDC clients registered, policies referenced, groups exist on real users). `--fix` reconciles files, .gitignore, and legacy-name migration. |

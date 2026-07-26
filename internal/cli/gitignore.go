@@ -201,7 +201,7 @@ func authWiringWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 	hostDir := filepath.Join(repoRoot, hostM.ResolvedDir(authSvc.Host))
 	var svcs []auth.Service
 	for name, s := range cfg.Services {
-		if s.Auth.Mode == config.AuthNone || s.Disabled {
+		if !s.Auth.Mode.UsesProvider() || s.Disabled {
 			continue
 		}
 		svcs = append(svcs, auth.Service{Name: name, FQDN: s.FQDN, Mode: string(s.Auth.Mode), Groups: s.Auth.Groups, BypassPaths: s.Auth.BypassPaths})

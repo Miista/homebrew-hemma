@@ -587,3 +587,43 @@ func TestResolvedPublicProxyLabel(t *testing.T) {
 		}
 	}
 }
+
+// external parses, round-trips, and is a distinct non-provider mode.
+func TestAuthExternal_ParseAndProvider(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "services.yaml")
+	write(t, path, `hosts: {}
+domains: []
+defaults: {}
+services:
+  app:
+    fqdn: app.example.com
+    host: h
+    backend: x:1
+    auth: external
+`)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Services["app"].Auth.Mode; got != AuthExternal {
+		t.Fatalf("mode = %q, want external", got)
+	}
+	if AuthExternal.UsesProvider() {
+		t.Error("external must NOT use the auth provider")
+	}
+	if !AuthForward.UsesProvider() || !AuthOIDC.UsesProvider() {
+		t.Error("forward and oidc must use the provider")
+	}
+	if AuthNone.UsesProvider() {
+		t.Error("none must not use the provider")
+	}
+	// Round-trips as the short string form.
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	if !strings.Contains(string(b), "auth: external") {
+		t.Errorf("external should round-trip as 'auth: external':\n%s", b)
+	}
+}

@@ -91,7 +91,7 @@ services:
     # disabled: true                  # optional; see §6.1 (enable/disable)
     # public: true                    # optional; DECLARED public horizon (true|false) — §12.
                                       # absent = undeclared, which doctor leaves alone
-    # auth: forward                   # optional auth mode: forward|oidc (or legacy true=forward) — §4.5
+    # auth: forward                   # optional auth mode: forward|oidc|external (or legacy true=forward) — §4.5
     # auth:                           # object form when groups or bypass paths are set:
     #   mode: forward
     #   groups: [admins]              # provider groups allowed access — §4.5
@@ -176,7 +176,7 @@ docs.example.com {
   network reference (`container:port`) resolvable on the serving machine's Docker network — not
   a LAN IP. The tool validates only shape (`^[A-Za-z0-9._-]+:[0-9]+$`), not reachability.
 - A service's **auth mode** (`auth:`, §4.5) decides the gate. It is one of `forward`, `oidc`,
-  or none (unset). Legacy `auth: true` still parses as `forward` and is re-emitted as the string
+  `external`, or none (unset). Legacy `auth: true` still parses as `forward` and is re-emitted as the string
   form. When the mode is `forward`, the site imports the `(auth)` snippet before proxying, so
   Caddy runs the forward-auth check first and only proxies on success — one uniform shape
   regardless of `auth.bypass_paths`:
@@ -192,10 +192,20 @@ docs.example.com {
   rules (§4.6). (**Changed from the original design**, which emitted per-path `handle` blocks
   before an auth-gated catch-all — two matchers for one intent; §4.5 has the rationale.
   The catch-all `handle` wrapper went with them: with a single branch it added nothing.)
-  When the mode is `oidc` (or none), a **plain** `reverse_proxy` is emitted with **no** `import
-  auth`: an OIDC app performs the login flow itself, so hemma must add no second gate in front
-  of it. `oidc` renders identically to a no-auth service in Caddy on purpose — the mode is still
-  recorded in `services.yaml` so the protection intent stays legible (it is not silently "none").
+  When the mode is `oidc`, `external`, or none, a **plain** `reverse_proxy` is emitted with
+  **no** `import auth` — hemma adds no gate for any of them. They render identically on purpose;
+  the mode is still recorded in `services.yaml` so the protection intent stays legible rather
+  than silently "none". The three differ only in what they DECLARE, and hence in what `doctor`
+  does: `oidc` means Authelia (the app drives the OIDC flow itself) and is validated against a
+  registered Authelia OIDC client; `external` means authenticated by something that is **not**
+  Authelia (app login, API token, edge proxy) and is validated against **nothing** — the auth
+  lives outside hemma's provider boundary; none means no auth. `oidc` and `external` render the
+  same but are opposites — the one predicate that separates provider-touching modes from the
+  rest is `AuthMode.UsesProvider()` (true for forward/oidc only), and every provider-facing
+  site (access-control generation, OIDC-client check, users-db check, wiring check) branches on
+  it, so an `external` service is invisible to Authelia validation entirely. Groups and
+  `bypass_paths` require a provider-backed mode for the same reason — nothing consumes them
+  otherwise, so they are refused on none/external.
 - When the service **is** the auth backend (`name == defaults.auth_service`, §4.5), its
   `reverse_proxy` additionally preserves the inbound `X-Forwarded-Host`:
   ```

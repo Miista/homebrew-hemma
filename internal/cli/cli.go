@@ -261,7 +261,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	backend := fs.String("backend", "", "reverse_proxy upstream name:port")
 	fs.StringVar(backend, "b", "", "alias for --backend")
 	authFlag := fs.Bool("auth", false, "shorthand for --auth-mode forward")
-	authMode := fs.String("auth-mode", "", "auth mode: forward|oidc|none")
+	authMode := fs.String("auth-mode", "", "auth mode: forward|oidc|external|none")
 	authGroups := fs.String("auth-groups", "", "comma-separated auth provider groups allowed access")
 	public := fs.Bool("public", false, "opt into the public horizon (also reachable from the internet)")
 	if err := fs.Parse(args); err != nil {
@@ -280,8 +280,8 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	}
 	groups := splitGroups(*authGroups)
 	// Groups only make sense with an auth gate — refuse before persisting.
-	if len(groups) > 0 && mode == config.AuthNone {
-		errf("--auth-groups requires an auth mode — pass --auth-mode forward or --auth-mode oidc.")
+	if len(groups) > 0 && !mode.UsesProvider() {
+		errf("--auth-groups requires a provider-backed auth mode — pass --auth-mode forward or --auth-mode oidc (external is authenticated outside hemma, so groups have nothing to apply to).")
 		return 2
 	}
 	// Validate required flags BEFORE touching the YAML, so a mistyped command
@@ -492,7 +492,7 @@ func oidcClientWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 	cfgPath := filepath.Join(repoRoot, hostM.ResolvedDir(authSvc.Host), provider.ConfigPath())
 	var svcs []auth.Service
 	for name, s := range cfg.Services {
-		if s.Auth.Mode == config.AuthNone {
+		if !s.Auth.Mode.UsesProvider() {
 			continue
 		}
 		svcs = append(svcs, auth.Service{Name: name, FQDN: s.FQDN, Mode: string(s.Auth.Mode), Groups: s.Auth.Groups, BypassPaths: s.Auth.BypassPaths})
@@ -521,10 +521,12 @@ func resolveAuthMode(fs *flag.FlagSet, auth bool, authMode string) (config.AuthM
 			mode = config.AuthForward
 		case "oidc":
 			mode = config.AuthOIDC
+		case "external":
+			mode = config.AuthExternal
 		case "none", "":
 			mode = config.AuthNone
 		default:
-			errf("Invalid --auth-mode %q — expected forward, oidc, or none.", authMode)
+			errf("Invalid --auth-mode %q — expected forward, oidc, external, or none.", authMode)
 			return "", false
 		}
 	}
@@ -570,7 +572,7 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	backend := fs.String("backend", "", "reverse_proxy upstream name:port")
 	fs.StringVar(backend, "b", "", "alias for --backend")
 	authFlag := fs.Bool("auth", false, "shorthand for --auth-mode forward (--auth=false clears)")
-	authMode := fs.String("auth-mode", "", "auth mode: forward|oidc|none")
+	authMode := fs.String("auth-mode", "", "auth mode: forward|oidc|external|none")
 	authGroups := fs.String("auth-groups", "", "comma-separated auth provider groups ('' clears)")
 	public := fs.Bool("public", false, "opt into the public horizon ('--public=false' opts back out)")
 	if err := fs.Parse(args); err != nil {
@@ -1002,9 +1004,9 @@ services.yaml. Operates on ~/docker by default; -C <dir> overrides.
 Commands are verb-first: <verb> <noun> <args>.
 
 Services (an app reached at an fqdn, on a host, under a domain):
-  hemma add     service <name> --fqdn <f> --host <h> --backend <b> [--auth-mode forward|oidc] [--auth-groups <g1,g2>]
+  hemma add     service <name> --fqdn <f> --host <h> --backend <b> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>]
                                  With no flags: an interactive editor (terminal only) collects the fields.
-  hemma update  service <name> [--fqdn ...] [--host ...] [--backend ...] [--auth-mode forward|oidc|none] [--auth-groups <g1,g2>]
+  hemma update  service <name> [--fqdn ...] [--host ...] [--backend ...] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>]
                                  With no flags: an interactive editor (terminal only), pre-filled with current values.
   hemma remove  service <name>
   hemma disable service <name>   Stop generating DNS/Caddy config for a service (keeps it in services.yaml).

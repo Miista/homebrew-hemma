@@ -119,7 +119,7 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 	if !isAuthService {
 		fields = append(fields,
 			huh.NewSelect[string]().Title("auth mode").
-				Options(huh.NewOptions("none", "forward", "oidc")...).
+				Options(huh.NewOptions("none", "forward", "oidc", "external")...).
 				Value(&mode),
 			huh.NewMultiSelect[string]().Title("auth groups").
 				Description(groupsDesc+" Ignored when auth mode is none.").

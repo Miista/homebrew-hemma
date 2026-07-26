@@ -203,7 +203,7 @@ func planAccessControl(c *config.Config, p *Plan) {
 			continue
 		}
 		svc, ok := c.Services[name]
-		if !ok || svc.Auth.Mode == config.AuthNone {
+		if !ok || !svc.Auth.Mode.UsesProvider() {
 			continue
 		}
 		svcs = append(svcs, auth.Service{
@@ -262,10 +262,15 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 	if svc.Auth.Mode != config.AuthNone && name == c.Defaults.AuthService {
 		return nil, fmt.Sprintf("auth refused: %q is the auth_service (the forward-auth backend) — protecting it would create a redirect loop", name)
 	}
-	// Groups grant access via the auth provider's generated rules; with mode
-	// none there is no gate for them to apply to — a half-formed intent.
-	if svc.Auth.Mode == config.AuthNone && len(svc.Auth.Groups) > 0 {
-		return nil, "auth groups set but auth mode is none — set an auth mode (forward|oidc) or clear the groups"
+	// Groups (and bypass paths) grant/relax access via the auth PROVIDER's
+	// generated rules; a mode that never reaches the provider (none, or
+	// external — authenticated outside Authelia) has no gate for them to apply
+	// to, so they are a half-formed intent.
+	if !svc.Auth.Mode.UsesProvider() && len(svc.Auth.Groups) > 0 {
+		return nil, "auth groups set but auth mode does not use hemma's provider — set mode forward|oidc, or clear the groups"
+	}
+	if !svc.Auth.Mode.UsesProvider() && len(svc.Auth.BypassPaths) > 0 {
+		return nil, "auth bypass_paths set but auth mode does not use hemma's provider — set mode forward, or clear them"
 	}
 
 	dnsPath := filepath.Join(dnsM.ResolvedDir(dnsHostName), config.DefaultDnsmasqDir, name+".generated.conf")

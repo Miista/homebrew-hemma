@@ -609,3 +609,69 @@ func TestPublicFlag_FeedsDoctorCheck(t *testing.T) {
 		t.Error("expected non-zero exit")
 	}
 }
+
+// --auth-mode external persists, shows in list, and is invisible to Authelia
+// validation — it declares auth that lives outside the provider.
+func TestAuthExternal_EndToEnd(t *testing.T) {
+	dir := doctorSetup(t)
+	if code := Run([]string{"-C", dir, "update", "service", "blog", "--auth-mode", "external"}); code != 0 {
+		t.Fatalf("--auth-mode external exit %d", code)
+	}
+	cfg, err := config.Load(filepath.Join(dir, "services.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Services["blog"].Auth.Mode != config.AuthExternal {
+		t.Fatalf("mode not persisted: %+v", cfg.Services["blog"].Auth)
+	}
+	// list shows the literal mode, not "-".
+	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
+	line := serviceLine(out, "blog.example.com")
+	if !strings.Contains(line, "external") {
+		t.Errorf("AUTH column should read external, got: %q", line)
+	}
+	// The generated Caddy site is a plain reverse_proxy (no gate).
+	b, err := os.ReadFile(filepath.Join(dir, "appbox", "caddy", "data", "sites", "blog.caddy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "import auth") {
+		t.Errorf("external site must not import auth:\n%s", b)
+	}
+}
+
+// An external service must not trip the auth-bypass check even when served
+// direct from the tunnel — there is no hemma gate to bypass. (Contrast
+// TestDoctorPublic_AuthBypassDirectIngress, where forward-auth direct DOES fire.)
+func TestAuthExternal_NoBypassAdvisory(t *testing.T) {
+	dir := doctorSetup(t)
+	if code := Run([]string{"-C", dir, "update", "service", "docs", "--auth-mode", "external"}); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	writeCompose(t, dir, "appbox", `services:
+  paperless:
+    labels:
+      cloudflare.io/hostname: "docs.example.com"
+`)
+	out, _ := doctorOut(t, dir)
+	if strings.Contains(out, "WITHOUT auth") {
+		t.Errorf("external served direct must not trigger the bypass check, got:\n%s", out)
+	}
+}
+
+// Groups require a provider-backed mode; external has no provider, so
+// --auth-groups with external is a usage error, before anything persists.
+func TestAuthExternal_GroupsRejected(t *testing.T) {
+	dir := t.TempDir()
+	mkdirs(t, dir, "resolver", "appbox")
+	seed(t, dir)
+	code := Run([]string{"-C", dir, "add", "service", "app",
+		"--fqdn", "app.example.com", "--host", "appbox", "--backend", "app:1234",
+		"--auth-mode", "external", "--auth-groups", "admins"})
+	if code != 2 {
+		t.Errorf("external + groups should be a usage error (exit 2), got %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "appbox", "caddy", "data", "sites", "app.caddy")); !os.IsNotExist(err) {
+		t.Error("nothing should have been persisted")
+	}
+}

@@ -25,25 +25,45 @@ const (
 	DefaultCaddyTLSDir   = "caddy/data/tls"
 )
 
-// AuthMode is how a service authenticates. Three states:
+// AuthMode is how a service authenticates. Four states:
 //
 //   - AuthNone ("")     — no auth; a plain reverse_proxy is rendered.
 //   - AuthForward ("forward") — Caddy forward-auth: the site imports the (auth)
-//     snippet before proxying (hemma adds the auth gate).
-//   - AuthOIDC ("oidc") — the app speaks OIDC itself; hemma adds NO forward
-//     auth (a PLAIN reverse_proxy), and instead validates read-only that an
-//     Authelia OIDC client is registered for the service.
+//     snippet before proxying (hemma adds the auth gate via Authelia).
+//   - AuthOIDC ("oidc") — Authelia, but the app speaks OIDC itself; hemma adds
+//     NO forward auth (a PLAIN reverse_proxy), and instead validates read-only
+//     that an Authelia OIDC client is registered for the service.
+//   - AuthExternal ("external") — authenticated by something that is NOT
+//     Authelia: the app's own login, an API token, an edge proxy (e.g.
+//     Cloudflare Access). Renders identically to oidc/none (plain
+//     reverse_proxy), and hemma verifies NOTHING — the auth lives outside its
+//     provider boundary, so there is nothing for it to check. Purely a
+//     declaration, so `list` can show "authenticated, just not here" instead of
+//     an ambiguous "-".
 //
-// Rendering forward vs oidc differently is deliberate: an oidc service must not
-// look identical to a no-auth service in the generated Caddy — that legibility
-// gap would hide whether a service is protected.
+// oidc and external render the same but mean opposites: oidc IS Authelia (hence
+// its client check), external is explicitly NOT Authelia (hence no check). The
+// point of both is legibility — a protected service must not look identical to
+// an unprotected one in the generated Caddy or in `list`.
 type AuthMode string
 
 const (
-	AuthNone    AuthMode = ""
-	AuthForward AuthMode = "forward"
-	AuthOIDC    AuthMode = "oidc"
+	AuthNone     AuthMode = ""
+	AuthForward  AuthMode = "forward"
+	AuthOIDC     AuthMode = "oidc"
+	AuthExternal AuthMode = "external"
 )
+
+// UsesProvider reports whether this mode involves hemma's auth provider
+// (Authelia) at all. forward and oidc do — they generate access-control rules
+// or require a registered OIDC client, and so are handed to the provider for
+// validation. none and external do NOT: none has no auth, and external declares
+// auth that lives outside Authelia entirely. This is the single predicate every
+// provider-facing site branches on, so "does Authelia touch this service?" has
+// one answer rather than four scattered comparisons.
+func (m AuthMode) UsesProvider() bool {
+	return m == AuthForward || m == AuthOIDC
+}
 
 // parseAuthMode maps a mode string to an AuthMode. An unrecognized string is
 // treated as AuthNone (fail safe: an unknown mode never silently renders as
@@ -57,8 +77,10 @@ func parseAuthMode(s string) (AuthMode, error) {
 		return AuthForward, nil
 	case AuthOIDC:
 		return AuthOIDC, nil
+	case AuthExternal:
+		return AuthExternal, nil
 	default:
-		return AuthNone, fmt.Errorf("unknown auth mode %q — expected forward, oidc, or none", s)
+		return AuthNone, fmt.Errorf("unknown auth mode %q — expected forward, oidc, external, or none", s)
 	}
 }
 
@@ -110,7 +132,7 @@ func (a *Auth) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("auth object form: %w", err)
 		}
 		if w.Mode == "" {
-			return fmt.Errorf("auth object form requires a mode (forward, oidc, or none)")
+			return fmt.Errorf("auth object form requires a mode (forward, oidc, external, or none)")
 		}
 		mode, err := parseAuthMode(w.Mode)
 		a.Mode, a.Groups, a.BypassPaths = mode, w.Groups, w.BypassPaths
@@ -118,7 +140,7 @@ func (a *Auth) UnmarshalYAML(value *yaml.Node) error {
 	}
 	var s string
 	if err := value.Decode(&s); err != nil {
-		return fmt.Errorf("auth must be a bool, one of forward/oidc/none, or a {mode, groups} mapping: %w", err)
+		return fmt.Errorf("auth must be a bool, one of forward/oidc/external/none, or a {mode, groups} mapping: %w", err)
 	}
 	mode, err := parseAuthMode(s)
 	a.Mode = mode

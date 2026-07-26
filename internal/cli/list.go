@@ -181,7 +181,7 @@ func printServiceTable(cfg *config.Config, svcNames []string, pub *publicLookup)
 		fmt.Println(line)
 	}
 	if anyAuth {
-		fmt.Println("  (AUTH: forward = imports the (auth) snippet; oidc = app does OIDC itself, no Caddy gate; change with 'hemma update service <name> --auth-mode <mode>')")
+		fmt.Println("  (AUTH: forward = imports the (auth) snippet; oidc = Authelia, app does OIDC itself; external = authenticated outside Authelia (app login / token / edge); change with 'hemma update service <name> --auth-mode <mode>')")
 	}
 	if showPub {
 		fmt.Printf("  (PUBLIC: yes = a %s label declares tunnel ingress for the FQDN; no = internal horizon only)\n", pub.label)
