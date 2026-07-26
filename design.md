@@ -109,10 +109,10 @@ Notes:
 - `public` **opts a service into the public horizon**: `true` means it is meant to be reachable
   from the internet as well; absent means local only. Set via `add/update service --public`
   (§6.1). A plain bool, not a tri-state — absent and `false` are the same statement.
-  There is no value for "local", because locality is never in question: every service is
-  reachable on the LAN either way, directly via its Pi-hole record or by hairpin through the
-  tunnel. And there is no value for "public but not local" — a declared service always gets a
-  Pi-hole record and a Caddy block.
+  There is no value for "local", because locality is never in question: a declared service always
+  gets a Pi-hole record and a Caddy block. And there is no value for "public but not local", for
+  the same reason. Why this is a bool rather than a `horizon` enum or a `horizons` array — and why
+  a VPN is not a third horizon — is set out in §12.
   `doctor` compares it against the labels in **both** directions (§12): an opt-in with no ingress,
   and — because absent means local-only — ingress with no opt-in, which is the accidental-exposure
   case. Adopting the field therefore means declaring the existing public surface once; until then
@@ -1032,6 +1032,37 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
   the label often sits on the Caddy container rather than the app's. A missing or unparseable
   compose file yields `?`, never `local`: a read failure must not be reported as a fact about
   exposure. When no host's compose can be read at all, the column is dropped.
+
+  **Why `public` is a bool, and not `horizon: local|public` or `horizons: [...]`** (settled July
+  2026, after four passes over the naming — recorded here so it stops being re-litigated).
+
+  The horizon axis has exactly **two** values, and one of them is always true:
+
+  - **local** — unconditional. A service declared in `services.yaml` gets a Pi-hole record and a
+    Caddy site block by construction, so it is reachable on the LAN whatever else is true of it.
+    There is nothing to declare.
+  - **public** — the only open question, and a yes/no one.
+
+  One binary degree of freedom is a bool. `public: true` is therefore the *correct* shape rather
+  than a terse compromise, and `horizon`/`horizons` would model a dimension that does not exist:
+
+  - `horizon: local | public` reads as though `public` excludes local (it does not), so the
+    implication would live only in prose. It also spends an enum on a boolean.
+  - `horizons: [local, public]` makes `local` a constant in 100% of entries — mandatory noise
+    carrying no information. With `local` implicit it degenerates to a set of opt-ins, i.e. the
+    bool with extra syntax, unless a *second* opt-in exists.
+  - There is no second opt-in. The obvious candidate, **VPN, is not a horizon — it is a transport
+    onto the local one**: a WireGuard/Tailscale client holds a LAN address and resolves via
+    Pi-hole, so it receives the local answer and is on the local horizon by definition. (This
+    holds only while the VPN pushes the resolver; a VPN client that does not use Pi-hole gets the
+    public answer and hairpins in. That is a fact about the VPN's config, not a third horizon.)
+  - Cloudflare Access and similar sit on the **auth** axis, not the reachability one — see the
+    auth modes in §4.5, including `external`.
+  - "Public but not local" is unrepresentable by construction, as above.
+
+  Should a genuine second opt-in ever appear, the migration is mechanical and the bool is its
+  one-element case: `public: true` ≡ `horizons: [public]`, via the same accept-both-then-re-emit
+  approach used for the manifest, import-line, and `public_paths` renames.
 
   Gotcha this documents: a service can have a correct *internal* horizon (hemma did its job)
   yet be publicly broken because the `cloudflare.io/hostname` label is missing — the FQDN then
