@@ -60,6 +60,24 @@ func cmdDeploy(repoRoot, cfgPath string, args []string) int {
 		return code
 	}
 	self := localHost(cfg)
+	// deploy_host names the ONE machine allowed to fan out. Refuse anywhere
+	// else, before the preflight and before any ssh: on a segmented network a
+	// non-origin host may have no route to its peers, so what would otherwise
+	// happen is a partial deploy that dies host-by-host on connection timeouts,
+	// leaving the fleet in a mixed state. Better to decline up front.
+	//
+	// A machine that matches NO declared host (a laptop with a checkout, say)
+	// is also refused: it demonstrably is not the deploy host. Unset leaves
+	// deploy runnable from anywhere, so this is opt-in.
+	if dh := cfg.Defaults.DeployHost; dh != "" && self != dh {
+		where := "this machine (it matches no declared host)"
+		if self != "" {
+			where = fmt.Sprintf("%q", self)
+		}
+		errf("deploy_host is %q — refusing to deploy from %s.", dh, where)
+		hint("Run 'hemma deploy' on %s, or drop the restriction with 'hemma set deploy-host -'.", dh)
+		return 1
+	}
 	targets, err := resolveDeployTargets(cfg, self, args)
 	if err != nil {
 		errf("%v", err)

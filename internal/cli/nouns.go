@@ -289,6 +289,44 @@ func cmdSetDNSHost(cfgPath string, args []string) int {
 	return runSync(filepath.Dir(cfgPath), cfg, syncpkg.Complete)
 }
 
+// cmdSetDeployHost sets (or clears) defaults.deploy_host — the single host
+// `hemma deploy` fans out from, and therefore the only host whose
+// deploy-readiness doctor audits. Nothing is generated from it, so unlike
+// set dns-host there is no re-sync: it only scopes a check.
+func cmdSetDeployHost(cfgPath string, args []string) int {
+	if len(args) < 1 {
+		errf("Missing the <name>.")
+		hint("Usage: hemma set deploy-host <name>   (use '-' to clear)")
+		return 2
+	}
+	name := args[0]
+
+	cfg, code := loadExisting(cfgPath, "set the deploy-host in")
+	if cfg == nil {
+		return code
+	}
+	if name == "-" || name == "" {
+		cfg.Defaults.DeployHost = ""
+		if err := cfg.Save(); err != nil {
+			errf("%v", err)
+			return 1
+		}
+		fmt.Println("Cleared deploy_host — doctor audits deploy readiness on every host again.")
+		return 0
+	}
+	if _, exists := cfg.Hosts[name]; !exists {
+		errf("Host %q does not exist — add it first with: hemma add host %s <ip>", name, name)
+		return 1
+	}
+	cfg.Defaults.DeployHost = name
+	if err := cfg.Save(); err != nil {
+		errf("%v", err)
+		return 1
+	}
+	fmt.Printf("Set deploy_host to %q — only that host audits deploy readiness.\n", name)
+	return 0
+}
+
 // cmdSetAuthSnippet sets (or clears) defaults.auth_snippet — the repo-relative
 // path to the Caddy file whose contents become the body of the (auth) snippet
 // on every host. Pass an empty path (or "-") to clear it, which regenerates the

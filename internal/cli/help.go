@@ -151,6 +151,25 @@ Usage: hemma remove domain <name>`},
 
 Usage: hemma set dns-host <name>`},
 
+	{"set deploy-host", `hemma set deploy-host — name the one host 'hemma deploy' runs from
+
+Usage: hemma set deploy-host <name>   (use '-' to clear)
+
+<name> is an existing host. Two effects:
+
+  * 'hemma deploy' REFUSES to run anywhere else, before the preflight and
+    before any ssh. On a segmented network a non-origin host may have no route
+    to its peers, and the alternative is a partial fan-out that dies host by
+    host on timeouts, leaving the fleet in a mixed state.
+  * 'hemma doctor' audits deploy readiness (known_hosts) only on that host.
+    Elsewhere the finding is unfixable by design, and a permanently failing
+    doctor teaches you to ignore doctor.
+
+A machine matching no declared host (a laptop with a checkout) counts as "not
+the deploy host" for both. Unset leaves deploy runnable from anywhere and
+audited everywhere — the pre-existing behaviour — so this is opt-in. Nothing is
+generated from it, so setting it triggers no re-sync.`},
+
 	{"set auth-snippet", `hemma set auth-snippet — set the (auth) snippet source
 
 Usage: hemma set auth-snippet <path>   (use '-' to clear)

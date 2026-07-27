@@ -78,6 +78,8 @@ defaults:
   dns_host: pi                        # the single resolver host (set via: hemma set dns-host)
   auth_snippet: authelia/forward-auth.caddy  # optional; auth directive copied into (auth) — §4.5
   auth_service: authelia              # optional; the service that IS the auth backend — §4.5
+  # deploy_host: pi                   # optional; the ONE host `hemma deploy` may run from —
+                                      # deploy refuses elsewhere, doctor audits readiness only there (§6.8)
   # public_label: cloudflare.io/hostname       # optional; compose label key that declares public
                                                # ingress, read-only — list's PUBLIC column ('none' disables) — §12
   # public_proxy_label: cloudflare.io/reverseproxy  # optional; label meaning "routed via a proxy",
@@ -103,6 +105,14 @@ Notes:
   machine and never repeated in service entries.
 - A host's repo directory defaults to its name (`hosts` key). A `dir:` field exists for the
   rare case where directory ≠ name, but the convention (and the whole fleet today) is dir == name.
+- `deploy_host` names the **single fan-out origin** for `hemma deploy` (§6.8). Set via
+  `hemma set deploy-host <name>`. Two effects: deploy **refuses** to run anywhere else (before
+  the preflight and before any ssh), and `doctor` audits deploy readiness only there. Both exist
+  because readiness is a property of the ORIGIN, not of every host: on a segmented network a
+  non-origin host may have no route to its peers, so the finding would be unfixable by design and
+  a permanently failing doctor teaches people to ignore doctor. A machine matching no declared
+  host counts as "not the origin" for both. Unset preserves the old behaviour — runnable and
+  audited everywhere — so adoption is opt-in. Nothing is generated from it.
 - `dns_host` is a **single repo-wide resolver** (`defaults.dns_host`, set via
   `hemma set dns-host`). Every service's DNS record is routed through it; there is **no
   per-service override**. **Do not hardcode which host that is** — always read `defaults.dns_host`.

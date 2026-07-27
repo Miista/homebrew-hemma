@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"hemma/internal/config"
 )
@@ -43,9 +44,16 @@ func cmdList(cfgPath string, args []string) int {
 
 	fmt.Printf("%s== Hosts (%d) ==%s\n", boldOn, len(cfg.Hosts), boldOff)
 	for _, name := range sortedKeysOf(cfg.Hosts) {
-		marker := ""
+		var roles []string
 		if name == cfg.Defaults.DNSHost {
-			marker = "  (dns_host)"
+			roles = append(roles, "dns_host")
+		}
+		if name == cfg.Defaults.DeployHost {
+			roles = append(roles, "deploy_host")
+		}
+		marker := ""
+		if len(roles) > 0 {
+			marker = "  (" + strings.Join(roles, ", ") + ")"
 		}
 		fmt.Printf("  %-12s %s%s\n", name, cfg.Hosts[name].IP, marker)
 	}

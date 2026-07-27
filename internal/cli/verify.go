@@ -208,7 +208,7 @@ func (v *verifier) caddy(fqdn, backend string) {
 
 // localHost returns the name of the host in cfg whose IP is assigned to a
 // local network interface, or "" if none matches.
-func localHost(cfg *config.Config) string {
+var localHost = func(cfg *config.Config) string {
 	local := map[string]bool{}
 	if addrs, err := net.InterfaceAddrs(); err == nil {
 		for _, a := range addrs {

@@ -28,6 +28,15 @@ import (
 // missing a known_hosts entry.
 func checkDeployReadiness(cfg *config.Config) int {
 	self := localHost(cfg)
+	// Readiness is a question about the deploy ORIGIN, not about every host.
+	// When defaults.deploy_host names one, only that host is audited: elsewhere
+	// the finding would be unfixable by design (a segmented network may give a
+	// non-origin host no route to its peers at all), and an unfixable finding
+	// that fails doctor forever teaches people to ignore doctor. Unset keeps the
+	// old behaviour of checking everywhere, so adopting the field is opt-in.
+	if dh := cfg.Defaults.DeployHost; dh != "" && self != dh {
+		return 0
+	}
 	targets, err := resolveDeployTargets(cfg, self, nil)
 	if err != nil {
 		return 0 // config-level problems are reported elsewhere

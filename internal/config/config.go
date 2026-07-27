@@ -228,6 +228,19 @@ type Defaults struct {
 	// Set to "none" to switch the PUBLIC column off entirely.
 	// Empty means DefaultPublicLabel.
 	PublicLabel string `yaml:"public_label,omitempty"`
+	// DeployHost names the single host `hemma deploy` fans out FROM. It exists
+	// because deploy-readiness is a per-ORIGIN question, not a per-host one:
+	// only the origin needs every other host in its known_hosts, and on a
+	// segmented network the other hosts may deliberately have no route to their
+	// peers at all. Without this, doctor reports a missing known_hosts entry on
+	// every host, and on a non-origin that finding is unfixable by design —
+	// a permanently red doctor teaches you to ignore it.
+	//
+	// Empty means unset: the readiness check then runs everywhere, which is the
+	// pre-existing behaviour, so adopting the field is opt-in. Parallels
+	// dns_host and auth_service: one repo-wide role, named by host, set via
+	// `hemma set deploy-host <name>`.
+	DeployHost string `yaml:"deploy_host,omitempty"`
 	// PublicProxyLabel is the compose label key that, when present, means the
 	// tunnel routes a hostname through a reverse proxy rather than straight at
 	// the container. doctor needs it for one check only: a forward-auth service
