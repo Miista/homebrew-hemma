@@ -363,7 +363,7 @@ func TestBuild_AccessControlArtifactOmitted(t *testing.T) {
 // one file, sorted by name, and the auth_service is exempt from the
 // reverseproxy label (it IS Caddy's auth gate — routing it through Caddy
 // would recurse through its own check).
-func TestBuild_ComposeOverride_AggregatesPerHostSortedExemptsAuthService(t *testing.T) {
+func TestBuild_ComposeOverride_AggregatesPerHostSorted(t *testing.T) {
 	c := base()
 	c.Defaults.AuthService = "portal"
 	c.Services["portal"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091", Public: true}
@@ -394,14 +394,18 @@ func TestBuild_ComposeOverride_AggregatesPerHostSortedExemptsAuthService(t *test
 		t.Errorf("non-public service leaked into override:\n%s", f.Content)
 	}
 
-	// portal (the auth_service) has hostname but no reverseproxy label; the
-	// others get both.
+	// portal is the auth_service, but it gets BOTH labels like everyone else:
+	// the redirect-loop risk lives in the (auth) forward-auth gate, and
+	// planService already refuses to let the auth_service carry any auth
+	// mode — so its generated Caddy site never imports (auth) regardless of
+	// how public traffic reaches it, making it exactly as safe to route
+	// through Caddy as any other service.
 	portalBlock := f.Content[iPortal:iZeta]
 	if !strings.Contains(portalBlock, `cloudflare.io/hostname: "auth.example.com"`) {
 		t.Errorf("portal missing hostname label:\n%s", portalBlock)
 	}
-	if strings.Contains(portalBlock, "cloudflare.io/reverseproxy") {
-		t.Errorf("auth_service should be exempt from reverseproxy label:\n%s", portalBlock)
+	if !strings.Contains(portalBlock, `cloudflare.io/reverseproxy: "https://caddy:443"`) {
+		t.Errorf("auth_service should get the reverseproxy label like every other public service:\n%s", portalBlock)
 	}
 	zetaBlock := f.Content[iZeta:]
 	if !strings.Contains(zetaBlock, `cloudflare.io/reverseproxy: "https://caddy:443"`) {

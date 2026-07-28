@@ -249,12 +249,15 @@ func planComposeOverrides(c *config.Config, p *Plan) {
 		byHost[svc.Host] = append(byHost[svc.Host], render.ComposeOverrideEntry{
 			Name:     name,
 			Hostname: svc.FQDN,
-			// The auth_service is exempt from routing through Caddy: it IS
-			// Caddy's own auth gate, so proxying it through Caddy would recurse
-			// through (auth) on every forward-auth check. Same condition
-			// planService uses to refuse auth on this service, and CaddySite
-			// uses for the authBackend header-preserve branch.
-			ReverseProxy: name != c.Defaults.AuthService,
+			// No auth_service exemption here: the redirect-loop risk lives in
+			// the (auth) forward-auth GATE, not in "does traffic pass through
+			// Caddy" — and planService already refuses to let the auth_service
+			// carry any auth mode at all (the loop guard), so its generated
+			// Caddy site never imports (auth) regardless of how public traffic
+			// reaches it. Routing it through Caddy publicly is exactly as safe
+			// as routing it through Caddy on the LAN, which every service
+			// (including this one) already does.
+			ReverseProxy: true,
 		})
 	}
 	for hostName, entries := range byHost {
