@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"hemma/internal/auth"
 	"hemma/internal/config"
+	"hemma/internal/render"
 )
 
 // cmdApply makes the synced config live ON THE HOST IT RUNS ON.
@@ -16,8 +18,9 @@ import (
 //
 // Like verify, apply is host-split: the DNS half (restart pihole) can only run
 // on the resolver, the Caddy half (validate + reload) only on a host that runs
-// caddy. apply identifies which host it is via a local-IP match, then performs
-// the half (or halves) it is responsible for. Run it on each affected host to
+// caddy, and the tunnel half (recreate cloudflared) only on a host with public
+// services. apply identifies which host it is via a local-IP match, then
+// performs the parts it is responsible for. Run it on each affected host to
 // make the whole change live — apply does not (and cannot) SSH elsewhere.
 //
 // The Caddy half runs `caddy validate` BEFORE `caddy reload`: validate provisions
@@ -25,7 +28,11 @@ import (
 // here with a clear error instead of failing mid-reload. Command output (docker,
 // caddy) is captured and shown only on failure — success prints just the ticks.
 // reload is idempotent, so apply acts unconditionally on whatever this host owns
-// (there is no "changed this run" notion outside sync).
+// (there is no "changed this run" notion outside sync) — the tunnel half follows
+// the same rule: recreate cloudflared unconditionally rather than trying to
+// detect whether THIS run's docker-compose.override.yml differs from the
+// previous one, matching how Caddy is reloaded every run regardless of whether
+// its config actually changed.
 func cmdApply(repoRoot, cfgPath string, args []string) int {
 	cfg, code := loadExisting(cfgPath, "apply")
 	if cfg == nil {
@@ -56,6 +63,7 @@ func cmdApply(repoRoot, cfgPath string, args []string) int {
 
 	isDNS := self == cfg.DNSHost()
 	runsCaddy := hostRunsCaddy(cfg, self)
+	runsTunnel := hostHasPublicService(repoRoot, cfg, self)
 
 	if !isDNS && !runsCaddy {
 		fmt.Printf("Nothing to apply here: %q is neither the resolver (%s) nor a service host.\n", self, cfg.DNSHost())
@@ -138,6 +146,23 @@ func cmdApply(repoRoot, cfgPath string, args []string) int {
 		}
 	}
 
+	if runsTunnel {
+		fmt.Printf("\n%s== Tunnel (%s) ==%s\n", boldOn, self, boldOff)
+		// A plain restart is enough: cloudflared-wrapper reads config.yml fresh
+		// on every process start (it has no live docker-events watch the way
+		// gatus-wrapper does), and hemma writes that file directly rather than
+		// via a container label — so there is no OTHER container that needs
+		// touching for cloudflared to see the current ingress set, unlike the
+		// label-based design this replaced (which would have needed every
+		// labelled service AND cloudflared recreated on every apply).
+		if runQuiet("docker", "restart", cloudflaredContainer) {
+			fmt.Printf("  "+tick+" restarted %s\n", cloudflaredContainer)
+		} else {
+			fmt.Printf("  "+cross+" failed to restart %s\n", cloudflaredContainer)
+			failed++
+		}
+	}
+
 	fmt.Println()
 	if failed > 0 {
 		errf("%d %s failed.", failed, plural(failed, "step"))
@@ -158,12 +183,36 @@ func hostRunsCaddy(cfg *config.Config, host string) bool {
 	return false
 }
 
+// hostHasPublicService reports whether host has a cloudflared config.yml on
+// disk — i.e. whether planCloudflaredConfig emitted one for it (it omits a
+// host with no surviving public: true service rather than writing a
+// catch-all-only file). apply has already refused above if the repo is
+// drifted, so by this point the file's presence is a reliable proxy for
+// "this host has at least one public service" without apply needing to know
+// the plan package's internal synthetic-owner key format.
+func hostHasPublicService(repoRoot string, cfg *config.Config, host string) bool {
+	hostM := cfg.Hosts[host]
+	dir := filepath.Join(repoRoot, hostM.ResolvedDir(host), hostM.ResolvedTunnelDir(cfg.Defaults))
+	_, err := os.Stat(filepath.Join(dir, render.CloudflaredConfigFilename))
+	return err == nil
+}
+
 // runQuiet runs a command with its output captured, printing it (indented)
 // only when the command fails. The happy path stays clean; on failure the
 // user still sees the tool's own diagnostics (notably caddy's missing-cert
 // error, which is why apply used to stream everything live).
 func runQuiet(name string, args ...string) bool {
+	return runQuietIn("", name, args...)
+}
+
+// runQuietIn is runQuiet with an explicit working directory, for a command
+// whose behavior depends on cwd (e.g. a `docker compose` invocation, which
+// resolves its project from the directory it's run in — unlike a plain
+// `docker` command, which finds a container by name regardless of cwd). An
+// empty dir behaves exactly like runQuiet (inherits the caller's cwd).
+func runQuietIn(dir, name string, args ...string) bool {
 	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		return true

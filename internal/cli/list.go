@@ -95,7 +95,7 @@ func cmdList(cfgPath string, args []string) int {
 	} else {
 		fmt.Printf("\n%s== Services (%d) ==%s\n", boldOn, len(svcNames), boldOff)
 	}
-	printServiceTable(cfg, svcNames, newPublicLookup(filepath.Dir(cfgPath), cfg))
+	printServiceTable(cfg, svcNames)
 	if filtered && len(svcNames) < len(cfg.Services) {
 		fmt.Printf("  (%d on other hosts hidden — use --all to show)\n", len(cfg.Services)-len(svcNames))
 	}
@@ -114,15 +114,16 @@ func cmdList(cfgPath string, args []string) int {
 
 // printServiceTable renders the services as an aligned table with an AUTH
 // column showing the auth MODE (forward/oidc/external/-, or (portal) for the
-// service that IS the auth provider) and a PUBLIC column showing
-// whether the FQDN is also reachable from the internet (read from the host's
-// compose labels — see public_horizon.go; omitted when that lookup is switched
-// off). PUBLIC reports OBSERVED reality; whether it contradicts the declared
-// `public` field is doctor's business, since list is inventory and not a status
-// view. Column widths are computed from the data (including headers) so it stays
-// aligned regardless of name/fqdn lengths. Disabled services are marked in a
-// trailing note column. When nothing is selected, prints a placeholder.
-func printServiceTable(cfg *config.Config, svcNames []string, pub *publicLookup) {
+// service that IS the auth provider) and a PUBLIC column echoing the declared
+// `public` field. This is a direct echo, not an observation, because hemma is
+// now the sole author of the tunnel's ingress config (config.yml, per host) —
+// there is no longer a separate "what does the tunnel actually serve" question
+// to reconcile against the declaration, the way there was when a hand-
+// maintained compose file could drift from services.yaml. Column widths are
+// computed from the data (including headers) so it stays aligned regardless
+// of name/fqdn lengths. Disabled services are marked in a trailing note
+// column. When nothing is selected, prints a placeholder.
+func printServiceTable(cfg *config.Config, svcNames []string) {
 	if len(svcNames) == 0 {
 		fmt.Println("  (none)")
 		return
@@ -130,7 +131,6 @@ func printServiceTable(cfg *config.Config, svcNames []string, pub *publicLookup)
 	type row struct{ name, fqdn, host, backend, auth, public, note string }
 	rows := make([]row, 0, len(svcNames))
 	anyAuth := false
-	anyUnknown, anyKnown := false, false
 	for _, name := range svcNames {
 		svc := cfg.Services[name]
 		auth := "-"
@@ -159,12 +159,9 @@ func printServiceTable(cfg *config.Config, svcNames []string, pub *publicLookup)
 		if svc.Disabled {
 			note = "[disabled]"
 		}
-		public := pub.of(cfg, svc)
-		switch public {
-		case publicUnknown:
-			anyUnknown = true
-		case publicYes, publicNo:
-			anyKnown = true
+		public := "no"
+		if svc.Public {
+			public = "yes"
 		}
 		rows = append(rows, row{name, svc.FQDN, svc.Host, svc.Backend, auth, public, note})
 	}
@@ -181,26 +178,11 @@ func printServiceTable(cfg *config.Config, svcNames []string, pub *publicLookup)
 		wAuth = max(wAuth, len(r.auth))
 	}
 
-	// Only show PUBLIC when at least one host's compose file was actually
-	// readable. A repo whose hosts are not compose-managed (or a test fixture)
-	// would otherwise get a column of "?" that says nothing.
-	showPub := pub.enabled() && anyKnown
-	if showPub {
-		fmt.Printf("  %s%-*s  %-*s  %-*s  %-*s  %-*s  %s%s\n",
-			boldOn, wName, hName, wFQDN, hFQDN, wHost, hHost, wBack, hBack, wAuth, hAuth, hPub, boldOff)
-	} else {
-		fmt.Printf("  %s%-*s  %-*s  %-*s  %-*s  %s%s\n",
-			boldOn, wName, hName, wFQDN, hFQDN, wHost, hHost, wBack, hBack, hAuth, boldOff)
-	}
+	fmt.Printf("  %s%-*s  %-*s  %-*s  %-*s  %-*s  %s%s\n",
+		boldOn, wName, hName, wFQDN, hFQDN, wHost, hHost, wBack, hBack, wAuth, hAuth, hPub, boldOff)
 	for _, r := range rows {
-		var line string
-		if showPub {
-			line = fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s  %-*s  %s",
-				wName, r.name, wFQDN, r.fqdn, wHost, r.host, wBack, r.backend, wAuth, r.auth, r.public)
-		} else {
-			line = fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s  %s",
-				wName, r.name, wFQDN, r.fqdn, wHost, r.host, wBack, r.backend, r.auth)
-		}
+		line := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s  %-*s  %s",
+			wName, r.name, wFQDN, r.fqdn, wHost, r.host, wBack, r.backend, wAuth, r.auth, r.public)
 		if r.note != "" {
 			line += "  " + r.note
 		}
@@ -209,12 +191,7 @@ func printServiceTable(cfg *config.Config, svcNames []string, pub *publicLookup)
 	if anyAuth {
 		fmt.Println("  (AUTH: forward = imports the (auth) snippet; oidc = Authelia, app does OIDC itself; external = authenticated outside Authelia (app login / token / edge); (portal) = this service IS the auth provider; change with 'hemma update service <name> --auth-mode <mode>')")
 	}
-	if showPub {
-		fmt.Printf("  (PUBLIC: yes = a %s label declares tunnel ingress for the FQDN; no = internal horizon only)\n", pub.label)
-	}
-	if showPub && anyUnknown {
-		fmt.Printf("  (%s = that host's %s could not be read)\n", publicUnknown, composeFile)
-	}
+	fmt.Println("  (PUBLIC: yes = a tunnel ingress entry is generated for the FQDN in this host's cloudflared config.yml; no = internal horizon only)")
 }
 
 func sortedKeysOf[V any](m map[string]V) []string {

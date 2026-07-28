@@ -164,29 +164,29 @@ func TestCaddySite_ExternalRendersPlain(t *testing.T) {
 	}
 }
 
-func TestComposeOverride(t *testing.T) {
-	got := ComposeOverride([]ComposeOverrideEntry{
-		{Name: "authelia", Hostname: "auth.example.com", ReverseProxy: false},
-		{Name: "docs", Hostname: "docs.example.com", ReverseProxy: true},
+func TestCloudflaredConfig(t *testing.T) {
+	got := CloudflaredConfig([]CloudflaredIngressEntry{
+		{Hostname: "auth.example.com", Backend: "https://caddy:443"},
+		{Hostname: "docs.example.com", Backend: "https://caddy:443"},
 	})
 	want := Header + "\n" +
-		"services:\n" +
-		"  authelia:\n" +
-		"    labels:\n" +
-		"      cloudflare.io/hostname: \"auth.example.com\"\n" +
-		"  docs:\n" +
-		"    labels:\n" +
-		"      cloudflare.io/hostname: \"docs.example.com\"\n" +
-		"      cloudflare.io/reverseproxy: \"https://caddy:443\"\n"
+		"ingress:\n" +
+		"  - hostname: auth.example.com\n" +
+		"    service: https://caddy:443\n" +
+		"  - hostname: docs.example.com\n" +
+		"    service: https://caddy:443\n" +
+		"  - service: http_status:404\n"
 	if got != want {
-		t.Fatalf("ComposeOverride mismatch:\n got: %q\nwant: %q", got, want)
+		t.Fatalf("CloudflaredConfig mismatch:\n got: %q\nwant: %q", got, want)
 	}
 }
 
-func TestComposeOverride_Empty(t *testing.T) {
-	got := ComposeOverride(nil)
-	want := Header + "\nservices:\n"
+// Even with no entries, the mandatory catch-all is always present and last —
+// cloudflared requires ingress rules to end in one, and match order matters.
+func TestCloudflaredConfig_Empty(t *testing.T) {
+	got := CloudflaredConfig(nil)
+	want := Header + "\ningress:\n  - service: http_status:404\n"
 	if got != want {
-		t.Fatalf("ComposeOverride(nil) = %q, want %q", got, want)
+		t.Fatalf("CloudflaredConfig(nil) = %q, want %q", got, want)
 	}
 }

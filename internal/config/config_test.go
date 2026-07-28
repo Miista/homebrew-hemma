@@ -552,39 +552,33 @@ services:
 	}
 }
 
-// public_label resolution: unset falls back to the cloudflared default, "none"
-// disables the lookup, anything else is used verbatim.
-func TestResolvedPublicLabel(t *testing.T) {
+// tunnel_dir resolution: unset falls back to the "cloudflared"
+// default, anything else is used verbatim — needed because it already
+// differs per host on the actual homelab (one host mounts cloudflared-local/
+// data, another mounts cloudflared directly).
+func TestResolvedTunnelDir(t *testing.T) {
 	for in, want := range map[string]string{
-		"":                  DefaultPublicLabel,
-		PublicLabelDisabled: "",
-		"my.tunnel/host":    "my.tunnel/host",
+		"":                       DefaultTunnelDir,
+		"cloudflared-local/data": "cloudflared-local/data",
+		"cloudflared":            "cloudflared",
 	} {
-		if got := (Defaults{PublicLabel: in}).ResolvedPublicLabel(); got != want {
-			t.Errorf("ResolvedPublicLabel(%q) = %q, want %q", in, got, want)
+		if got := (Defaults{TunnelDir: in}).ResolvedTunnelDir(); got != want {
+			t.Errorf("ResolvedTunnelDir(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
 
-// The proxy label resolves independently of public_label, EXCEPT that turning
-// public-horizon reporting off entirely also stops the proxy read — nothing
-// should touch a compose file when the whole feature is disabled.
-func TestResolvedPublicProxyLabel(t *testing.T) {
-	cases := []struct {
-		label, proxy, want string
-	}{
-		{"", "", DefaultPublicProxyLabel},
-		{"", PublicLabelDisabled, ""},
-		{"", "my.tunnel/via", "my.tunnel/via"},
-		{PublicLabelDisabled, "", ""},                   // reporting off ⇒ proxy off too
-		{PublicLabelDisabled, "my.tunnel/via", ""},      // ...even if a proxy key is set
-		{"my.tunnel/host", "", DefaultPublicProxyLabel}, // custom hostname key, default proxy key
+// A per-host override wins over the repo-wide default — the actual shape
+// needed on the real homelab, where one host mounts cloudflared-local/data
+// and another mounts cloudflared directly; a single repo-wide value can't
+// cover both, unlike dns_host/auth_service, which really are one value.
+func TestHost_ResolvedTunnelDir(t *testing.T) {
+	d := Defaults{TunnelDir: "repo-wide-default"}
+	if got := (Host{}).ResolvedTunnelDir(d); got != "repo-wide-default" {
+		t.Errorf("no host override should fall through to the default, got %q", got)
 	}
-	for _, c := range cases {
-		got := (Defaults{PublicLabel: c.label, PublicProxyLabel: c.proxy}).ResolvedPublicProxyLabel()
-		if got != c.want {
-			t.Errorf("ResolvedPublicProxyLabel(label=%q, proxy=%q) = %q, want %q", c.label, c.proxy, got, c.want)
-		}
+	if got := (Host{TunnelDir: "per-host-value"}).ResolvedTunnelDir(d); got != "per-host-value" {
+		t.Errorf("host override should win, got %q", got)
 	}
 }
 

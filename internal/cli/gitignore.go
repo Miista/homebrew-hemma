@@ -161,12 +161,11 @@ func cmdDoctor(cfgPath string, args []string) int {
 	}
 	advs = append(advs, usersDBWarnings(repoRoot, cfg)...)
 	advs = append(advs, authWiringWarnings(repoRoot, cfg)...)
-	// Public-horizon checks (§12): auth bypass, declared-vs-observed, orphan
-	// ingress. Read-only over each host's compose file; the first two count as
-	// problems (a security hole and a violated declaration), the third does not.
-	pubAdvs, pubProblems := publicHorizonWarnings(repoRoot, cfg)
-	advs = append(advs, pubAdvs...)
-	problems += pubProblems
+	// No separate public-horizon checks anymore (§12): hemma is now the sole
+	// author of each host's cloudflared config.yml, so there is no foreign
+	// hand-maintained file left for services.yaml to drift against — that
+	// drift is exactly what checkDrift (above) already catches generically,
+	// the same as any other generated file.
 	if len(advs) > 0 {
 		fmt.Println()
 		printAdvisories(repoRoot, advs)

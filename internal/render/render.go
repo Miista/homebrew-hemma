@@ -145,49 +145,49 @@ func CaddySite(fqdn, tlsImport, backend string, mode config.AuthMode, authBacken
 	return fmt.Sprintf("%s\n%s {\n\timport %s\n\t%s\n}\n", Header, fqdn, tlsImport, proxyLine)
 }
 
-// ComposeOverrideFilename is the compose auto-merge name hemma writes into
-// each host's repo dir, alongside (never editing) the hand-maintained
-// docker-compose.yml. Compose loads it with zero flags because "docker-
-// compose.override.yml" is one of its two recognized override names —
-// verified empirically: compose.override.yaml/.yml and docker-compose.
-// override.yaml/.yml all auto-merge; any other basename (docker-compose.
-// hemma.yml, myapp.override.yaml, ...) silently does not.
-const ComposeOverrideFilename = "docker-compose.override.yml"
+// CloudflaredConfigFilename is the file hemma writes wholesale into each
+// host's configured tunnel directory (defaults.tunnel_dir, or a per-host
+// Host.TunnelDir override), replacing what used to be a hand-maintained
+// near-empty stub plus per-service cloudflare.io/* compose labels.
+// cloudflared-wrapper mounts this directory as
+// /etc/cloudflared and reads config.yml as its base config on every start.
+const CloudflaredConfigFilename = "config.yml"
 
-// ComposeOverrideEntry is one service's public-horizon labels.
-type ComposeOverrideEntry struct {
-	// Name is the service/container name — the compose services key.
-	Name string
-	// Hostname is the tunnel ingress hostname (cloudflare.io/hostname).
+// CloudflaredIngressEntry is one public service's tunnel ingress rule.
+type CloudflaredIngressEntry struct {
+	// Hostname is the public FQDN cloudflared routes.
 	Hostname string
-	// ReverseProxy routes the tunnel to Caddy instead of straight at the
-	// container. plan.go currently sets this true for every public service,
-	// including the auth_service — planService already refuses to let it
-	// carry any auth mode (the redirect-loop guard lives there, on the mode,
-	// not on "does traffic pass through Caddy"), so its Caddy site never
-	// imports (auth) and there is nothing to recurse through. Kept as a field
-	// rather than hardcoded so a caller with a genuine reason to bypass Caddy
-	// for one service still can.
-	ReverseProxy bool
+	// Backend is the ingress "service" value. Always routed through Caddy
+	// (https://caddy:443) — no per-service bypass: the redirect-loop concern
+	// that once justified an auth_service exemption lives in the auth MODE,
+	// not in "does traffic pass through Caddy", and planService already
+	// refuses to let the auth_service carry any auth mode at all, so its
+	// Caddy site never imports (auth) regardless of how public traffic
+	// reaches it. cloudflared-wrapper's writeMergedConfig injects the
+	// originServerName/httpHostHeader SNI+Host fix for every https:// ingress
+	// entry regardless of where it came from (a label OR a raw config.yml
+	// entry, as of cloudflared-wrapper commit c0c68cd) — hemma does not need
+	// to (and deliberately does not) write that block itself.
+	Backend string
 }
 
-// ComposeOverride renders docker-compose.override.yml for one host: a
-// services.<name>.labels block per public entry, replacing the hand-written
-// cloudflare.io/* labels this repo used to carry directly in docker-
-// compose.yml. Docker Compose merges labels key-by-key against the base
-// file (locally defined — i.e. override-file — values win), so this is safe
-// to auto-merge over whatever (if anything) remains in docker-compose.yml.
-// Entries are rendered in the order given; callers sort by name for a stable
-// diff.
-func ComposeOverride(entries []ComposeOverrideEntry) string {
+// CloudflaredConfig renders config.yml for one host: one ingress rule per
+// public entry, terminated by the mandatory catch-all. hemma writes this file
+// WHOLESALE — no merge with anything hand-written, since there is no longer
+// any hand-editing of a host's cloudflared config (design §12: hemma is the
+// sole author, same posture as a Caddy site file). The catch-all is written
+// explicitly rather than relied upon from cloudflared-wrapper's own missing-
+// catch-all fallback, since ingress match order matters (it must be last) and
+// a generator should not depend on a consumer's forgiveness for something it
+// can trivially guarantee itself. Entries are rendered in the order given;
+// callers sort by hostname for a stable diff.
+func CloudflaredConfig(entries []CloudflaredIngressEntry) string {
 	var b strings.Builder
 	b.WriteString(Header)
-	b.WriteString("\nservices:\n")
+	b.WriteString("\ningress:\n")
 	for _, e := range entries {
-		fmt.Fprintf(&b, "  %s:\n    labels:\n      cloudflare.io/hostname: %q\n", e.Name, e.Hostname)
-		if e.ReverseProxy {
-			b.WriteString("      cloudflare.io/reverseproxy: \"https://caddy:443\"\n")
-		}
+		fmt.Fprintf(&b, "  - hostname: %s\n    service: %s\n", e.Hostname, e.Backend)
 	}
+	b.WriteString("  - service: http_status:404\n")
 	return b.String()
 }

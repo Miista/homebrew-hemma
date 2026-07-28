@@ -359,91 +359,123 @@ func TestBuild_AccessControlArtifactOmitted(t *testing.T) {
 	}
 }
 
-// docker-compose.override.yml aggregates every public service on a host into
-// one file, sorted by name, and the auth_service is exempt from the
-// reverseproxy label (it IS Caddy's auth gate — routing it through Caddy
-// would recurse through its own check).
-func TestBuild_ComposeOverride_AggregatesPerHostSorted(t *testing.T) {
+// cloudflared's config.yml aggregates every public service on a host into one
+// file, sorted by hostname, every entry routed through Caddy — including the
+// auth_service: the redirect-loop risk lives in the (auth) forward-auth gate,
+// and planService already refuses to let the auth_service carry any auth
+// mode, so its generated Caddy site never imports (auth) regardless of how
+// public traffic reaches it, making it exactly as safe to route through
+// Caddy as any other service.
+func TestBuild_CloudflaredConfig_AggregatesPerHostSorted(t *testing.T) {
 	c := base()
 	c.Defaults.AuthService = "portal"
-	c.Services["portal"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091", Public: true}
-	c.Services["zeta"] = config.Service{FQDN: "zeta.example.com", Host: "appbox", Backend: "zeta:80", Public: true}
-	c.Services["alpha"] = config.Service{FQDN: "alpha.example.com", Host: "appbox", Backend: "alpha:80", Public: true}
+	c.Services["portal"] = config.Service{FQDN: "zzz-auth.example.com", Host: "appbox", Backend: "authelia:9091", Public: true}
+	c.Services["zeta"] = config.Service{FQDN: "mmm-zeta.example.com", Host: "appbox", Backend: "zeta:80", Public: true}
+	c.Services["alpha"] = config.Service{FQDN: "aaa-alpha.example.com", Host: "appbox", Backend: "alpha:80", Public: true}
 	c.Services["private"] = config.Service{FQDN: "private.example.com", Host: "appbox", Backend: "priv:80"} // Public: false
 
 	p := Build(c)
-	key := composeOverrideOwnerPrefix + "appbox"
+	key := cloudflaredConfigOwnerPrefix + "appbox"
 	files := p.Files[key]
 	if len(files) != 1 {
-		t.Fatalf("expected 1 override file, got %d: %+v", len(files), files)
+		t.Fatalf("expected 1 config file, got %d: %+v", len(files), files)
 	}
 	f := files[0]
-	wantPath := "appbox/" + "docker-compose.override.yml"
+	wantPath := "appbox/cloudflared/config.yml"
 	if f.Path != wantPath {
 		t.Errorf("path %q, want %q", f.Path, wantPath)
 	}
 
-	// alpha, portal, zeta in that order (sorted); private absent entirely.
-	iAlpha := strings.Index(f.Content, "alpha:")
-	iPortal := strings.Index(f.Content, "portal:")
-	iZeta := strings.Index(f.Content, "zeta:")
-	if iAlpha == -1 || iPortal == -1 || iZeta == -1 || !(iAlpha < iPortal && iPortal < iZeta) {
-		t.Errorf("services not in sorted order (alpha, portal, zeta):\n%s", f.Content)
+	// aaa-alpha, mmm-zeta, zzz-auth in that order (sorted by hostname);
+	// private absent entirely.
+	iAlpha := strings.Index(f.Content, "aaa-alpha")
+	iZeta := strings.Index(f.Content, "mmm-zeta")
+	iAuth := strings.Index(f.Content, "zzz-auth")
+	if iAlpha == -1 || iZeta == -1 || iAuth == -1 || !(iAlpha < iZeta && iZeta < iAuth) {
+		t.Errorf("hostnames not in sorted order (aaa-alpha, mmm-zeta, zzz-auth):\n%s", f.Content)
 	}
 	if strings.Contains(f.Content, "private") {
-		t.Errorf("non-public service leaked into override:\n%s", f.Content)
+		t.Errorf("non-public service leaked into config:\n%s", f.Content)
+	}
+	// Every entry — including the auth_service — routes through Caddy.
+	if got := strings.Count(f.Content, "service: https://caddy:443"); got != 3 {
+		t.Errorf("expected 3 entries routed through caddy, got %d:\n%s", got, f.Content)
+	}
+	// The mandatory catch-all is present and last.
+	if !strings.HasSuffix(strings.TrimRight(f.Content, "\n"), "- service: http_status:404") {
+		t.Errorf("catch-all must be present and last:\n%s", f.Content)
 	}
 
-	// portal is the auth_service, but it gets BOTH labels like everyone else:
-	// the redirect-loop risk lives in the (auth) forward-auth gate, and
-	// planService already refuses to let the auth_service carry any auth
-	// mode — so its generated Caddy site never imports (auth) regardless of
-	// how public traffic reaches it, making it exactly as safe to route
-	// through Caddy as any other service.
-	portalBlock := f.Content[iPortal:iZeta]
-	if !strings.Contains(portalBlock, `cloudflare.io/hostname: "auth.example.com"`) {
-		t.Errorf("portal missing hostname label:\n%s", portalBlock)
-	}
-	if !strings.Contains(portalBlock, `cloudflare.io/reverseproxy: "https://caddy:443"`) {
-		t.Errorf("auth_service should get the reverseproxy label like every other public service:\n%s", portalBlock)
-	}
-	zetaBlock := f.Content[iZeta:]
-	if !strings.Contains(zetaBlock, `cloudflare.io/reverseproxy: "https://caddy:443"`) {
-		t.Errorf("non-auth-service missing reverseproxy label:\n%s", zetaBlock)
-	}
-
-	if !IsSyntheticOwner(key) || !IsComposeOverrideOwner(key) {
-		t.Errorf("%q should be a synthetic compose-override owner", key)
+	if !IsSyntheticOwner(key) || !IsCloudflaredConfigOwner(key) {
+		t.Errorf("%q should be a synthetic cloudflared-config owner", key)
 	}
 }
 
-// A host with zero public services gets no override file at all — not an
-// empty "services: {}" one — so GC removes it the moment the last public
-// service on that host loses public: true.
-func TestBuild_ComposeOverride_OmittedWhenNoPublicServices(t *testing.T) {
+// A host with zero public services gets no config.yml at all — GC removes it
+// the moment the last public service on that host loses public: true.
+func TestBuild_CloudflaredConfig_OmittedWhenNoPublicServices(t *testing.T) {
 	c := base()
 	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000"} // Public: false
 	p := Build(c)
 	for k := range p.Files {
-		if IsComposeOverrideOwner(k) {
-			t.Errorf("expected no compose-override file, got owner %q: %+v", k, p.Files[k])
+		if IsCloudflaredConfigOwner(k) {
+			t.Errorf("expected no cloudflared-config file, got owner %q: %+v", k, p.Files[k])
 		}
 	}
 }
 
-// A disabled or skipped (invalid) service must never appear in the override,
+// A disabled or skipped (invalid) service must never appear in the config,
 // even if it was marked public: true before being skipped.
-func TestBuild_ComposeOverride_ExcludesSkippedServices(t *testing.T) {
+func TestBuild_CloudflaredConfig_ExcludesSkippedServices(t *testing.T) {
 	c := base()
 	c.Services["good"] = config.Service{FQDN: "good.example.com", Host: "appbox", Backend: "good:80", Public: true}
 	c.Services["bad"] = config.Service{FQDN: "not a valid fqdn", Host: "appbox", Backend: "bad:80", Public: true}
 	p := Build(c)
-	key := composeOverrideOwnerPrefix + "appbox"
+	key := cloudflaredConfigOwnerPrefix + "appbox"
 	files := p.Files[key]
 	if len(files) != 1 {
-		t.Fatalf("expected 1 override file, got %d", len(files))
+		t.Fatalf("expected 1 config file, got %d", len(files))
 	}
-	if strings.Contains(files[0].Content, "bad:") {
-		t.Errorf("skipped service leaked into override:\n%s", files[0].Content)
+	if strings.Contains(files[0].Content, "bad") {
+		t.Errorf("skipped service leaked into config:\n%s", files[0].Content)
+	}
+}
+
+// The configured tunnel_dir is honored — this already differs
+// per host on the real homelab (verified: one host mounts cloudflared-local/
+// data, another mounts cloudflared directly), so hemma must never hardcode it.
+func TestBuild_CloudflaredConfig_HonorsConfiguredDir(t *testing.T) {
+	c := base()
+	c.Defaults.TunnelDir = "cloudflared-local/data"
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Public: true}
+	p := Build(c)
+	key := cloudflaredConfigOwnerPrefix + "appbox"
+	files := p.Files[key]
+	if len(files) != 1 || files[0].Path != "appbox/cloudflared-local/data/config.yml" {
+		t.Errorf("expected path appbox/cloudflared-local/data/config.yml, got %+v", files)
+	}
+}
+
+// A per-host tunnel_dir override wins over the repo-wide default — the exact
+// shape the real homelab needs, since its two hosts use different paths
+// (one host mounts cloudflared-local/data, the other mounts cloudflared
+// directly) and a single repo-wide value cannot express both at once.
+func TestBuild_CloudflaredConfig_PerHostDirOverridesDefault(t *testing.T) {
+	c := base()
+	c.Defaults.TunnelDir = "cloudflared" // repo-wide default; "resolver" uses it as-is
+	appbox := c.Hosts["appbox"]
+	appbox.TunnelDir = "cloudflared-local/data" // per-host override
+	c.Hosts["appbox"] = appbox
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Public: true}
+	c.Services["photos"] = config.Service{FQDN: "photos.example.net", Host: "resolver", Backend: "photos:80", Public: true}
+
+	p := Build(c)
+	appboxFiles := p.Files[cloudflaredConfigOwnerPrefix+"appbox"]
+	if len(appboxFiles) != 1 || appboxFiles[0].Path != "appbox/cloudflared-local/data/config.yml" {
+		t.Errorf("appbox (per-host override) expected appbox/cloudflared-local/data/config.yml, got %+v", appboxFiles)
+	}
+	resolverFiles := p.Files[cloudflaredConfigOwnerPrefix+"resolver"]
+	if len(resolverFiles) != 1 || resolverFiles[0].Path != "resolver/cloudflared/config.yml" {
+		t.Errorf("resolver (repo-wide default) expected resolver/cloudflared/config.yml, got %+v", resolverFiles)
 	}
 }

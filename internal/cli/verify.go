@@ -15,8 +15,9 @@ import (
 
 // Container names are the homelab convention.
 const (
-	piholeContainer = "pihole"
-	caddyContainer  = "caddy"
+	piholeContainer      = "pihole"
+	caddyContainer       = "caddy"
+	cloudflaredContainer = "cloudflared"
 )
 
 // cmdVerify checks that a service actually resolves and is served, live.
