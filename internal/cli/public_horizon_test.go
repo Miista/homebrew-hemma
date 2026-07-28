@@ -273,6 +273,70 @@ func TestLabelledIngress_NoOverrideFileIsBaseOnly(t *testing.T) {
 	}
 }
 
+// A hand-maintained base file may use the list label form (- key=value)
+// instead of the map form hemma itself always generates. The override
+// (map form, as hemma writes it) must still merge correctly on top of it —
+// override wins the shared key, the base-only key survives untouched.
+func TestLabelledIngress_MergesListFormBaseLabels(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, composeFile)
+	if err := os.WriteFile(path, []byte(`services:
+  gatus:
+    labels:
+      - "diun.include_tags=^v\\d+\\.\\d+\\.\\d+$"
+      - "cloudflare.io/hostname=stale.example.com"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	overridePath := filepath.Join(dir, composeOverrideFile)
+	if err := os.WriteFile(overridePath, []byte(`services:
+  gatus:
+    labels:
+      cloudflare.io/hostname: "status.example.com"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := labelledIngress(path, overridePath, config.DefaultPublicLabel, config.DefaultPublicProxyLabel)
+	if _, stale := got["stale.example.com"]; stale {
+		t.Error("override should replace the base file's list-form hostname, not add to it")
+	}
+	if in, ok := got["status.example.com"]; !ok || in.Container != "gatus" {
+		t.Errorf("expected override's hostname to win, got %v", got)
+	}
+}
+
+// A service present in only ONE of the two files (no labels at all in the
+// other) must still merge correctly — exercises the Kind == 0 (absent labels
+// block) short-circuit on both sides of mergeLabelNodes.
+func TestLabelledIngress_MergesWhenOneSideHasNoLabels(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, composeFile)
+	if err := os.WriteFile(path, []byte(`services:
+  bare:
+    image: alpine
+  gatus:
+    labels:
+      cloudflare.io/hostname: "status.example.com"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	overridePath := filepath.Join(dir, composeOverrideFile)
+	if err := os.WriteFile(overridePath, []byte(`services:
+  bare:
+    labels:
+      cloudflare.io/hostname: "bare.example.com"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := labelledIngress(path, overridePath, config.DefaultPublicLabel, config.DefaultPublicProxyLabel)
+	if in, ok := got["bare.example.com"]; !ok || in.Container != "bare" {
+		t.Errorf("override-only labels (base has none) should still be seen: %v", got)
+	}
+	if in, ok := got["status.example.com"]; !ok || in.Container != "gatus" {
+		t.Errorf("base-only labels (override has none for this service) should still be seen: %v", got)
+	}
+}
+
 // Hostname matching is case-insensitive on both sides.
 func TestHostnameFromLabel(t *testing.T) {
 	for in, want := range map[string]string{
