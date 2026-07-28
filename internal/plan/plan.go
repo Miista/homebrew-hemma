@@ -176,6 +176,14 @@ func Build(c *config.Config) *Plan {
 	// something to say (provider decides); otherwise absent and GC'd.
 	planAccessControl(c, p)
 
+	// docker-compose.override.yml per host: the cloudflare.io/* tunnel-ingress
+	// labels for that host's public services, generated instead of hand-
+	// maintained (services.yaml is now the only place a public FQDN is typed).
+	// One file per host — not per service — because compose override files are
+	// a single shared services: map; @compose-override:<host> mirrors the
+	// @domain: prefix style so GC and IsSyntheticOwner treat it uniformly.
+	planComposeOverrides(c, p)
+
 	return p
 }
 
@@ -220,6 +228,45 @@ func planAccessControl(c *config.Config, p *Plan) {
 	}
 	path := filepath.Join(hostM.ResolvedDir(authSvc.Host), relPath)
 	p.Files[authAccessKey] = []File{{Path: path, Content: content}}
+}
+
+// planComposeOverrides emits one docker-compose.override.yml per host that
+// has at least one surviving public: true service, containing that host's
+// public services' cloudflare.io/* labels (render.ComposeOverride). A host
+// with none gets no file — an empty "services: {}" override would be noise,
+// and GC already removes a host's file the moment its last public service
+// loses that status, same as any other synthetic owner going empty.
+func planComposeOverrides(c *config.Config, p *Plan) {
+	byHost := map[string][]render.ComposeOverrideEntry{}
+	for name := range p.Files {
+		if IsSyntheticOwner(name) {
+			continue
+		}
+		svc, ok := c.Services[name]
+		if !ok || !svc.Public {
+			continue
+		}
+		byHost[svc.Host] = append(byHost[svc.Host], render.ComposeOverrideEntry{
+			Name:     name,
+			Hostname: svc.FQDN,
+			// The auth_service is exempt from routing through Caddy: it IS
+			// Caddy's own auth gate, so proxying it through Caddy would recurse
+			// through (auth) on every forward-auth check. Same condition
+			// planService uses to refuse auth on this service, and CaddySite
+			// uses for the authBackend header-preserve branch.
+			ReverseProxy: name != c.Defaults.AuthService,
+		})
+	}
+	for hostName, entries := range byHost {
+		hostM, ok := c.Hosts[hostName]
+		if !ok {
+			continue
+		}
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+		path := filepath.Join(hostM.ResolvedDir(hostName), render.ComposeOverrideFilename)
+		key := composeOverrideOwnerPrefix + hostName
+		p.Files[key] = []File{{Path: path, Content: render.ComposeOverride(entries)}}
+	}
 }
 
 // planService validates one entry and returns its files or a skip reason.
@@ -298,11 +345,23 @@ const authSnippetKey = "@auth-snippet"
 // generated access-control artifact on the auth_service's host (design §4.6).
 const authAccessKey = "@auth-access"
 
+// composeOverrideOwnerPrefix marks synthetic manifest/plan keys that own a
+// host's docker-compose.override.yml (one key per host: prefix + host name),
+// mirroring domainOwnerPrefix's per-domain shape.
+const composeOverrideOwnerPrefix = "@compose-override:"
+
+// IsComposeOverrideOwner reports whether key is a synthetic
+// docker-compose.override.yml owner.
+func IsComposeOverrideOwner(key string) bool {
+	return strings.HasPrefix(key, composeOverrideOwnerPrefix)
+}
+
 // IsSyntheticOwner reports whether a plan/manifest key is synthetic (not a
 // real service name). Covers domain TLS owners, the caddy-import owner, the
-// auth-snippet owner, and the auth access-control owner.
+// auth-snippet owner, the auth access-control owner, and the per-host
+// compose-override owner.
 func IsSyntheticOwner(key string) bool {
-	return IsDomainOwner(key) || key == caddyImportKey || key == authSnippetKey || key == authAccessKey
+	return IsDomainOwner(key) || key == caddyImportKey || key == authSnippetKey || key == authAccessKey || IsComposeOverrideOwner(key)
 }
 
 // PinAuthSnippetToDisk rewrites the planned content of every auth-snippet file

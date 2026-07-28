@@ -161,10 +161,11 @@ func TestLabelledIngress_UnparseableIsUnknown(t *testing.T) {
 	if err := os.WriteFile(path, []byte("services: [this is: not valid\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := labelledIngress(path, config.DefaultPublicLabel, config.DefaultPublicProxyLabel); got != nil {
+	overridePath := filepath.Join(dir, composeOverrideFile) // absent — not the thing under test here
+	if got := labelledIngress(path, overridePath, config.DefaultPublicLabel, config.DefaultPublicProxyLabel); got != nil {
 		t.Errorf("unparseable compose should be nil (unknown), got %v", got)
 	}
-	if got := labelledIngress(filepath.Join(dir, "absent.yml"), config.DefaultPublicLabel, config.DefaultPublicProxyLabel); got != nil {
+	if got := labelledIngress(filepath.Join(dir, "absent.yml"), overridePath, config.DefaultPublicLabel, config.DefaultPublicProxyLabel); got != nil {
 		t.Errorf("missing compose should be nil (unknown), got %v", got)
 	}
 }
@@ -187,7 +188,8 @@ func TestLabelledIngress_CapturesContainerPortAndProxy(t *testing.T) {
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got := labelledIngress(path, config.DefaultPublicLabel, config.DefaultPublicProxyLabel)
+	overridePath := filepath.Join(dir, composeOverrideFile) // absent for this half of the test
+	got := labelledIngress(path, overridePath, config.DefaultPublicLabel, config.DefaultPublicProxyLabel)
 	if in := got["status.example.com"]; in.Container != "gatus" || !in.Proxied || in.Port != "" {
 		t.Errorf("gatus ingress wrong: %+v", in)
 	}
@@ -196,9 +198,78 @@ func TestLabelledIngress_CapturesContainerPortAndProxy(t *testing.T) {
 	}
 	// With the proxy label disabled, nothing is Proxied — which switches the
 	// auth-bypass check off rather than making it fire on everything.
-	off := labelledIngress(path, config.DefaultPublicLabel, "")
+	off := labelledIngress(path, overridePath, config.DefaultPublicLabel, "")
 	if off["status.example.com"].Proxied {
 		t.Error("empty proxyLabel must leave Proxied false")
+	}
+}
+
+// The override file is what render.ComposeOverride actually generates: a
+// service present ONLY there (not in the base file at all) must still be
+// seen, and a label set in the override must win over a stale value left
+// behind in the base file — mirroring real `docker compose config` merge
+// behavior (verified manually: override wins per label key, not per service).
+func TestLabelledIngress_MergesOverrideFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, composeFile)
+	if err := os.WriteFile(path, []byte(`services:
+  authelia:
+    labels:
+      cloudflare.io/hostname: "auth.example.com:9091"
+  linkding:
+    labels:
+      diun.include_tags: '^\d+$'
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	overridePath := filepath.Join(dir, composeOverrideFile)
+	if err := os.WriteFile(overridePath, []byte(`services:
+  authelia:
+    labels:
+      cloudflare.io/hostname: "auth.example.com"
+  linkding:
+    labels:
+      cloudflare.io/hostname: "links.example.com"
+      cloudflare.io/reverseproxy: "https://caddy:443"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := labelledIngress(path, overridePath, config.DefaultPublicLabel, config.DefaultPublicProxyLabel)
+
+	// authelia: override's hostname (no stale :9091 port) wins over the base
+	// file's — same label key, override value replaces it.
+	if in, ok := got["auth.example.com"]; !ok || in.Port != "" {
+		t.Errorf("authelia should resolve to the override's hostname with no port: %+v (got=%v)", in, got)
+	}
+	if _, stale := got["auth.example.com:9091"]; stale {
+		t.Error("stale base-file hostname must not also appear")
+	}
+
+	// linkding: entirely override-declared label, base file only carries an
+	// unrelated label (diun.include_tags) — must still be seen and merged in,
+	// not dropped for having no hostname label in the base file.
+	if in, ok := got["links.example.com"]; !ok || in.Container != "linkding" || !in.Proxied {
+		t.Errorf("linkding (override-only label) missing or wrong: %+v (got=%v)", in, got)
+	}
+}
+
+// A host with no override file at all (not yet migrated) must behave
+// identically to before this feature existed — base file alone, unaffected by
+// a merge step that has nothing to merge.
+func TestLabelledIngress_NoOverrideFileIsBaseOnly(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, composeFile)
+	if err := os.WriteFile(path, []byte(`services:
+  gatus:
+    labels:
+      cloudflare.io/hostname: "status.example.com"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := labelledIngress(path, filepath.Join(dir, composeOverrideFile), config.DefaultPublicLabel, config.DefaultPublicProxyLabel)
+	if len(got) != 1 || got["status.example.com"].Container != "gatus" {
+		t.Errorf("expected base-only result, got %v", got)
 	}
 }
 
@@ -276,7 +347,7 @@ func TestLabelledIngress_SkipsEmptyLabelValue(t *testing.T) {
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got := labelledIngress(path, config.DefaultPublicLabel, config.DefaultPublicProxyLabel)
+	got := labelledIngress(path, filepath.Join(dir, composeOverrideFile), config.DefaultPublicLabel, config.DefaultPublicProxyLabel)
 	if len(got) != 1 {
 		t.Errorf("empty label values must be skipped, got %d entries: %v", len(got), got)
 	}
