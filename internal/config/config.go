@@ -176,6 +176,14 @@ type Host struct {
 	// owns that machinery. Empty means the host's NAME is the destination
 	// (consistent with the name == repo-dir convention).
 	SSH string `yaml:"ssh,omitempty"`
+	// TunnelDir overrides defaults.tunnel_dir for THIS
+	// host only. Needed because the path already differs per host in
+	// practice (verified against the actual homelab: one host mounts
+	// cloudflared-local/data as /etc/cloudflared, another mounts cloudflared
+	// directly) — a single repo-wide default cannot cover both, unlike
+	// dns_host/auth_service, which really are one repo-wide value. Empty
+	// means fall through to defaults.tunnel_dir.
+	TunnelDir string `yaml:"tunnel_dir,omitempty"`
 }
 
 // ResolvedDir returns the host's repo directory: the explicit Dir if set,
@@ -185,6 +193,16 @@ func (m Host) ResolvedDir(name string) string {
 		return m.Dir
 	}
 	return name
+}
+
+// ResolvedTunnelDir returns the directory (relative to this host's
+// own repo dir) where hemma writes THIS host's cloudflared config.yml: the
+// host's own override if set, else the repo-wide default.
+func (m Host) ResolvedTunnelDir(d Defaults) string {
+	if m.TunnelDir != "" {
+		return m.TunnelDir
+	}
+	return d.ResolvedTunnelDir()
 }
 
 // SSHDest returns the ssh(1) destination `hemma deploy` uses to reach the
@@ -218,16 +236,16 @@ type Defaults struct {
 	// Parallels dns_host: one repo-wide role, named by service, set via
 	// `hemma set auth-service <name>`.
 	AuthService string `yaml:"auth_service,omitempty"`
-	// PublicLabel is the docker-compose label key whose presence on a
-	// container declares public (tunnel) ingress for an FQDN. Read-only and
-	// display-only: `list` uses it to tell local-only services from publicly
-	// reachable ones (design §12). It is configurable — rather than
-	// hardcoded — so hemma stays generator-agnostic: the default matches
-	// cloudflared-wrapper's convention on this homelab, but any tunnel tool
-	// that declares ingress by compose label works by setting this key.
-	// Set to "none" to switch the PUBLIC column off entirely.
-	// Empty means DefaultPublicLabel.
-	PublicLabel string `yaml:"public_label,omitempty"`
+	// TunnelDir is the repo-wide FALLBACK for the path a host's
+	// cloudflared container mounts as /etc/cloudflared — hemma writes
+	// config.yml there wholesale (design §12: the public horizon is no longer
+	// a foreign hand-maintained file once hemma is its sole author, same
+	// posture as a Caddy site file). A per-host Host.TunnelDir
+	// wins when set — needed because the path already varies per host in
+	// practice (pi mounts cloudflared-local/data, optiplex mounts cloudflared
+	// directly), unlike dns_host/auth_service, which really are single
+	// repo-wide values. Empty means DefaultTunnelDir.
+	TunnelDir string `yaml:"tunnel_dir,omitempty"`
 	// DeployHost names the single host `hemma deploy` fans out FROM. It exists
 	// because deploy-readiness is a per-ORIGIN question, not a per-host one:
 	// only the origin needs every other host in its known_hosts, and on a
@@ -241,56 +259,19 @@ type Defaults struct {
 	// dns_host and auth_service: one repo-wide role, named by host, set via
 	// `hemma set deploy-host <name>`.
 	DeployHost string `yaml:"deploy_host,omitempty"`
-	// PublicProxyLabel is the compose label key that, when present, means the
-	// tunnel routes a hostname through a reverse proxy rather than straight at
-	// the container. doctor needs it for one check only: a forward-auth service
-	// served DIRECT from the tunnel bypasses Caddy, and therefore bypasses the
-	// auth gate hemma generated for it (§12).
-	//
-	// Separate from PublicLabel because they are separate label keys, and
-	// configurable for the same reason: hemma must not hardcode one tunnel
-	// tool's convention. "none" disables the auth-bypass check while leaving
-	// the PUBLIC column working. Empty means DefaultPublicProxyLabel.
-	PublicProxyLabel string `yaml:"public_proxy_label,omitempty"`
 }
 
-// DefaultPublicLabel is the compose label key consulted when
-// defaults.public_label is unset — cloudflared-wrapper's convention.
-const DefaultPublicLabel = "cloudflare.io/hostname"
+// DefaultTunnelDir is the repo-relative-to-the-host cloudflared
+// config directory consulted when defaults.tunnel_dir is unset.
+const DefaultTunnelDir = "cloudflared"
 
-// DefaultPublicProxyLabel is the proxy-routing label key consulted when
-// defaults.public_proxy_label is unset — cloudflared-wrapper's convention.
-const DefaultPublicProxyLabel = "cloudflare.io/reverseproxy"
-
-// PublicLabelDisabled is the defaults.public_label value that turns the
-// public-horizon reporting off (no PUBLIC column, no compose reads).
-const PublicLabelDisabled = "none"
-
-// ResolvedPublicLabel returns the compose label key to consult, or "" when the
-// feature is switched off.
-func (d Defaults) ResolvedPublicLabel() string {
-	switch d.PublicLabel {
-	case "":
-		return DefaultPublicLabel
-	case PublicLabelDisabled:
-		return ""
+// ResolvedTunnelDir returns the directory (relative to a host's
+// own repo dir) where hemma writes that host's cloudflared config.yml.
+func (d Defaults) ResolvedTunnelDir() string {
+	if d.TunnelDir == "" {
+		return DefaultTunnelDir
 	}
-	return d.PublicLabel
-}
-
-// ResolvedPublicProxyLabel returns the proxy-routing label key to consult, or
-// "" when it (or public-horizon reporting as a whole) is switched off.
-func (d Defaults) ResolvedPublicProxyLabel() string {
-	if d.ResolvedPublicLabel() == "" {
-		return "" // reporting off entirely — nothing reads compose at all.
-	}
-	switch d.PublicProxyLabel {
-	case "":
-		return DefaultPublicProxyLabel
-	case PublicLabelDisabled:
-		return ""
-	}
-	return d.PublicProxyLabel
+	return d.TunnelDir
 }
 
 // Service is one declared service entry. There is no per-service dns_host:

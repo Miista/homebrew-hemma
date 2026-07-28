@@ -176,13 +176,14 @@ func Build(c *config.Config) *Plan {
 	// something to say (provider decides); otherwise absent and GC'd.
 	planAccessControl(c, p)
 
-	// docker-compose.override.yml per host: the cloudflare.io/* tunnel-ingress
-	// labels for that host's public services, generated instead of hand-
-	// maintained (services.yaml is now the only place a public FQDN is typed).
-	// One file per host — not per service — because compose override files are
-	// a single shared services: map; @compose-override:<host> mirrors the
-	// @domain: prefix style so GC and IsSyntheticOwner treat it uniformly.
-	planComposeOverrides(c, p)
+	// cloudflared's config.yml per host: the tunnel ingress rules for that
+	// host's public services, generated instead of hand-maintained
+	// (services.yaml is now the only place a public FQDN is typed — hemma is
+	// the sole author of this file, design §12). One file per host, not per
+	// service, since it's a single shared ingress: list, in match order;
+	// @cloudflared-config:<host> mirrors the @domain: prefix style so GC and
+	// IsSyntheticOwner treat it uniformly.
+	planCloudflaredConfig(c, p)
 
 	return p
 }
@@ -230,14 +231,20 @@ func planAccessControl(c *config.Config, p *Plan) {
 	p.Files[authAccessKey] = []File{{Path: path, Content: content}}
 }
 
-// planComposeOverrides emits one docker-compose.override.yml per host that
-// has at least one surviving public: true service, containing that host's
-// public services' cloudflare.io/* labels (render.ComposeOverride). A host
-// with none gets no file — an empty "services: {}" override would be noise,
-// and GC already removes a host's file the moment its last public service
-// loses that status, same as any other synthetic owner going empty.
-func planComposeOverrides(c *config.Config, p *Plan) {
-	byHost := map[string][]render.ComposeOverrideEntry{}
+// planCloudflaredConfig emits one config.yml per host that has at least one
+// surviving public: true service, containing that host's public services as
+// tunnel ingress rules (render.CloudflaredConfig), every one routed through
+// Caddy — no auth_service exemption: the redirect-loop risk lives in the
+// (auth) forward-auth GATE, not in "does traffic pass through Caddy", and
+// planService already refuses to let the auth_service carry any auth mode at
+// all (the actual loop guard), so its generated Caddy site never imports
+// (auth) regardless of how public traffic reaches it. A host with no public
+// service gets no file at all — an ingress list of just the catch-all would
+// be noise implying more configuration than exists, and GC already removes a
+// host's file the moment its last public service loses that status, same as
+// any other synthetic owner going empty.
+func planCloudflaredConfig(c *config.Config, p *Plan) {
+	byHost := map[string][]render.CloudflaredIngressEntry{}
 	for name := range p.Files {
 		if IsSyntheticOwner(name) {
 			continue
@@ -246,18 +253,9 @@ func planComposeOverrides(c *config.Config, p *Plan) {
 		if !ok || !svc.Public {
 			continue
 		}
-		byHost[svc.Host] = append(byHost[svc.Host], render.ComposeOverrideEntry{
-			Name:     name,
+		byHost[svc.Host] = append(byHost[svc.Host], render.CloudflaredIngressEntry{
 			Hostname: svc.FQDN,
-			// No auth_service exemption here: the redirect-loop risk lives in
-			// the (auth) forward-auth GATE, not in "does traffic pass through
-			// Caddy" — and planService already refuses to let the auth_service
-			// carry any auth mode at all (the loop guard), so its generated
-			// Caddy site never imports (auth) regardless of how public traffic
-			// reaches it. Routing it through Caddy publicly is exactly as safe
-			// as routing it through Caddy on the LAN, which every service
-			// (including this one) already does.
-			ReverseProxy: true,
+			Backend:  "https://caddy:443",
 		})
 	}
 	for hostName, entries := range byHost {
@@ -265,10 +263,11 @@ func planComposeOverrides(c *config.Config, p *Plan) {
 		if !ok {
 			continue
 		}
-		sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
-		path := filepath.Join(hostM.ResolvedDir(hostName), render.ComposeOverrideFilename)
-		key := composeOverrideOwnerPrefix + hostName
-		p.Files[key] = []File{{Path: path, Content: render.ComposeOverride(entries)}}
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Hostname < entries[j].Hostname })
+		dir := filepath.Join(hostM.ResolvedDir(hostName), hostM.ResolvedTunnelDir(c.Defaults))
+		path := filepath.Join(dir, render.CloudflaredConfigFilename)
+		key := cloudflaredConfigOwnerPrefix + hostName
+		p.Files[key] = []File{{Path: path, Content: render.CloudflaredConfig(entries)}}
 	}
 }
 
@@ -348,23 +347,23 @@ const authSnippetKey = "@auth-snippet"
 // generated access-control artifact on the auth_service's host (design §4.6).
 const authAccessKey = "@auth-access"
 
-// composeOverrideOwnerPrefix marks synthetic manifest/plan keys that own a
-// host's docker-compose.override.yml (one key per host: prefix + host name),
+// cloudflaredConfigOwnerPrefix marks synthetic manifest/plan keys that own a
+// host's cloudflared config.yml (one key per host: prefix + host name),
 // mirroring domainOwnerPrefix's per-domain shape.
-const composeOverrideOwnerPrefix = "@compose-override:"
+const cloudflaredConfigOwnerPrefix = "@cloudflared-config:"
 
-// IsComposeOverrideOwner reports whether key is a synthetic
-// docker-compose.override.yml owner.
-func IsComposeOverrideOwner(key string) bool {
-	return strings.HasPrefix(key, composeOverrideOwnerPrefix)
+// IsCloudflaredConfigOwner reports whether key is a synthetic cloudflared
+// config.yml owner.
+func IsCloudflaredConfigOwner(key string) bool {
+	return strings.HasPrefix(key, cloudflaredConfigOwnerPrefix)
 }
 
 // IsSyntheticOwner reports whether a plan/manifest key is synthetic (not a
 // real service name). Covers domain TLS owners, the caddy-import owner, the
 // auth-snippet owner, the auth access-control owner, and the per-host
-// compose-override owner.
+// cloudflared-config owner.
 func IsSyntheticOwner(key string) bool {
-	return IsDomainOwner(key) || key == caddyImportKey || key == authSnippetKey || key == authAccessKey || IsComposeOverrideOwner(key)
+	return IsDomainOwner(key) || key == caddyImportKey || key == authSnippetKey || key == authAccessKey || IsCloudflaredConfigOwner(key)
 }
 
 // PinAuthSnippetToDisk rewrites the planned content of every auth-snippet file

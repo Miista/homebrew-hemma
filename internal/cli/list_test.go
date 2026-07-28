@@ -59,6 +59,53 @@ func listSetup(t *testing.T, snippet string) string {
 	return dir
 }
 
+// serviceLine returns the rendered table row containing fqdn.
+func serviceLine(out, fqdn string) string {
+	for _, ln := range strings.Split(out, "\n") {
+		if strings.Contains(ln, fqdn) && !strings.HasPrefix(strings.TrimSpace(ln), "(") {
+			return ln
+		}
+	}
+	return ""
+}
+
+// containsField reports whether one of line's whitespace-delimited fields is
+// exactly want — a plain substring check would false-positive on something
+// like "-" matching inside "paperless:8000" or "oidc" matching a longer word.
+func containsField(line, want string) bool {
+	for _, f := range strings.Fields(line) {
+		if f == want {
+			return true
+		}
+	}
+	return false
+}
+
+// PUBLIC directly echoes the declared `public` field — no compose read, no
+// unknown state, since hemma is now the sole author of the tunnel's ingress
+// config rather than an observer of a foreign hand-maintained one.
+func TestList_PublicColumn(t *testing.T) {
+	dir := listSetup(t, "")
+	if code := Run([]string{"-C", dir, "update", "service", "docs", "--public"}); code != 0 {
+		t.Fatalf("--public exit %d", code)
+	}
+	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
+	if !strings.Contains(out, "PUBLIC") {
+		t.Fatalf("expected PUBLIC header column, got:\n%s", out)
+	}
+	docsLine := serviceLine(out, "docs.example.com")
+	blogLine := serviceLine(out, "blog.example.com")
+	if docsLine == "" || blogLine == "" {
+		t.Fatalf("missing service rows in:\n%s", out)
+	}
+	if !strings.Contains(docsLine, "yes") {
+		t.Errorf("docs is public: true — row should show yes: %q", docsLine)
+	}
+	if !strings.Contains(blogLine, "no") {
+		t.Errorf("blog is not public — row should show no: %q", blogLine)
+	}
+}
+
 // The AUTH column shows the mode (forward) for an auth service and - for a
 // non-auth one, and the hint appears because at least one service uses auth.
 func TestList_AuthColumn(t *testing.T) {
@@ -82,11 +129,13 @@ func TestList_AuthColumn(t *testing.T) {
 	if docsLine == "" || blogLine == "" {
 		t.Fatalf("missing service rows in:\n%s", out)
 	}
-	if !strings.HasSuffix(strings.TrimRight(docsLine, " "), "forward") {
-		t.Errorf("auth service row should end in forward, got %q", docsLine)
+	// AUTH now sits before the always-present PUBLIC column, so check the
+	// field's value directly rather than assume it's the row's suffix.
+	if !containsField(docsLine, "forward") {
+		t.Errorf("auth service row should show forward, got %q", docsLine)
 	}
-	if !strings.HasSuffix(strings.TrimRight(blogLine, " "), "-") {
-		t.Errorf("non-auth service row should end in -, got %q", blogLine)
+	if !containsField(blogLine, "-") {
+		t.Errorf("non-auth service row should show -, got %q", blogLine)
 	}
 	if !strings.Contains(out, "imports the (auth) snippet") {
 		t.Errorf("expected the auth hint when a service uses auth, got:\n%s", out)
@@ -110,8 +159,9 @@ func TestList_OIDCColumn(t *testing.T) {
 			line = ln
 		}
 	}
-	if !strings.HasSuffix(strings.TrimRight(line, " "), "oidc") {
-		t.Errorf("oidc service row should end in oidc, got %q", line)
+	// AUTH now sits before the always-present PUBLIC column.
+	if !containsField(line, "oidc") {
+		t.Errorf("oidc service row should show oidc, got %q", line)
 	}
 	// The generated Caddy site must be a plain reverse_proxy (no import auth).
 	b, err := os.ReadFile(filepath.Join(dir, "appbox", "caddy", "data", "sites", "app.caddy"))
