@@ -539,11 +539,22 @@ func TestUpdateService_PublicUntouchedWhenFlagAbsent(t *testing.T) {
 
 // The flag composes with the check it exists to feed: opt in, then be told the
 // public half was never wired.
+//
+// Since hemma now generates docker-compose.override.yml itself (§12's own
+// mechanism, not a foreign hand-maintained file), a --public sync's normal
+// path immediately writes the matching label — the previously-permanent
+// "declared public, no ingress" gap this check exists to report now only
+// occurs when the override is missing/stale, e.g. a host that has not been
+// synced/applied since the opt-in. Deleting the just-generated override
+// reconstructs exactly that state.
 func TestPublicFlag_FeedsDoctorCheck(t *testing.T) {
 	dir := doctorSetup(t)
 	setAuthMode(t, dir, "docs", "none")
 	if code := Run([]string{"-C", dir, "update", "service", "docs", "--public"}); code != 0 {
 		t.Fatalf("--public exit %d", code)
+	}
+	if err := os.Remove(filepath.Join(dir, "appbox", composeOverrideFile)); err != nil {
+		t.Fatalf("remove generated override: %v", err)
 	}
 	writeCompose(t, dir, "appbox", `services:
   ghost:

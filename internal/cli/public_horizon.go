@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -38,6 +39,16 @@ import (
 // the same <hostDir>/docker-compose.yml the auth wiring check reads.
 const composeFile = "docker-compose.yml"
 
+// composeOverrideFile is hemma's own generated companion (render.
+// ComposeOverrideFilename): Compose auto-merges it over composeFile with zero
+// flags, so once a service's cloudflare.io/* labels live only here, reading
+// composeFile alone would see nothing for it. Both files are parsed and their
+// labels merged label-key-by-label-key, override winning on conflict — the
+// same rule Compose itself applies — so this stays correct whether a
+// service's labels are hand-written, hemma-generated, or (mid-migration)
+// split across both.
+const composeOverrideFile = "docker-compose.override.yml"
+
 // PUBLIC column values, matching the vocabulary of the `public` field.
 const (
 	publicYes     = "yes"
@@ -45,15 +56,19 @@ const (
 	publicUnknown = "?"
 )
 
-// composeLabelsDoc is the sliver of docker-compose.yml this read needs: each
+// composeLabelsDoc is the sliver of a compose file this read needs: each
 // service's labels, plus the container_name override so a suggested label
 // snippet names the right compose service. Labels stay a yaml.Node because
 // compose allows both the map form (key: value) and the list form (- key=value).
 type composeLabelsDoc struct {
-	Services map[string]struct {
-		ContainerName string    `yaml:"container_name"`
-		Labels        yaml.Node `yaml:"labels"`
-	} `yaml:"services"`
+	Services map[string]composeService `yaml:"services"`
+}
+
+// composeService is one service entry's sliver of a compose file, from either
+// the base file or its override — the shape mergeComposeLabels combines.
+type composeService struct {
+	ContainerName string    `yaml:"container_name"`
+	Labels        yaml.Node `yaml:"labels"`
 }
 
 // ingress is one publicly-served hostname as declared in a compose file.
@@ -100,14 +115,17 @@ func newPublicLookup(repoRoot string, cfg *config.Config) *publicLookup {
 func (e *publicLookup) enabled() bool { return e != nil && e.label != "" }
 
 // hostIngress returns the publicly-served hostnames declared in one host's
-// compose file, parsing it at most once per lookup. A nil result means the file
-// could not be read.
+// compose file (merged with its override, if any), parsing at most once per
+// lookup. A nil result means the base compose file could not be read — the
+// override alone is never treated as authoritative, since a host with no
+// compose file at all is not a real host, whereas no override file just means
+// no service on that host is (yet) hemma-generated.
 func (e *publicLookup) hostIngress(cfg *config.Config, host string) map[string]ingress {
 	if set, ok := e.public[host]; ok {
 		return set
 	}
-	dir := cfg.Hosts[host].ResolvedDir(host)
-	set := labelledIngress(filepath.Join(e.repoRoot, dir, composeFile), e.label, e.proxyLabel)
+	dir := filepath.Join(e.repoRoot, cfg.Hosts[host].ResolvedDir(host))
+	set := labelledIngress(filepath.Join(dir, composeFile), filepath.Join(dir, composeOverrideFile), e.label, e.proxyLabel)
 	e.public[host] = set
 	return set
 }
@@ -130,22 +148,27 @@ func (e *publicLookup) of(cfg *config.Config, svc config.Service) string {
 	return publicNo
 }
 
-// labelledIngress parses the compose file at path and returns every hostname
-// declared by the label key, keyed by lowercased hostname. A missing or
-// unparseable file returns nil (unknown), which is deliberately distinct from an
-// empty map (parsed fine, nothing is public). proxyLabel may be empty, which
-// leaves every Proxied false and so disables the auth-bypass check.
-func labelledIngress(path, label, proxyLabel string) map[string]ingress {
-	data, err := os.ReadFile(path)
+// labelledIngress parses the base compose file at basePath, merges in the
+// override at overridePath if present, and returns every hostname declared by
+// the label key across both, keyed by lowercased hostname. A missing or
+// unparseable BASE file returns nil (unknown), which is deliberately distinct
+// from an empty map (parsed fine, nothing is public) — a missing override is
+// not an error, since most hosts won't have one until they're migrated.
+// proxyLabel may be empty, which leaves every Proxied false and so disables
+// the auth-bypass check.
+func labelledIngress(basePath, overridePath, label, proxyLabel string) map[string]ingress {
+	base, err := parseComposeLabels(basePath)
 	if err != nil {
 		return nil
 	}
-	var doc composeLabelsDoc
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil
-	}
+	// A missing/unparseable override is silently ignored (base-only result) —
+	// mirrors Compose itself, which just runs on the base file alone when its
+	// optional override is absent.
+	override, _ := parseComposeLabels(overridePath)
+	merged := mergeComposeLabels(base, override)
+
 	out := map[string]ingress{}
-	for name, svc := range doc.Services {
+	for name, svc := range merged {
 		container := name
 		if svc.ContainerName != "" {
 			container = svc.ContainerName
@@ -160,6 +183,101 @@ func labelledIngress(path, label, proxyLabel string) map[string]ingress {
 		}
 	}
 	return out
+}
+
+// parseComposeLabels reads and unmarshals one compose file's services map.
+func parseComposeLabels(path string) (map[string]composeService, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var doc composeLabelsDoc
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, err
+	}
+	return doc.Services, nil
+}
+
+// mergeComposeLabels combines base and override service maps the way Compose
+// itself merges two files: per service, override's container_name wins if
+// set, and labels merge label-key-by-label-key with override's value winning
+// on conflict (verified against real `docker compose config` behavior — the
+// second file's labels are not a wholesale replacement of the first's).
+// override may be nil (no override file present).
+func mergeComposeLabels(base, override map[string]composeService) map[string]composeService {
+	if len(override) == 0 {
+		return base
+	}
+	out := make(map[string]composeService, len(base)+len(override))
+	for name, svc := range base {
+		out[name] = svc
+	}
+	for name, ov := range override {
+		bs, ok := out[name]
+		if !ok {
+			out[name] = ov
+			continue
+		}
+		merged := bs
+		if ov.ContainerName != "" {
+			merged.ContainerName = ov.ContainerName
+		}
+		merged.Labels = mergeLabelNodes(bs.Labels, ov.Labels)
+		out[name] = merged
+	}
+	return out
+}
+
+// mergeLabelNodes merges two compose labels yaml.Nodes key-by-key, override
+// winning on a shared key. Only the map form (key: value) is supported for the
+// override side, since that is the only form hemma itself ever generates
+// (render.ComposeOverride); a base file using the list form is read as-is and
+// simply loses to any override key that collides, which the label helpers
+// below already treat correctly since they scan by Kind independently.
+func mergeLabelNodes(base, override yaml.Node) yaml.Node {
+	if override.Kind == 0 {
+		return base
+	}
+	if base.Kind == 0 {
+		return override
+	}
+	baseVals := map[string]string{}
+	switch base.Kind {
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(base.Content); i += 2 {
+			baseVals[base.Content[i].Value] = base.Content[i+1].Value
+		}
+	case yaml.SequenceNode:
+		for _, item := range base.Content {
+			if k, v, ok := strings.Cut(item.Value, "="); ok {
+				baseVals[k] = v
+			}
+		}
+	}
+	switch override.Kind {
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(override.Content); i += 2 {
+			baseVals[override.Content[i].Value] = override.Content[i+1].Value
+		}
+	case yaml.SequenceNode:
+		for _, item := range override.Content {
+			if k, v, ok := strings.Cut(item.Value, "="); ok {
+				baseVals[k] = v
+			}
+		}
+	}
+	node := yaml.Node{Kind: yaml.MappingNode}
+	keys := make([]string, 0, len(baseVals))
+	for k := range baseVals {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		node.Content = append(node.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: k},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: baseVals[k]})
+	}
+	return node
 }
 
 // labelValues extracts every value of key from a compose labels node,

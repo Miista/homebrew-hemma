@@ -163,3 +163,30 @@ func TestCaddySite_ExternalRendersPlain(t *testing.T) {
 		t.Errorf("forward must differ from the ungated modes:\n%s", fwd)
 	}
 }
+
+func TestComposeOverride(t *testing.T) {
+	got := ComposeOverride([]ComposeOverrideEntry{
+		{Name: "authelia", Hostname: "auth.example.com", ReverseProxy: false},
+		{Name: "docs", Hostname: "docs.example.com", ReverseProxy: true},
+	})
+	want := Header + "\n" +
+		"services:\n" +
+		"  authelia:\n" +
+		"    labels:\n" +
+		"      cloudflare.io/hostname: \"auth.example.com\"\n" +
+		"  docs:\n" +
+		"    labels:\n" +
+		"      cloudflare.io/hostname: \"docs.example.com\"\n" +
+		"      cloudflare.io/reverseproxy: \"https://caddy:443\"\n"
+	if got != want {
+		t.Fatalf("ComposeOverride mismatch:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestComposeOverride_Empty(t *testing.T) {
+	got := ComposeOverride(nil)
+	want := Header + "\nservices:\n"
+	if got != want {
+		t.Fatalf("ComposeOverride(nil) = %q, want %q", got, want)
+	}
+}

@@ -358,3 +358,88 @@ func TestBuild_AccessControlArtifactOmitted(t *testing.T) {
 		t.Errorf("no forward/oidc-with-groups service → no artifact, got %+v", files)
 	}
 }
+
+// docker-compose.override.yml aggregates every public service on a host into
+// one file, sorted by name, and the auth_service is exempt from the
+// reverseproxy label (it IS Caddy's auth gate — routing it through Caddy
+// would recurse through its own check).
+func TestBuild_ComposeOverride_AggregatesPerHostSortedExemptsAuthService(t *testing.T) {
+	c := base()
+	c.Defaults.AuthService = "portal"
+	c.Services["portal"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091", Public: true}
+	c.Services["zeta"] = config.Service{FQDN: "zeta.example.com", Host: "appbox", Backend: "zeta:80", Public: true}
+	c.Services["alpha"] = config.Service{FQDN: "alpha.example.com", Host: "appbox", Backend: "alpha:80", Public: true}
+	c.Services["private"] = config.Service{FQDN: "private.example.com", Host: "appbox", Backend: "priv:80"} // Public: false
+
+	p := Build(c)
+	key := composeOverrideOwnerPrefix + "appbox"
+	files := p.Files[key]
+	if len(files) != 1 {
+		t.Fatalf("expected 1 override file, got %d: %+v", len(files), files)
+	}
+	f := files[0]
+	wantPath := "appbox/" + "docker-compose.override.yml"
+	if f.Path != wantPath {
+		t.Errorf("path %q, want %q", f.Path, wantPath)
+	}
+
+	// alpha, portal, zeta in that order (sorted); private absent entirely.
+	iAlpha := strings.Index(f.Content, "alpha:")
+	iPortal := strings.Index(f.Content, "portal:")
+	iZeta := strings.Index(f.Content, "zeta:")
+	if iAlpha == -1 || iPortal == -1 || iZeta == -1 || !(iAlpha < iPortal && iPortal < iZeta) {
+		t.Errorf("services not in sorted order (alpha, portal, zeta):\n%s", f.Content)
+	}
+	if strings.Contains(f.Content, "private") {
+		t.Errorf("non-public service leaked into override:\n%s", f.Content)
+	}
+
+	// portal (the auth_service) has hostname but no reverseproxy label; the
+	// others get both.
+	portalBlock := f.Content[iPortal:iZeta]
+	if !strings.Contains(portalBlock, `cloudflare.io/hostname: "auth.example.com"`) {
+		t.Errorf("portal missing hostname label:\n%s", portalBlock)
+	}
+	if strings.Contains(portalBlock, "cloudflare.io/reverseproxy") {
+		t.Errorf("auth_service should be exempt from reverseproxy label:\n%s", portalBlock)
+	}
+	zetaBlock := f.Content[iZeta:]
+	if !strings.Contains(zetaBlock, `cloudflare.io/reverseproxy: "https://caddy:443"`) {
+		t.Errorf("non-auth-service missing reverseproxy label:\n%s", zetaBlock)
+	}
+
+	if !IsSyntheticOwner(key) || !IsComposeOverrideOwner(key) {
+		t.Errorf("%q should be a synthetic compose-override owner", key)
+	}
+}
+
+// A host with zero public services gets no override file at all — not an
+// empty "services: {}" one — so GC removes it the moment the last public
+// service on that host loses public: true.
+func TestBuild_ComposeOverride_OmittedWhenNoPublicServices(t *testing.T) {
+	c := base()
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000"} // Public: false
+	p := Build(c)
+	for k := range p.Files {
+		if IsComposeOverrideOwner(k) {
+			t.Errorf("expected no compose-override file, got owner %q: %+v", k, p.Files[k])
+		}
+	}
+}
+
+// A disabled or skipped (invalid) service must never appear in the override,
+// even if it was marked public: true before being skipped.
+func TestBuild_ComposeOverride_ExcludesSkippedServices(t *testing.T) {
+	c := base()
+	c.Services["good"] = config.Service{FQDN: "good.example.com", Host: "appbox", Backend: "good:80", Public: true}
+	c.Services["bad"] = config.Service{FQDN: "not a valid fqdn", Host: "appbox", Backend: "bad:80", Public: true}
+	p := Build(c)
+	key := composeOverrideOwnerPrefix + "appbox"
+	files := p.Files[key]
+	if len(files) != 1 {
+		t.Fatalf("expected 1 override file, got %d", len(files))
+	}
+	if strings.Contains(files[0].Content, "bad:") {
+		t.Errorf("skipped service leaked into override:\n%s", files[0].Content)
+	}
+}

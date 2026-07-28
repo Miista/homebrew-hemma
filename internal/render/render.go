@@ -144,3 +144,47 @@ func CaddySite(fqdn, tlsImport, backend string, mode config.AuthMode, authBacken
 	}
 	return fmt.Sprintf("%s\n%s {\n\timport %s\n\t%s\n}\n", Header, fqdn, tlsImport, proxyLine)
 }
+
+// ComposeOverrideFilename is the compose auto-merge name hemma writes into
+// each host's repo dir, alongside (never editing) the hand-maintained
+// docker-compose.yml. Compose loads it with zero flags because "docker-
+// compose.override.yml" is one of its two recognized override names —
+// verified empirically: compose.override.yaml/.yml and docker-compose.
+// override.yaml/.yml all auto-merge; any other basename (docker-compose.
+// hemma.yml, myapp.override.yaml, ...) silently does not.
+const ComposeOverrideFilename = "docker-compose.override.yml"
+
+// ComposeOverrideEntry is one service's public-horizon labels.
+type ComposeOverrideEntry struct {
+	// Name is the service/container name — the compose services key.
+	Name string
+	// Hostname is the tunnel ingress hostname (cloudflare.io/hostname).
+	Hostname string
+	// ReverseProxy is true unless this service IS the auth_service: routing
+	// the auth backend itself through Caddy would recurse through its own
+	// (auth) gate (design §12 auth-bypass exemption; plan.go applies the same
+	// name == c.Defaults.AuthService check that guards CaddySite's authBackend
+	// param).
+	ReverseProxy bool
+}
+
+// ComposeOverride renders docker-compose.override.yml for one host: a
+// services.<name>.labels block per public entry, replacing the hand-written
+// cloudflare.io/* labels this repo used to carry directly in docker-
+// compose.yml. Docker Compose merges labels key-by-key against the base
+// file (locally defined — i.e. override-file — values win), so this is safe
+// to auto-merge over whatever (if anything) remains in docker-compose.yml.
+// Entries are rendered in the order given; callers sort by name for a stable
+// diff.
+func ComposeOverride(entries []ComposeOverrideEntry) string {
+	var b strings.Builder
+	b.WriteString(Header)
+	b.WriteString("\nservices:\n")
+	for _, e := range entries {
+		fmt.Fprintf(&b, "  %s:\n    labels:\n      cloudflare.io/hostname: %q\n", e.Name, e.Hostname)
+		if e.ReverseProxy {
+			b.WriteString("      cloudflare.io/reverseproxy: \"https://caddy:443\"\n")
+		}
+	}
+	return b.String()
+}
