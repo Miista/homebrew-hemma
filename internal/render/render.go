@@ -160,11 +160,14 @@ type ComposeOverrideEntry struct {
 	Name string
 	// Hostname is the tunnel ingress hostname (cloudflare.io/hostname).
 	Hostname string
-	// ReverseProxy is true unless this service IS the auth_service: routing
-	// the auth backend itself through Caddy would recurse through its own
-	// (auth) gate (design §12 auth-bypass exemption; plan.go applies the same
-	// name == c.Defaults.AuthService check that guards CaddySite's authBackend
-	// param).
+	// ReverseProxy routes the tunnel to Caddy instead of straight at the
+	// container. plan.go currently sets this true for every public service,
+	// including the auth_service — planService already refuses to let it
+	// carry any auth mode (the redirect-loop guard lives there, on the mode,
+	// not on "does traffic pass through Caddy"), so its Caddy site never
+	// imports (auth) and there is nothing to recurse through. Kept as a field
+	// rather than hardcoded so a caller with a genuine reason to bypass Caddy
+	// for one service still can.
 	ReverseProxy bool
 }
 
