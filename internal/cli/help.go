@@ -191,17 +191,19 @@ so the original request host survives the hairpin through Caddy; without it,
 post-login redirects loop back to the portal. Parallels 'set dns-host': one
 repo-wide role named by service. Clearing it ('-') drops the header-preserve.`},
 
-	{"set tunnel-dir", `hemma set tunnel-dir — override where a host's cloudflared config.yml is written
+	{"set tunnel-dir", `hemma set tunnel-dir — set where every host's cloudflared config.yml is written
 
-Usage: hemma set tunnel-dir <host> <dir>   (use '-' for <dir> to clear)
+Usage: hemma set tunnel-dir <dir>   (use '-' to clear)
 
-<dir> is a path relative to <host>'s own repo directory — the directory that
-host's cloudflared container mounts as /etc/cloudflared. Per-host rather than
-a single repo-wide setting (unlike dns-host/auth-service) because this
-genuinely differs per host in practice: one host's compose file might mount
-cloudflared-local/data, another might mount cloudflared directly. Falls back
-to defaults.tunnel_dir ("cloudflared") when unset. Regenerates that host's
-config.yml at the new path and GCs it from the old one.`},
+<dir> is a path relative to each host's own repo directory — the directory
+that host's cloudflared container mounts as /etc/cloudflared. One repo-wide
+value (like dns-host/auth-service), on the assumption every host's compose
+follows the same convention. Unlike dns-host, there is no automatic fallback:
+a public: true service is refused at plan time — not silently written to a
+guessed path — while tunnel_dir is unset, since a service being public
+implies its host runs a tunnel, and hemma has no safe path to guess for it.
+Clearing tunnel_dir regenerates (GCs) every host's config.yml and will start
+refusing any public: true service until it's set again.`},
 
 	{"create app", `hemma create app oidc — generate OIDC client credentials for an app
 

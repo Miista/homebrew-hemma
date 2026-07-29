@@ -1047,7 +1047,7 @@ Building blocks (a service references a host and a domain):
   hemma set    deploy-host <name>    Name the one host 'hemma deploy' may run from ('-' clears); doctor audits deploy readiness only there.
   hemma set    auth-snippet <path>   Set the (auth) snippet source ('-' clears). Services opt in with --auth.
   hemma set    auth-service <name>   Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.
-  hemma set    tunnel-dir <host> <dir>  Per-host override of where that host's cloudflared config.yml is written ('-' clears).
+  hemma set    tunnel-dir <dir>      Set where every host's cloudflared config.yml is written ('-' clears; blocks any public: true service until set).
 
 Credentials (print-only; the auth provider's config and users database are never written):
   hemma create app oidc <app_name> [callback_path]   Generate OIDC client credentials + a config snippet to paste in.

@@ -72,7 +72,7 @@ func TestSetSpecs_DispatchRecognizesEveryKey(t *testing.T) {
 		case SetAuthSnippet:
 			args = []string{"set", string(s.key), "-"}
 		case SetTunnelDir:
-			args = []string{"set", string(s.key), "appbox", "-"}
+			args = []string{"set", string(s.key), "-"}
 		default:
 			t.Fatalf("unhandled SetKey %q in test — add a case above", s.key)
 		}

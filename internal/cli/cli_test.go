@@ -414,44 +414,59 @@ func TestRun_SetAuthServiceClear(t *testing.T) {
 	}
 }
 
-// set tunnel-dir refuses a host that doesn't exist and doesn't persist it.
-func TestRun_SetTunnelDirRejectsUnknownHost(t *testing.T) {
-	dir := t.TempDir()
-	seed(t, dir)
-	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "ghost", "somewhere"}); code != 1 {
-		t.Errorf("unknown host should exit 1, got %d", code)
-	}
-	cfg, _ := os.ReadFile(filepath.Join(dir, configName))
-	if contains(string(cfg), "tunnel_dir") {
-		t.Errorf("rejected tunnel-dir must not persist: %s", cfg)
-	}
-}
-
-// set tunnel-dir persists a per-host override and regenerates that host's
-// config.yml at the new path; clearing it moves generation back to the
-// repo-wide default and GCs the file from the old path.
-func TestRun_SetTunnelDirOverridesThenClears(t *testing.T) {
+// set tunnel-dir persists the ONE repo-wide path and regenerates config.yml
+// at the new location for every host with a public service; clearing it GCs
+// those files and makes any public: true service fail to plan again — there
+// is no per-host override and no default to fall back to (see
+// TestBuild_CloudflaredConfig_RefusedWithoutTunnelDir in internal/plan).
+func TestRun_SetTunnelDirThenClears(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
-	Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", "--public"})
-
-	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "appbox", "custom/path"}); code != 0 {
+	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "cloudflared"}); code != 0 {
 		t.Fatalf("set tunnel-dir should exit 0, got %d", code)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "appbox", "custom", "path", "config.yml")); err != nil {
-		t.Errorf("expected config.yml at the overridden path: %v", err)
-	}
-
-	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "appbox", "-"}); code != 0 {
-		t.Fatalf("clear should exit 0, got %d", code)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "appbox", "custom", "path", "config.yml")); !os.IsNotExist(err) {
-		t.Errorf("expected the old-path config.yml to be GC'd after clearing, err=%v", err)
+	if code := Run([]string{"-C", dir, "add", "service", "docs",
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", "--public"}); code != 0 {
+		t.Fatalf("add --public should exit 0 once tunnel_dir is set, got %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "appbox", "cloudflared", "config.yml")); err != nil {
-		t.Errorf("expected config.yml back at the default path after clearing: %v", err)
+		t.Errorf("expected config.yml at the configured path: %v", err)
+	}
+
+	// Clearing while docs is STILL public: true correctly exits 1 — docs
+	// becomes an unplannable skip (report-but-proceed), same as any other
+	// skip reason, not a silent success.
+	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "-"}); code != 1 {
+		t.Fatalf("clear with a still-public service should exit 1 (skipped), got %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "appbox", "cloudflared", "config.yml")); !os.IsNotExist(err) {
+		t.Errorf("expected config.yml to be GC'd after clearing tunnel_dir, err=%v", err)
+	}
+}
+
+// A public: true service with tunnel_dir unset is a plan-time skip, not a
+// validate-before-persist rejection (tunnel_dir is a fact about the whole
+// repo the planner discovers, not a shape check persistNewService can catch
+// up front) — same report-but-proceed pattern as any other skip reason
+// (design §8): the entry DOES persist to services.yaml, `add` exits 1, and
+// the skip reason names tunnel_dir so it's actionable rather than silent.
+func TestRun_PublicServiceSkippedWithoutTunnelDir(t *testing.T) {
+	dir := t.TempDir()
+	mkdirs(t, dir, "resolver", "appbox")
+	seed(t, dir)
+	out := captureStdout(t, func() {
+		if code := Run([]string{"-C", dir, "add", "service", "docs",
+			"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", "--public"}); code != 1 {
+			t.Errorf("add --public should exit 1 (skipped) while tunnel_dir is unset, got %d", code)
+		}
+	})
+	if !contains(out, "tunnel_dir") {
+		t.Errorf("skip reason should name tunnel_dir, got:\n%s", out)
+	}
+	cfg, _ := os.ReadFile(filepath.Join(dir, configName))
+	if !contains(string(cfg), "docs") {
+		t.Errorf("the entry should still persist (report-but-proceed), got: %s", cfg)
 	}
 }
 

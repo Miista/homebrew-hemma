@@ -368,6 +368,7 @@ func TestBuild_AccessControlArtifactOmitted(t *testing.T) {
 // Caddy as any other service.
 func TestBuild_CloudflaredConfig_AggregatesPerHostSorted(t *testing.T) {
 	c := base()
+	c.Defaults.TunnelDir = "cloudflared"
 	c.Defaults.AuthService = "portal"
 	c.Services["portal"] = config.Service{FQDN: "zzz-auth.example.com", Host: "appbox", Backend: "authelia:9091", Public: true}
 	c.Services["zeta"] = config.Service{FQDN: "mmm-zeta.example.com", Host: "appbox", Backend: "zeta:80", Public: true}
@@ -428,6 +429,7 @@ func TestBuild_CloudflaredConfig_OmittedWhenNoPublicServices(t *testing.T) {
 // even if it was marked public: true before being skipped.
 func TestBuild_CloudflaredConfig_ExcludesSkippedServices(t *testing.T) {
 	c := base()
+	c.Defaults.TunnelDir = "cloudflared"
 	c.Services["good"] = config.Service{FQDN: "good.example.com", Host: "appbox", Backend: "good:80", Public: true}
 	c.Services["bad"] = config.Service{FQDN: "not a valid fqdn", Host: "appbox", Backend: "bad:80", Public: true}
 	p := Build(c)
@@ -456,26 +458,28 @@ func TestBuild_CloudflaredConfig_HonorsConfiguredDir(t *testing.T) {
 	}
 }
 
-// A per-host tunnel_dir override wins over the repo-wide default — the exact
-// shape the real homelab needs, since its two hosts use different paths
-// (one host mounts cloudflared-local/data, the other mounts cloudflared
-// directly) and a single repo-wide value cannot express both at once.
-func TestBuild_CloudflaredConfig_PerHostDirOverridesDefault(t *testing.T) {
-	c := base()
-	c.Defaults.TunnelDir = "cloudflared" // repo-wide default; "resolver" uses it as-is
-	appbox := c.Hosts["appbox"]
-	appbox.TunnelDir = "cloudflared-local/data" // per-host override
-	c.Hosts["appbox"] = appbox
+// A public: true service on ANY host is refused, with no file generated at
+// all, while defaults.tunnel_dir is unset — there is no safe path to guess
+// (verified: two real hosts once genuinely disagreed on it), so this must be
+// a hard skip rather than a silently-guessed config.yml nothing may read.
+func TestBuild_CloudflaredConfig_RefusedWithoutTunnelDir(t *testing.T) {
+	c := base() // no Defaults.TunnelDir set
 	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Public: true}
-	c.Services["photos"] = config.Service{FQDN: "photos.example.net", Host: "resolver", Backend: "photos:80", Public: true}
 
 	p := Build(c)
-	appboxFiles := p.Files[cloudflaredConfigOwnerPrefix+"appbox"]
-	if len(appboxFiles) != 1 || appboxFiles[0].Path != "appbox/cloudflared-local/data/config.yml" {
-		t.Errorf("appbox (per-host override) expected appbox/cloudflared-local/data/config.yml, got %+v", appboxFiles)
+	if reason := p.Skipped["docs"]; !strings.Contains(reason, "tunnel_dir") {
+		t.Errorf("expected docs to be skipped for missing tunnel_dir, got skip reason %q (skipped=%v)", reason, p.Skipped)
 	}
-	resolverFiles := p.Files[cloudflaredConfigOwnerPrefix+"resolver"]
-	if len(resolverFiles) != 1 || resolverFiles[0].Path != "resolver/cloudflared/config.yml" {
-		t.Errorf("resolver (repo-wide default) expected resolver/cloudflared/config.yml, got %+v", resolverFiles)
+	for k := range p.Files {
+		if IsCloudflaredConfigOwner(k) {
+			t.Errorf("expected no cloudflared-config file while tunnel_dir is unset, got %q: %+v", k, p.Files[k])
+		}
+	}
+	// A non-public service must still plan fine — the refusal is scoped to
+	// public: true, not a repo-wide block on planning anything.
+	c.Services["private"] = config.Service{FQDN: "private.example.com", Host: "appbox", Backend: "priv:80"}
+	p2 := Build(c)
+	if _, skipped := p2.Skipped["private"]; skipped {
+		t.Errorf("a non-public service must not be affected by tunnel_dir being unset: %v", p2.Skipped)
 	}
 }

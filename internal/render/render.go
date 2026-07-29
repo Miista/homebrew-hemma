@@ -146,11 +146,11 @@ func CaddySite(fqdn, tlsImport, backend string, mode config.AuthMode, authBacken
 }
 
 // CloudflaredConfigFilename is the file hemma writes wholesale into each
-// host's configured tunnel directory (defaults.tunnel_dir, or a per-host
-// Host.TunnelDir override), replacing what used to be a hand-maintained
-// near-empty stub plus per-service cloudflare.io/* compose labels.
-// cloudflared-wrapper mounts this directory as
-// /etc/cloudflared and reads config.yml as its base config on every start.
+// host's configured tunnel directory (defaults.tunnel_dir — one repo-wide
+// path, required before any public: true service can plan), replacing what
+// used to be a hand-maintained near-empty stub plus per-service
+// cloudflare.io/* compose labels. cloudflared-wrapper mounts this directory
+// as /etc/cloudflared and reads config.yml as its base config on every start.
 const CloudflaredConfigFilename = "config.yml"
 
 // CloudflaredIngressEntry is one public service's tunnel ingress rule.

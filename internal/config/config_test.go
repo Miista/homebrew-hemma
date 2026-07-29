@@ -552,33 +552,16 @@ services:
 	}
 }
 
-// tunnel_dir resolution: unset falls back to the "cloudflared"
-// default, anything else is used verbatim — needed because it already
-// differs per host on the actual homelab (one host mounts cloudflared-local/
-// data, another mounts cloudflared directly).
+// tunnel_dir resolution: unset means genuinely unset (ok=false) — unlike
+// dns_host, there is no auto-fallback to DefaultTunnelDir. A host with a
+// public service and no tunnel_dir configured must be refused (planService),
+// not silently written to a guessed path.
 func TestResolvedTunnelDir(t *testing.T) {
-	for in, want := range map[string]string{
-		"":                       DefaultTunnelDir,
-		"cloudflared-local/data": "cloudflared-local/data",
-		"cloudflared":            "cloudflared",
-	} {
-		if got := (Defaults{TunnelDir: in}).ResolvedTunnelDir(); got != want {
-			t.Errorf("ResolvedTunnelDir(%q) = %q, want %q", in, got, want)
-		}
+	if dir, ok := (Defaults{}).ResolvedTunnelDir(); ok {
+		t.Errorf("unset tunnel_dir should be (\"\", false), got (%q, %v)", dir, ok)
 	}
-}
-
-// A per-host override wins over the repo-wide default — the actual shape
-// needed on the real homelab, where one host mounts cloudflared-local/data
-// and another mounts cloudflared directly; a single repo-wide value can't
-// cover both, unlike dns_host/auth_service, which really are one value.
-func TestHost_ResolvedTunnelDir(t *testing.T) {
-	d := Defaults{TunnelDir: "repo-wide-default"}
-	if got := (Host{}).ResolvedTunnelDir(d); got != "repo-wide-default" {
-		t.Errorf("no host override should fall through to the default, got %q", got)
-	}
-	if got := (Host{TunnelDir: "per-host-value"}).ResolvedTunnelDir(d); got != "per-host-value" {
-		t.Errorf("host override should win, got %q", got)
+	if dir, ok := (Defaults{TunnelDir: "cloudflared-local/data"}).ResolvedTunnelDir(); !ok || dir != "cloudflared-local/data" {
+		t.Errorf("set tunnel_dir should be used verbatim, got (%q, %v)", dir, ok)
 	}
 }
 

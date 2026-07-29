@@ -176,14 +176,6 @@ type Host struct {
 	// owns that machinery. Empty means the host's NAME is the destination
 	// (consistent with the name == repo-dir convention).
 	SSH string `yaml:"ssh,omitempty"`
-	// TunnelDir overrides defaults.tunnel_dir for THIS
-	// host only. Needed because the path already differs per host in
-	// practice (verified against the actual homelab: one host mounts
-	// cloudflared-local/data as /etc/cloudflared, another mounts cloudflared
-	// directly) — a single repo-wide default cannot cover both, unlike
-	// dns_host/auth_service, which really are one repo-wide value. Empty
-	// means fall through to defaults.tunnel_dir.
-	TunnelDir string `yaml:"tunnel_dir,omitempty"`
 }
 
 // ResolvedDir returns the host's repo directory: the explicit Dir if set,
@@ -193,16 +185,6 @@ func (m Host) ResolvedDir(name string) string {
 		return m.Dir
 	}
 	return name
-}
-
-// ResolvedTunnelDir returns the directory (relative to this host's
-// own repo dir) where hemma writes THIS host's cloudflared config.yml: the
-// host's own override if set, else the repo-wide default.
-func (m Host) ResolvedTunnelDir(d Defaults) string {
-	if m.TunnelDir != "" {
-		return m.TunnelDir
-	}
-	return d.ResolvedTunnelDir()
 }
 
 // SSHDest returns the ssh(1) destination `hemma deploy` uses to reach the
@@ -236,15 +218,18 @@ type Defaults struct {
 	// Parallels dns_host: one repo-wide role, named by service, set via
 	// `hemma set auth-service <name>`.
 	AuthService string `yaml:"auth_service,omitempty"`
-	// TunnelDir is the repo-wide FALLBACK for the path a host's
-	// cloudflared container mounts as /etc/cloudflared — hemma writes
-	// config.yml there wholesale (design §12: the public horizon is no longer
-	// a foreign hand-maintained file once hemma is its sole author, same
-	// posture as a Caddy site file). A per-host Host.TunnelDir
-	// wins when set — needed because the path already varies per host in
-	// practice (pi mounts cloudflared-local/data, optiplex mounts cloudflared
-	// directly), unlike dns_host/auth_service, which really are single
-	// repo-wide values. Empty means DefaultTunnelDir.
+	// TunnelDir is the ONE repo-wide path every host's cloudflared container
+	// mounts as /etc/cloudflared — hemma writes each host's config.yml there
+	// wholesale (design §12: the public horizon is no longer a foreign
+	// hand-maintained file once hemma is its sole author, same posture as a
+	// Caddy site file). A single value, not per-host: the two real hosts this
+	// tracks were briefly misaligned (one mounted cloudflared-local/data, the
+	// other cloudflared) and were reconciled to match rather than carrying a
+	// per-host override — simpler, and correct as long as every host's
+	// compose is kept in that convention. Unlike dns_host, empty here is NOT
+	// auto-filled with DefaultTunnelDir: a public service on ANY host with
+	// tunnel_dir unset is a hard plan error, not a guessed path — see
+	// ResolvedTunnelDir.
 	TunnelDir string `yaml:"tunnel_dir,omitempty"`
 	// DeployHost names the single host `hemma deploy` fans out FROM. It exists
 	// because deploy-readiness is a per-ORIGIN question, not a per-host one:
@@ -261,17 +246,28 @@ type Defaults struct {
 	DeployHost string `yaml:"deploy_host,omitempty"`
 }
 
-// DefaultTunnelDir is the repo-relative-to-the-host cloudflared
-// config directory consulted when defaults.tunnel_dir is unset.
+// DefaultTunnelDir is the conventional cloudflared config directory name —
+// a SUGGESTION surfaced in help text and error messages (e.g. "hemma set
+// tunnel-dir <host> cloudflared"), not an automatic fallback: there is no
+// method that applies it silently. A host's tunnel_dir must be set,
+// explicitly, by a human who has confirmed what that host's compose file
+// actually mounts — verified tonight that two real hosts genuinely differ
+// (cloudflared-local/data vs cloudflared), so guessing would as often be
+// wrong as right.
 const DefaultTunnelDir = "cloudflared"
 
-// ResolvedTunnelDir returns the directory (relative to a host's
-// own repo dir) where hemma writes that host's cloudflared config.yml.
-func (d Defaults) ResolvedTunnelDir() string {
+// ResolvedTunnelDir returns the directory (relative to each host's own repo
+// dir) where hemma writes that host's cloudflared config.yml, and whether it
+// was actually configured. Empty is NOT auto-filled with DefaultTunnelDir —
+// there is no safe guess here (verified: two real hosts once genuinely
+// disagreed on the path), so a public service on any host is refused by
+// planService while this is unset, rather than getting a written-to-nowhere
+// config.yml.
+func (d Defaults) ResolvedTunnelDir() (dir string, ok bool) {
 	if d.TunnelDir == "" {
-		return DefaultTunnelDir
+		return "", false
 	}
-	return d.TunnelDir
+	return d.TunnelDir, true
 }
 
 // Service is one declared service entry. There is no per-service dns_host:
