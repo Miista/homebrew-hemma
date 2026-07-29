@@ -510,7 +510,15 @@ func (c *Config) ServicesUsingDomain(name string) []string {
 }
 
 // atomicWrite writes to a temp file in the same dir, fsyncs, then renames
-// (design §9).
+// (design §9). The temp file — and so every file this ever writes — is
+// chmod'd to 0644 before the rename: os.CreateTemp defaults to 0600, which
+// is invisible for most generated files (Caddy/pihole containers read them
+// as root) but silently breaks any file read by a container running as a
+// DIFFERENT non-root UID than whatever user runs hemma — cloudflared's
+// config.yml, read by its distroless image's UID 65532, hit this twice in
+// production: hemma (running as the host user) wrote it 0600, and the
+// container could not read its own config, crash-looping until noticed and
+// chmod'd by hand on each host.
 func atomicWrite(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -529,6 +537,10 @@ func atomicWrite(path string, data []byte) error {
 	if err := tmp.Sync(); err != nil {
 		tmp.Close()
 		return fmt.Errorf("fsync temp: %w", err)
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		return fmt.Errorf("chmod temp: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp: %w", err)

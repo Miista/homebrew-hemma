@@ -108,6 +108,26 @@ func TestAtomicWrite_NoTempLeak(t *testing.T) {
 	}
 }
 
+// AtomicWrite must produce a world-readable file (0644), not os.CreateTemp's
+// default 0600 — real bug, hit in production twice: cloudflared's config.yml
+// is read by its distroless image's UID 65532, which never matches whatever
+// user runs hemma, so a 0600 file silently crash-loops the container on the
+// very next sync that regenerates it.
+func TestAtomicWrite_ProducesWorldReadableFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := AtomicWrite(path, []byte("ingress: []\n")); err != nil {
+		t.Fatalf("AtomicWrite: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o644 {
+		t.Errorf("AtomicWrite produced mode %o, want 0644 (readable by a container running as a different UID than the writer)", perm)
+	}
+}
+
 func TestServicesUsingHost(t *testing.T) {
 	c := &Config{
 		Defaults: Defaults{DNSHost: "resolver"},
