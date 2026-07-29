@@ -22,7 +22,7 @@ _hemma() {
 
     local verbs="add update remove create enable disable set list verify apply deploy doctor measure version help completion"
     local nouns="service host domain"
-    local set_keys="dns-host deploy-host auth-snippet auth-service"
+    local set_keys="dns-host deploy-host auth-snippet auth-service tunnel-dir"
     local flags="--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --public --ip --ssh --all -a --fix --chdir -C --help -h"
 
     # First word: a verb (allow -C <dir> to precede it).
@@ -68,7 +68,7 @@ _hemma() {
     local -a verbs nouns set_keys flags
     verbs=(add update remove create enable disable set list verify apply deploy doctor measure version help completion)
     nouns=(service host domain)
-    set_keys=(dns-host deploy-host auth-snippet auth-service)
+    set_keys=(dns-host deploy-host auth-snippet auth-service tunnel-dir)
     flags=(--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --public --ip --ssh --all -a --fix --chdir -C --help -h)
 
     if (( CURRENT == 2 )); then
