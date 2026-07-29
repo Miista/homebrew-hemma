@@ -199,11 +199,12 @@ Usage: hemma set tunnel-dir <dir>   (use '-' to clear)
 that host's cloudflared container mounts as /etc/cloudflared. One repo-wide
 value (like dns-host/auth-service), on the assumption every host's compose
 follows the same convention. Unlike dns-host, there is no automatic fallback:
-a public: true service is refused at plan time — not silently written to a
-guessed path — while tunnel_dir is unset, since a service being public
-implies its host runs a tunnel, and hemma has no safe path to guess for it.
-Clearing tunnel_dir regenerates (GCs) every host's config.yml and will start
-refusing any public: true service until it's set again.`},
+while tunnel_dir is unset, hemma will not write a tunnel ingress entry for
+any public: true service (there is no safe path to guess), and that service
+is reported as publicly unreachable. Its DNS record and Caddy site are NOT
+affected — the internal horizon works whether or not the tunnel does.
+Clearing tunnel_dir GCs every host's config.yml and reports every currently-
+public service as unreachable until it's set again.`},
 
 	{"create app", `hemma create app oidc — generate OIDC client credentials for an app
 

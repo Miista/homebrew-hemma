@@ -30,6 +30,16 @@ type Plan struct {
 	Skipped map[string]string
 	// Total number of services considered.
 	Total int
+	// UnresolvedTunnels lists public: true services (sorted) that have every
+	// OTHER file (DNS record, Caddy site — the internal horizon works
+	// regardless) but no tunnel_dir configured to place a cloudflared ingress
+	// entry for them. Deliberately NOT a Skipped reason: unlike a malformed
+	// fqdn or an unknown host, a missing tunnel_dir says nothing about
+	// whether the service itself is valid — it would be wrong to also drop
+	// its internal DNS/Caddy config over a problem that is purely about
+	// public reachability. The caller decides how loudly to report this
+	// (cli's runSync surfaces it as an advisory).
+	UnresolvedTunnels []string
 }
 
 // IsDisabled reports whether a skipped service was explicitly disabled (as
@@ -244,11 +254,20 @@ func planAccessControl(c *config.Config, p *Plan) {
 // host's file the moment its last public service loses that status, same as
 // any other synthetic owner going empty.
 func planCloudflaredConfig(c *config.Config, p *Plan) {
-	// Every svc.Public service reaching this point already passed planService's
-	// tunnel_dir check, so this is guaranteed ok — but skip cleanly rather than
-	// write an empty-prefixed path in the defensive case it somehow isn't.
+	// tunnel_dir unresolved: every public: true service that already has its
+	// DNS/Caddy files (they don't depend on this) is listed as unresolved
+	// rather than silently dropped — see Plan.UnresolvedTunnels.
 	tunnelDir, ok := c.Defaults.ResolvedTunnelDir()
 	if !ok {
+		for name := range p.Files {
+			if IsSyntheticOwner(name) {
+				continue
+			}
+			if svc, exists := c.Services[name]; exists && svc.Public {
+				p.UnresolvedTunnels = append(p.UnresolvedTunnels, name)
+			}
+		}
+		sort.Strings(p.UnresolvedTunnels)
 		return
 	}
 	byHost := map[string][]render.CloudflaredIngressEntry{}
@@ -310,16 +329,6 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 	// backend shape
 	if !backendRe.MatchString(svc.Backend) {
 		return nil, fmt.Sprintf("backend %q is not name:port shape", svc.Backend)
-	}
-	// public: true means something must tunnel this service to the internet —
-	// on this codebase's model, cloudflared on the service's own host. There is
-	// no safe default tunnel_dir to guess (verified: two real hosts once
-	// genuinely disagreed on the path, until aligned), so refuse rather than
-	// write config.yml to an unconfirmed location nothing may read.
-	if svc.Public {
-		if _, ok := c.Defaults.ResolvedTunnelDir(); !ok {
-			return nil, fmt.Sprintf("public: true but defaults.tunnel_dir is not set — run 'hemma set tunnel-dir <dir>' (the directory every host's cloudflared container mounts as /etc/cloudflared)")
-		}
 	}
 	// Loop guard: the service that IS the forward-auth backend (defaults.
 	// auth_service, e.g. an Authelia portal) must not also be protected by any
