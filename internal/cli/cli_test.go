@@ -191,7 +191,7 @@ func TestRun_AuthSnippetFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if code := Run([]string{"-C", dir, "set", "auth-snippet", "snip.caddy"}); code != 0 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "auth-snippet", "snip.caddy"}); code != 0 {
 		t.Fatalf("set auth-snippet should exit 0, got %d", code)
 	}
 	// The (auth) file is generated on every host with the source body.
@@ -225,9 +225,9 @@ func TestRun_SetAuthSnippetClear(t *testing.T) {
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
 	os.WriteFile(filepath.Join(dir, "snip.caddy"), []byte("forward_auth x { }\n"), 0o644)
-	Run([]string{"-C", dir, "set", "auth-snippet", "snip.caddy"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-snippet", "snip.caddy"})
 
-	if code := Run([]string{"-C", dir, "set", "auth-snippet", "-"}); code != 0 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "auth-snippet", "-"}); code != 0 {
 		t.Fatalf("clear should exit 0, got %d", code)
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "resolver", "caddy/data/hemma.auth.generated.caddy"))
@@ -243,7 +243,7 @@ func TestRun_SetAuthSnippetClear(t *testing.T) {
 func TestRun_SetAuthSnippetRejectsMissing(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
-	if code := Run([]string{"-C", dir, "set", "auth-snippet", "nope.caddy"}); code != 1 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "auth-snippet", "nope.caddy"}); code != 1 {
 		t.Errorf("missing source should exit 1, got %d", code)
 	}
 	// Nothing should have been persisted.
@@ -261,7 +261,7 @@ func TestRun_UnreadableAuthSnippetExitsNonZero(t *testing.T) {
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
 	os.WriteFile(filepath.Join(dir, "snip.caddy"), []byte("forward_auth x { }\n"), 0o644)
-	Run([]string{"-C", dir, "set", "auth-snippet", "snip.caddy"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-snippet", "snip.caddy"})
 	Run([]string{"-C", dir, "add", "service", "docs",
 		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
 
@@ -288,8 +288,8 @@ func TestRun_DoctorUnreadableAuthSnippetIsProblem(t *testing.T) {
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "authelia", "--fqdn", "auth.example.com", "--host", "appbox", "--backend", "authelia:9091"})
 	os.WriteFile(filepath.Join(dir, "snip.caddy"), []byte("forward_auth x { }\n"), 0o644)
-	Run([]string{"-C", dir, "set", "auth-snippet", "snip.caddy"})
-	Run([]string{"-C", dir, "set", "auth-service", "authelia"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-snippet", "snip.caddy"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-service", "authelia"})
 
 	if code := Run([]string{"-C", dir, "doctor"}); code != 0 {
 		t.Fatalf("doctor should be clean while the source is readable, got %d", code)
@@ -308,8 +308,8 @@ func TestRun_DoctorDetectsAuthDrift(t *testing.T) {
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "authelia", "--fqdn", "auth.example.com", "--host", "appbox", "--backend", "authelia:9091"})
 	os.WriteFile(filepath.Join(dir, "snip.caddy"), []byte("forward_auth v1 { }\n"), 0o644)
-	Run([]string{"-C", dir, "set", "auth-snippet", "snip.caddy"})
-	Run([]string{"-C", dir, "set", "auth-service", "authelia"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-snippet", "snip.caddy"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-service", "authelia"})
 
 	// Clean right after sync (snippet + service both set → no config warning).
 	if code := Run([]string{"-C", dir, "doctor"}); code != 0 {
@@ -339,8 +339,8 @@ func TestRun_DoctorAuthSnippetCleanThenDrift(t *testing.T) {
 	}
 	Run([]string{"-C", dir, "add", "service", "authelia", "--fqdn", "auth.example.com", "--host", "appbox", "--backend", "authelia:9091"})
 	os.WriteFile(filepath.Join(dir, "snip.caddy"), []byte("forward_auth v1 { }\n"), 0o644)
-	Run([]string{"-C", dir, "set", "auth-snippet", "snip.caddy"})
-	Run([]string{"-C", dir, "set", "auth-service", "authelia"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-snippet", "snip.caddy"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-service", "authelia"})
 
 	if code := Run([]string{"-C", dir, "doctor"}); code != 0 {
 		t.Fatalf("doctor should be clean after set auth-snippet, got %d", code)
@@ -358,7 +358,7 @@ func TestRun_SetAuthServiceRendersHeaderPreserve(t *testing.T) {
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "authelia", "--fqdn", "auth.example.com", "--host", "appbox", "--backend", "authelia:9091"})
-	if code := Run([]string{"-C", dir, "set", "auth-service", "authelia"}); code != 0 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "auth-service", "authelia"}); code != 0 {
 		t.Fatalf("set auth-service should exit 0, got %d", code)
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "appbox", "caddy/data/sites/authelia.caddy"))
@@ -371,7 +371,7 @@ func TestRun_SetAuthServiceRendersHeaderPreserve(t *testing.T) {
 func TestRun_SetAuthServiceRejectsUnknown(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
-	if code := Run([]string{"-C", dir, "set", "auth-service", "ghost"}); code != 1 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "auth-service", "ghost"}); code != 1 {
 		t.Errorf("unknown service should exit 1, got %d", code)
 	}
 	cfg, _ := os.ReadFile(filepath.Join(dir, configName))
@@ -386,7 +386,7 @@ func TestRun_DoctorWarnsSnippetWithoutService(t *testing.T) {
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
 	os.WriteFile(filepath.Join(dir, "snip.caddy"), []byte("forward_auth x { }\n"), 0o644)
-	Run([]string{"-C", dir, "set", "auth-snippet", "snip.caddy"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-snippet", "snip.caddy"})
 
 	out := captureStdout(t, func() { Run([]string{"-C", dir, "doctor"}) })
 	if !contains(out, "auth_service is not") {
@@ -403,9 +403,9 @@ func TestRun_SetAuthServiceClear(t *testing.T) {
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "authelia", "--fqdn", "auth.example.com", "--host", "appbox", "--backend", "authelia:9091"})
-	Run([]string{"-C", dir, "set", "auth-service", "authelia"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-service", "authelia"})
 
-	if code := Run([]string{"-C", dir, "set", "auth-service", "-"}); code != 0 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "auth-service", "-"}); code != 0 {
 		t.Fatalf("clear should exit 0, got %d", code)
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "appbox", "caddy/data/sites/authelia.caddy"))
@@ -426,7 +426,7 @@ func TestRun_SetTunnelDirThenClears(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
-	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "cloudflared"}); code != 0 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "tunnel-dir", "cloudflared"}); code != 0 {
 		t.Fatalf("set tunnel-dir should exit 0, got %d", code)
 	}
 	if code := Run([]string{"-C", dir, "add", "service", "docs",
@@ -439,7 +439,7 @@ func TestRun_SetTunnelDirThenClears(t *testing.T) {
 
 	// Clearing while docs is STILL public: true exits 1 (publicly
 	// unreachable) — but its DNS/Caddy files must survive.
-	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "-"}); code != 1 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "tunnel-dir", "-"}); code != 1 {
 		t.Fatalf("clear with a still-public service should exit 1 (unresolved tunnel), got %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "appbox", "cloudflared", "config.yml")); !os.IsNotExist(err) {
@@ -492,7 +492,7 @@ func TestRun_AuthConfigWarnings(t *testing.T) {
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "authelia", "--fqdn", "auth.example.com", "--host", "appbox", "--backend", "authelia:9091"})
-	Run([]string{"-C", dir, "set", "auth-service", "authelia"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-service", "authelia"})
 	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
 	if !contains(out, "auth_snippet is not") {
 		t.Errorf("expected reverse warning (service without snippet):\n%s", out)
@@ -504,8 +504,8 @@ func TestRun_AuthConfigWarnings(t *testing.T) {
 	seed(t, dir2)
 	os.WriteFile(filepath.Join(dir2, "snip.caddy"), []byte("forward_auth x { }\n"), 0o644)
 	Run([]string{"-C", dir2, "add", "service", "authelia", "--fqdn", "auth.example.com", "--host", "appbox", "--backend", "authelia:9091"})
-	Run([]string{"-C", dir2, "set", "auth-snippet", "snip.caddy"})
-	Run([]string{"-C", dir2, "set", "auth-service", "authelia"})
+	Run([]string{"-C", dir2, "defaults", "set", "auth-snippet", "snip.caddy"})
+	Run([]string{"-C", dir2, "defaults", "set", "auth-service", "authelia"})
 	out2 := captureStdout(t, func() { Run([]string{"-C", dir2, "list", "--all"}) })
 	if !contains(out2, "no service uses forward auth") {
 		t.Errorf("expected unused-auth note when nothing opted in:\n%s", out2)
@@ -520,7 +520,7 @@ func TestRun_OIDCClientWarning(t *testing.T) {
 	seed(t, dir)
 	// The auth_service (authelia) runs on appbox; its config lives under appbox.
 	Run([]string{"-C", dir, "add", "service", "authelia", "--fqdn", "auth.example.com", "--host", "appbox", "--backend", "authelia:9091"})
-	Run([]string{"-C", dir, "set", "auth-service", "authelia"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-service", "authelia"})
 	Run([]string{"-C", dir, "add", "service", "app", "--fqdn", "app.example.com", "--host", "appbox", "--backend", "app:3000", "--auth-mode", "oidc"})
 
 	// No Authelia config yet → soft advisory ("could not verify").
@@ -581,7 +581,7 @@ func TestRun_AuthGroups(t *testing.T) {
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "authelia", "--fqdn", "auth.example.com", "--host", "appbox", "--backend", "authelia:9091"})
-	Run([]string{"-C", dir, "set", "auth-service", "authelia"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-service", "authelia"})
 
 	// Groups without a mode: usage error, nothing persisted.
 	if code := Run([]string{"-C", dir, "add", "service", "bad", "--fqdn", "bad.example.com", "--host", "appbox", "--backend", "b:1", "--auth-groups", "admins"}); code != 2 {
@@ -630,7 +630,7 @@ func TestRun_OIDCAuthorizationPolicyWarning(t *testing.T) {
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "authelia", "--fqdn", "auth.example.com", "--host", "appbox", "--backend", "authelia:9091"})
-	Run([]string{"-C", dir, "set", "auth-service", "authelia"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-service", "authelia"})
 
 	acfg := filepath.Join(dir, "appbox", auth.Default().ConfigPath())
 	os.MkdirAll(filepath.Dir(acfg), 0o755)

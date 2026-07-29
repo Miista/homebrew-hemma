@@ -28,7 +28,7 @@ _hemma() {
         cword=$COMP_CWORD
     }
 
-    local verbs="add update remove create enable disable set list verify apply deploy doctor measure version help completion"
+    local verbs="add update remove create enable disable defaults list verify apply deploy doctor measure version help completion"
     local nouns="service host domain"
     local set_keys="__SET_KEYS__"
     local flags="--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --public --ip --ssh --all -a --fix --chdir -C --help -h"
@@ -46,8 +46,11 @@ _hemma() {
                 return
             fi
             ;;
-        set)
+        defaults)
             if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "set" -- "$cur") )
+                return
+            elif [[ $cword -eq 3 && "${COMP_WORDS[2]}" == "set" ]]; then
                 COMPREPLY=( $(compgen -W "$set_keys" -- "$cur") )
                 return
             fi
@@ -77,7 +80,7 @@ const zshCompletionTemplate = `#compdef hemma splitdns
 
 _hemma() {
     local -a verbs nouns set_keys flags
-    verbs=(add update remove create enable disable set list verify apply deploy doctor measure version help completion)
+    verbs=(add update remove create enable disable defaults list verify apply deploy doctor measure version help completion)
     nouns=(service host domain)
     set_keys=(__SET_KEYS__)
     flags=(--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --public --ip --ssh --all -a --fix --chdir -C --help -h)
@@ -94,8 +97,11 @@ _hemma() {
                 return
             fi
             ;;
-        set)
+        defaults)
             if (( CURRENT == 3 )); then
+                _values 'subcommand' set
+                return
+            elif (( CURRENT == 4 )) && [[ "${words[3]}" == "set" ]]; then
                 _describe 'setting' set_keys
                 return
             fi

@@ -44,7 +44,7 @@ func listSetup(t *testing.T, snippet string) string {
 			[]byte("forward_auth https://auth.example.com { }\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if code := Run([]string{"-C", dir, "set", "auth-snippet", snippet}); code != 0 {
+		if code := Run([]string{"-C", dir, "defaults", "set", "auth-snippet", snippet}); code != 0 {
 			t.Fatalf("set auth-snippet exit %d", code)
 		}
 	}
@@ -86,7 +86,7 @@ func containsField(line, want string) bool {
 // config rather than an observer of a foreign hand-maintained one.
 func TestList_PublicColumn(t *testing.T) {
 	dir := listSetup(t, "")
-	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "cloudflared"}); code != 0 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "tunnel-dir", "cloudflared"}); code != 0 {
 		t.Fatalf("set tunnel-dir exit %d", code)
 	}
 	if code := Run([]string{"-C", dir, "update", "service", "docs", "--public"}); code != 0 {
@@ -244,7 +244,7 @@ func TestList_AuthServiceShowsPortal(t *testing.T) {
 	if code := Run([]string{"-C", dir, "update", "service", "docs", "--auth-mode", "none"}); code != 0 {
 		t.Fatalf("clear auth exit %d", code)
 	}
-	if code := Run([]string{"-C", dir, "set", "auth-service", "docs"}); code != 0 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "auth-service", "docs"}); code != 0 {
 		t.Fatalf("set auth-service exit %d", code)
 	}
 	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
