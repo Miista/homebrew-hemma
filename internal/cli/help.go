@@ -147,13 +147,24 @@ Cert paths derive from caddy/data/certs/<domain>/{fullchain.cer,privkey.key}.`},
 
 Usage: hemma remove domain <name>`},
 
-	{"set dns-host", `hemma set dns-host — set the default resolver host for DNS records
+	{"defaults", `hemma defaults — show or set repo-wide default values
 
-Usage: hemma set dns-host <name>`},
+Usage: hemma defaults              Show every default and its current value ('(unset)' if none)
+       hemma defaults set <key> <value>   Set one (see 'hemma help defaults set <key>' for each)
 
-	{"set deploy-host", `hemma set deploy-host — name the one host 'hemma deploy' runs from
+Every value 'defaults set' touches is a field of services.yaml's top-level
+defaults: block (dns_host, deploy_host, auth_snippet, auth_service,
+tunnel_dir) — one repo-wide role or path, not a per-service or per-host
+setting. 'hemma defaults' with no arguments is the inventory of that block,
+the same way 'hemma list' is the inventory of services.`},
 
-Usage: hemma set deploy-host <name>   (use '-' to clear)
+	{"defaults set dns-host", `hemma defaults set dns-host — set the default resolver host for DNS records
+
+Usage: hemma defaults set dns-host <name>`},
+
+	{"defaults set deploy-host", `hemma defaults set deploy-host — name the one host 'hemma deploy' runs from
+
+Usage: hemma defaults set deploy-host <name>   (use '-' to clear)
 
 <name> is an existing host. Two effects:
 
@@ -170,9 +181,9 @@ the deploy host" for both. Unset leaves deploy runnable from anywhere and
 audited everywhere — the pre-existing behaviour — so this is opt-in. Nothing is
 generated from it, so setting it triggers no re-sync.`},
 
-	{"set auth-snippet", `hemma set auth-snippet — set the (auth) snippet source
+	{"defaults set auth-snippet", `hemma defaults set auth-snippet — set the (auth) snippet source
 
-Usage: hemma set auth-snippet <path>   (use '-' to clear)
+Usage: hemma defaults set auth-snippet <path>   (use '-' to clear)
 
 <path> is a repo-relative Caddy file whose contents become the body of the
 (auth) snippet generated on every host. Services opt in with 'add/update
@@ -181,19 +192,20 @@ service ... --auth', which emits 'import auth' in their site block. Clearing it
 The snippet is a normal generated file, so 'hemma doctor' reports drift if
 the source changes without a re-sync.`},
 
-	{"set auth-service", `hemma set auth-service — name the forward-auth backend service
+	{"defaults set auth-service", `hemma defaults set auth-service — name the forward-auth backend service
 
-Usage: hemma set auth-service <name>   (use '-' to clear)
+Usage: hemma defaults set auth-service <name>   (use '-' to clear)
 
 <name> is an existing service — the forward-auth portal (e.g. Authelia). Its
 Caddy site block gains 'header_up X-Forwarded-Host {header.X-Forwarded-Host}',
 so the original request host survives the hairpin through Caddy; without it,
-post-login redirects loop back to the portal. Parallels 'set dns-host': one
-repo-wide role named by service. Clearing it ('-') drops the header-preserve.`},
+post-login redirects loop back to the portal. Parallels 'defaults set
+dns-host': one repo-wide role named by service. Clearing it ('-') drops the
+header-preserve.`},
 
-	{"set tunnel-dir", `hemma set tunnel-dir — set where every host's cloudflared config.yml is written
+	{"defaults set tunnel-dir", `hemma defaults set tunnel-dir — set where every host's cloudflared config.yml is written
 
-Usage: hemma set tunnel-dir <dir>   (use '-' to clear)
+Usage: hemma defaults set tunnel-dir <dir>   (use '-' to clear)
 
 <dir> is a path relative to each host's own repo directory — the directory
 that host's cloudflared container mounts as /etc/cloudflared. One repo-wide

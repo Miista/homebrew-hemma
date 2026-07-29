@@ -134,7 +134,7 @@ func TestBootstrap_ViaCLIOnly(t *testing.T) {
 	steps := [][]string{
 		{"-C", dir, "add", "host", "appbox", "192.0.2.2"},
 		{"-C", dir, "add", "host", "resolver", "192.0.2.1"},
-		{"-C", dir, "set", "dns-host", "resolver"},
+		{"-C", dir, "defaults", "set", "dns-host", "resolver"},
 		{"-C", dir, "add", "domain", "example.com"},
 		{"-C", dir, "add", "service", "docs", "--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"},
 	}
@@ -186,7 +186,7 @@ func TestSync_RefusesWithoutDNSHost(t *testing.T) {
 	}
 	// set dns-host now reconciles itself: with the blocker resolved it succeeds
 	// (exit 0) and leaves the repo clean.
-	if code := Run([]string{"-C", dir, "set", "dns-host", "appbox"}); code != 0 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "dns-host", "appbox"}); code != 0 {
 		t.Errorf("set dns-host after blocker resolved should exit 0, got %d", code)
 	}
 	if d := detectDrift(dir, load(t, dir), loadManifest(dir, load(t, dir))); d.Any() {
@@ -197,7 +197,7 @@ func TestSync_RefusesWithoutDNSHost(t *testing.T) {
 func TestDNSHostSet(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir) // defines resolver + appbox, default dns_host resolver
-	if code := Run([]string{"-C", dir, "set", "dns-host", "appbox"}); code != 0 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "dns-host", "appbox"}); code != 0 {
 		t.Fatalf("dns-host set to existing host should exit 0, got %d", code)
 	}
 	if got := load(t, dir).Defaults.DNSHost; got != "appbox" {
@@ -208,7 +208,7 @@ func TestDNSHostSet(t *testing.T) {
 func TestDNSHostSet_UnknownHostRejected(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
-	if code := Run([]string{"-C", dir, "set", "dns-host", "ghost"}); code != 1 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "dns-host", "ghost"}); code != 1 {
 		t.Errorf("dns-host set to unknown host should exit 1, got %d", code)
 	}
 }
@@ -219,7 +219,7 @@ func TestDNSHostSet_MissingArgs(t *testing.T) {
 	if code := Run([]string{"-C", dir, "dns-host"}); code != 2 {
 		t.Errorf("dns-host with no subcommand should exit 2, got %d", code)
 	}
-	if code := Run([]string{"-C", dir, "set", "dns-host"}); code != 2 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "dns-host"}); code != 2 {
 		t.Errorf("dns-host set with no name should exit 2, got %d", code)
 	}
 }
@@ -261,7 +261,7 @@ func TestHostRemoval_AutoGCsTLS(t *testing.T) {
 	for _, h := range [][]string{{"resolver", "192.0.2.1"}, {"appbox", "192.0.2.2"}, {"spare", "192.0.2.9"}} {
 		Run([]string{"-C", dir, "add", "host", h[0], h[1]})
 	}
-	Run([]string{"-C", dir, "set", "dns-host", "resolver"})
+	Run([]string{"-C", dir, "defaults", "set", "dns-host", "resolver"})
 	// add domain reconciles: every host's TLS snippet exists immediately.
 	Run([]string{"-C", dir, "add", "domain", "example.com"})
 
@@ -292,7 +292,7 @@ func TestDomainRemoval_AutoGCsTLS(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver")
 	Run([]string{"-C", dir, "add", "host", "resolver", "192.0.2.1"})
-	Run([]string{"-C", dir, "set", "dns-host", "resolver"})
+	Run([]string{"-C", dir, "defaults", "set", "dns-host", "resolver"})
 	Run([]string{"-C", dir, "add", "domain", "example.com"})
 	tls := filepath.Join(dir, "resolver", "caddy/data/tls/tls_example_com.caddy")
 	if _, err := os.Stat(tls); err != nil {

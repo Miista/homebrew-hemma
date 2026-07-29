@@ -272,41 +272,53 @@ const (
 	SetTunnelDir   SetKey = "tunnel-dir"
 )
 
-// setSpec is everything dispatchSet, the top-level usage summary, and the
-// shell completion scripts need for one `set` key. It exists so those THREE
-// places (a fourth, help.go's longer per-command prose, is covered instead by
-// TestHelpTopicsCoverEverySetKey) are generated from ONE list rather than
-// hand-duplicated — the exact class of miss that happened when tunnel-dir was
-// added: dispatchSet, help.go, and the usage summary were updated, but
-// completion.go's two independently hardcoded set_keys lists were not, and
-// nothing caught it until a stale shell completion was noticed by hand.
+// setSpec is everything dispatchDefaults, the top-level usage summary,
+// `hemma defaults` (bare, no args) and the shell completion scripts need for
+// one `defaults set` key. It exists so those places (help.go's longer
+// per-command prose is covered instead by TestSetSpecs_HelpTopicsCoverEveryKey)
+// are generated from ONE list rather than hand-duplicated — the exact class
+// of miss that happened when tunnel-dir was added: dispatchSet, help.go, and
+// the usage summary were updated, but completion.go's two independently
+// hardcoded set_keys lists were not, and nothing caught it until a stale
+// shell completion was noticed by hand.
 type setSpec struct {
 	key SetKey
 	// usage is the single-line form shown in the top-level usage summary and
-	// in dispatchSet's own error hint, e.g. "hemma set tunnel-dir <host> <dir>
-	// (use '-' for <dir> to clear)".
+	// in dispatchDefaults' own error hint, e.g. "hemma defaults set
+	// tunnel-dir <dir>   (use '-' to clear)".
 	usage string
 	// summary is the one-line description in the top-level usage listing.
 	summary string
 	run     func(cfgPath string, args []string) int
+	// get returns the CURRENT value for `hemma defaults` (bare) to print, or
+	// "" if unset. Every setSpec's key is a repo-wide config.Defaults field
+	// today, so this only needs cfg, not a host/service name.
+	get func(cfg *config.Config) string
 }
 
-// setSpecs is the single source of truth for every `hemma set <key>`. Add a
-// new setting by appending one entry here, adding its cmdSet* function, and
-// its help.go prose entry — TestSetSpecs_HelpTopicsCoverEveryKey enforces the
-// last part; dispatchSet, the usage summary, and both completion scripts are
-// all generated from this slice, so they cannot independently drift again.
+// setSpecs is the single source of truth for every `hemma defaults set
+// <key>` and for `hemma defaults`'s printed listing. Add a new setting by
+// appending one entry here, adding its cmdSet* function, and its help.go
+// prose entry — TestSetSpecs_HelpTopicsCoverEveryKey enforces the last part;
+// dispatchDefaults, the usage summary, `hemma defaults`, and both completion
+// scripts are all generated from this slice, so they cannot independently
+// drift again.
 var setSpecs = []setSpec{
-	{SetDNSHost, "hemma set dns-host <name>",
-		"Set the default resolver host for DNS records.", cmdSetDNSHost},
-	{SetDeployHost, "hemma set deploy-host <name>   (use '-' to clear)",
-		"Name the one host 'hemma deploy' may run from ('-' clears); doctor audits deploy readiness only there.", cmdSetDeployHost},
-	{SetAuthSnippet, "hemma set auth-snippet <path>   (use '-' to clear)",
-		"Set the (auth) snippet source ('-' clears). Services opt in with --auth.", cmdSetAuthSnippet},
-	{SetAuthService, "hemma set auth-service <name>   (use '-' to clear)",
-		"Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.", cmdSetAuthService},
-	{SetTunnelDir, "hemma set tunnel-dir <dir>   (use '-' to clear)",
-		"Set where every host's cloudflared config.yml is written ('-' clears; a public: true service becomes publicly unreachable until it's set — its DNS/Caddy config is unaffected).", cmdSetTunnelDir},
+	{SetDNSHost, "hemma defaults set dns-host <name>",
+		"Set the default resolver host for DNS records.", cmdSetDNSHost,
+		func(cfg *config.Config) string { return cfg.Defaults.DNSHost }},
+	{SetDeployHost, "hemma defaults set deploy-host <name>   (use '-' to clear)",
+		"Name the one host 'hemma deploy' may run from ('-' clears); doctor audits deploy readiness only there.", cmdSetDeployHost,
+		func(cfg *config.Config) string { return cfg.Defaults.DeployHost }},
+	{SetAuthSnippet, "hemma defaults set auth-snippet <path>   (use '-' to clear)",
+		"Set the (auth) snippet source ('-' clears). Services opt in with --auth.", cmdSetAuthSnippet,
+		func(cfg *config.Config) string { return cfg.Defaults.AuthSnippet }},
+	{SetAuthService, "hemma defaults set auth-service <name>   (use '-' to clear)",
+		"Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.", cmdSetAuthService,
+		func(cfg *config.Config) string { return cfg.Defaults.AuthService }},
+	{SetTunnelDir, "hemma defaults set tunnel-dir <dir>   (use '-' to clear)",
+		"Set where every host's cloudflared config.yml is written ('-' clears; a public: true service becomes publicly unreachable until it's set — its DNS/Caddy config is unaffected).", cmdSetTunnelDir,
+		func(cfg *config.Config) string { return cfg.Defaults.TunnelDir }},
 }
 
 // setKeyStrings returns every SetKey as a plain string, in setSpecs order —

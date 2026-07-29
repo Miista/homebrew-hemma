@@ -138,8 +138,8 @@ func Run(args []string) int {
 		return dispatchNoun(repoRoot, cfgPath, "enable", rest)
 	case "disable":
 		return dispatchNoun(repoRoot, cfgPath, "disable", rest)
-	case "set":
-		return dispatchSet(cfgPath, rest)
+	case "defaults":
+		return dispatchDefaults(cfgPath, rest)
 	case "create":
 		return dispatchCreate(cfgPath, rest)
 	case "list":
@@ -224,10 +224,19 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 	return 2
 }
 
-// dispatchSet routes `set <thing> <args>` to the matching setSpecs entry —
-// see setSpecs' doc comment for why this is table-driven rather than a
-// hand-written switch.
-func dispatchSet(cfgPath string, args []string) int {
+// dispatchDefaults routes `defaults [set <key> <value>]`. Bare (no args)
+// prints every current default value via cmdDefaultsShow; `set <key>
+// <value>` routes to the matching setSpecs entry — see setSpecs' doc comment
+// for why the latter is table-driven rather than a hand-written switch.
+func dispatchDefaults(cfgPath string, args []string) int {
+	if len(args) == 0 {
+		return cmdDefaultsShow(cfgPath)
+	}
+	if args[0] != "set" {
+		errf("Unknown 'defaults' subcommand %q — expected 'set', or no subcommand to show current values.", args[0])
+		return 2
+	}
+	args = args[1:]
 	keys := setKeyStrings()
 	if len(args) < 1 {
 		errf("Missing what to set — expected %s.", oxfordOr(keys))
@@ -243,9 +252,36 @@ func dispatchSet(cfgPath string, args []string) int {
 	return 2
 }
 
+// cmdDefaultsShow prints every setSpecs key and its current value (or
+// "(unset)"), so `hemma defaults` is a complete inventory of the repo-wide
+// settings `hemma defaults set` can change — the reason this verb exists
+// rather than staying named `set`: every value it touches genuinely is one
+// of config.Defaults' fields, so the noun should say so and double as a
+// listing, the same way `hemma list` is to services.yaml's services.
+func cmdDefaultsShow(cfgPath string) int {
+	cfg, code := loadExisting(cfgPath, "show the defaults in")
+	if cfg == nil {
+		return code
+	}
+	wKey := 0
+	for _, s := range setSpecs {
+		if len(s.key) > wKey {
+			wKey = len(s.key)
+		}
+	}
+	for _, s := range setSpecs {
+		v := s.get(cfg)
+		if v == "" {
+			v = "(unset)"
+		}
+		fmt.Printf("  %-*s  %s\n", wKey, s.key, v)
+	}
+	return 0
+}
+
 // oxfordOr joins items as "a, b, or c" (2 items: "a or b"; 1: "a"). Shared by
-// dispatchSet's messages so a new setSpecs entry is worded consistently with
-// no hand-written list to keep in sync.
+// dispatchDefaults' messages so a new setSpecs entry is worded consistently
+// with no hand-written list to keep in sync.
 func oxfordOr(items []string) string {
 	switch len(items) {
 	case 0:
@@ -1060,11 +1096,12 @@ Building blocks (a service references a host and a domain):
   hemma remove host   <name>
   hemma add    domain <name>
   hemma remove domain <name>
-  hemma set    dns-host <name>       Set the default resolver host for DNS records.
-  hemma set    deploy-host <name>    Name the one host 'hemma deploy' may run from ('-' clears); doctor audits deploy readiness only there.
-  hemma set    auth-snippet <path>   Set the (auth) snippet source ('-' clears). Services opt in with --auth.
-  hemma set    auth-service <name>   Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.
-  hemma set    tunnel-dir <dir>      Set where every host's cloudflared config.yml is written ('-' clears; blocks any public: true service until set).
+  hemma defaults                     Show every repo-wide default and its current value ('(unset)' if none).
+  hemma defaults set dns-host <name>       Set the default resolver host for DNS records.
+  hemma defaults set deploy-host <name>    Name the one host 'hemma deploy' may run from ('-' clears); doctor audits deploy readiness only there.
+  hemma defaults set auth-snippet <path>   Set the (auth) snippet source ('-' clears). Services opt in with --auth.
+  hemma defaults set auth-service <name>   Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.
+  hemma defaults set tunnel-dir <dir>      Set where every host's cloudflared config.yml is written ('-' clears; a public: true service becomes publicly unreachable until it's set — its DNS/Caddy config is unaffected).
 
 Credentials (print-only; the auth provider's config and users database are never written):
   hemma create app oidc <app_name> [callback_path]   Generate OIDC client credentials + a config snippet to paste in.

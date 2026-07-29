@@ -145,7 +145,7 @@ func TestDeploy_RefusedFromNonDeployHost(t *testing.T) {
 		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "app:1"}); code != 0 {
 		t.Fatalf("add exit %d", code)
 	}
-	if code := Run([]string{"-C", dir, "set", "deploy-host", "resolver"}); code != 0 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "deploy-host", "resolver"}); code != 0 {
 		t.Fatalf("set deploy-host exit %d", code)
 	}
 
@@ -178,7 +178,7 @@ func TestSetDeployHost_ValidationAndClear(t *testing.T) {
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
 
-	if code := Run([]string{"-C", dir, "set", "deploy-host", "nope"}); code == 0 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "deploy-host", "nope"}); code == 0 {
 		t.Error("an unknown host must be refused")
 	}
 	load := func() *config.Config {
@@ -192,14 +192,14 @@ func TestSetDeployHost_ValidationAndClear(t *testing.T) {
 		t.Errorf("a refused name must not persist, got %q", got)
 	}
 
-	if code := Run([]string{"-C", dir, "set", "deploy-host", "resolver"}); code != 0 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "deploy-host", "resolver"}); code != 0 {
 		t.Fatalf("set exit %d", code)
 	}
 	if got := load().Defaults.DeployHost; got != "resolver" {
 		t.Errorf("deploy_host = %q, want resolver", got)
 	}
 
-	if code := Run([]string{"-C", dir, "set", "deploy-host", "-"}); code != 0 {
+	if code := Run([]string{"-C", dir, "defaults", "set", "deploy-host", "-"}); code != 0 {
 		t.Fatalf("clear exit %d", code)
 	}
 	if got := load().Defaults.DeployHost; got != "" {
