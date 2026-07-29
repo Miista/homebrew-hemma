@@ -224,29 +224,49 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 	return 2
 }
 
-// dispatchSet routes `set <thing> <args>`: `set dns-host`, `set deploy-host`,
-// `set auth-snippet`, `set auth-service`, and `set tunnel-dir`.
+// dispatchSet routes `set <thing> <args>` to the matching setSpecs entry —
+// see setSpecs' doc comment for why this is table-driven rather than a
+// hand-written switch.
 func dispatchSet(cfgPath string, args []string) int {
+	keys := setKeyStrings()
 	if len(args) < 1 {
-		errf("Missing what to set — expected dns-host, deploy-host, auth-snippet, auth-service, or tunnel-dir.")
-		hint("Usage: hemma set dns-host <name>  |  hemma set deploy-host <name>  |  hemma set auth-snippet <path>  |  hemma set auth-service <name>  |  hemma set tunnel-dir <host> <dir>")
+		errf("Missing what to set — expected %s.", oxfordOr(keys))
+		hint("Usage: " + strings.Join(setUsages(), "  |  "))
 		return 2
 	}
-	switch args[0] {
-	case "dns-host":
-		return cmdSetDNSHost(cfgPath, args[1:])
-	case "deploy-host":
-		return cmdSetDeployHost(cfgPath, args[1:])
-	case "auth-snippet":
-		return cmdSetAuthSnippet(cfgPath, args[1:])
-	case "auth-service":
-		return cmdSetAuthService(cfgPath, args[1:])
-	case "tunnel-dir":
-		return cmdSetTunnelDir(cfgPath, args[1:])
+	for _, s := range setSpecs {
+		if string(s.key) == args[0] {
+			return s.run(cfgPath, args[1:])
+		}
+	}
+	errf("Unknown setting %q — expected %s.", args[0], oxfordOr(keys))
+	return 2
+}
+
+// oxfordOr joins items as "a, b, or c" (2 items: "a or b"; 1: "a"). Shared by
+// dispatchSet's messages so a new setSpecs entry is worded consistently with
+// no hand-written list to keep in sync.
+func oxfordOr(items []string) string {
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return items[0]
+	case 2:
+		return items[0] + " or " + items[1]
 	default:
-		errf("Unknown setting %q — expected dns-host, deploy-host, auth-snippet, auth-service, or tunnel-dir.", args[0])
-		return 2
+		return strings.Join(items[:len(items)-1], ", ") + ", or " + items[len(items)-1]
 	}
+}
+
+// setUsages returns each setSpec's one-line usage string, in setSpecs order,
+// for dispatchSet's missing-argument hint.
+func setUsages() []string {
+	out := make([]string, len(setSpecs))
+	for i, s := range setSpecs {
+		out[i] = s.usage
+	}
+	return out
 }
 
 func cmdAdd(repoRoot, cfgPath string, args []string) int {

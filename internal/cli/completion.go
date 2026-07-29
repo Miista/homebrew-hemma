@@ -1,6 +1,9 @@
 package cli
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Shell completion scripts are static (this CLI hand-rolls flag parsing, so
 // there is no cobra generator). They complete the top-level verbs, the nouns
@@ -10,8 +13,13 @@ import "fmt"
 // completion <shell>` (stdout) and tools/gencompletions (files for packaging),
 // so the two can never drift.
 
-// BashCompletion is the bash completion script for hemma.
-const BashCompletion = `# bash completion for hemma
+// BashCompletion is the bash completion script for hemma. Computed rather
+// than a plain const so its set_keys word list is generated from setSpecs
+// (nouns.go) — the exact list that went stale here when tunnel-dir was added
+// to dispatchSet/help.go but not to this file's own separate copy.
+var BashCompletion = strings.Replace(bashCompletionTemplate, "__SET_KEYS__", strings.Join(setKeyStrings(), " "), 1)
+
+const bashCompletionTemplate = `# bash completion for hemma
 _hemma() {
     local cur prev words cword
     _init_completion 2>/dev/null || {
@@ -22,7 +30,7 @@ _hemma() {
 
     local verbs="add update remove create enable disable set list verify apply deploy doctor measure version help completion"
     local nouns="service host domain"
-    local set_keys="dns-host deploy-host auth-snippet auth-service tunnel-dir"
+    local set_keys="__SET_KEYS__"
     local flags="--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --public --ip --ssh --all -a --fix --chdir -C --help -h"
 
     # First word: a verb (allow -C <dir> to precede it).
@@ -60,15 +68,18 @@ _hemma() {
 complete -F _hemma hemma splitdns
 `
 
-// ZshCompletion is the zsh completion script for hemma.
-const ZshCompletion = `#compdef hemma splitdns
+// ZshCompletion is the zsh completion script for hemma. Computed for the same
+// reason as BashCompletion above.
+var ZshCompletion = strings.Replace(zshCompletionTemplate, "__SET_KEYS__", strings.Join(setKeyStrings(), " "), 1)
+
+const zshCompletionTemplate = `#compdef hemma splitdns
 # zsh completion for hemma
 
 _hemma() {
     local -a verbs nouns set_keys flags
     verbs=(add update remove create enable disable set list verify apply deploy doctor measure version help completion)
     nouns=(service host domain)
-    set_keys=(dns-host deploy-host auth-snippet auth-service tunnel-dir)
+    set_keys=(__SET_KEYS__)
     flags=(--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --public --ip --ssh --all -a --fix --chdir -C --help -h)
 
     if (( CURRENT == 2 )); then
