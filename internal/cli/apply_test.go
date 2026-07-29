@@ -84,6 +84,9 @@ func TestRunQuietIn_EmptyDirMatchesRunQuiet(t *testing.T) {
 // entirely for a host with no public: true service, never written empty).
 func TestHostHasPublicService(t *testing.T) {
 	dir := listSetup(t, "")
+	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "cloudflared"}); code != 0 {
+		t.Fatalf("set tunnel-dir exit %d", code)
+	}
 	// listSetup's "docs" is not public; "blog" is not public either — neither
 	// host should have an override file yet.
 	if hostHasPublicService(dir, mustLoad(t, dir), "appbox") {

@@ -191,8 +191,12 @@ func hostRunsCaddy(cfg *config.Config, host string) bool {
 // "this host has at least one public service" without apply needing to know
 // the plan package's internal synthetic-owner key format.
 func hostHasPublicService(repoRoot string, cfg *config.Config, host string) bool {
+	tunnelDir, ok := cfg.Defaults.ResolvedTunnelDir()
+	if !ok {
+		return false
+	}
 	hostM := cfg.Hosts[host]
-	dir := filepath.Join(repoRoot, hostM.ResolvedDir(host), hostM.ResolvedTunnelDir(cfg.Defaults))
+	dir := filepath.Join(repoRoot, hostM.ResolvedDir(host), tunnelDir)
 	_, err := os.Stat(filepath.Join(dir, render.CloudflaredConfigFilename))
 	return err == nil
 }

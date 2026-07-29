@@ -244,6 +244,13 @@ func planAccessControl(c *config.Config, p *Plan) {
 // host's file the moment its last public service loses that status, same as
 // any other synthetic owner going empty.
 func planCloudflaredConfig(c *config.Config, p *Plan) {
+	// Every svc.Public service reaching this point already passed planService's
+	// tunnel_dir check, so this is guaranteed ok — but skip cleanly rather than
+	// write an empty-prefixed path in the defensive case it somehow isn't.
+	tunnelDir, ok := c.Defaults.ResolvedTunnelDir()
+	if !ok {
+		return
+	}
 	byHost := map[string][]render.CloudflaredIngressEntry{}
 	for name := range p.Files {
 		if IsSyntheticOwner(name) {
@@ -264,7 +271,7 @@ func planCloudflaredConfig(c *config.Config, p *Plan) {
 			continue
 		}
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Hostname < entries[j].Hostname })
-		dir := filepath.Join(hostM.ResolvedDir(hostName), hostM.ResolvedTunnelDir(c.Defaults))
+		dir := filepath.Join(hostM.ResolvedDir(hostName), tunnelDir)
 		path := filepath.Join(dir, render.CloudflaredConfigFilename)
 		key := cloudflaredConfigOwnerPrefix + hostName
 		p.Files[key] = []File{{Path: path, Content: render.CloudflaredConfig(entries)}}
@@ -303,6 +310,16 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 	// backend shape
 	if !backendRe.MatchString(svc.Backend) {
 		return nil, fmt.Sprintf("backend %q is not name:port shape", svc.Backend)
+	}
+	// public: true means something must tunnel this service to the internet —
+	// on this codebase's model, cloudflared on the service's own host. There is
+	// no safe default tunnel_dir to guess (verified: two real hosts once
+	// genuinely disagreed on the path, until aligned), so refuse rather than
+	// write config.yml to an unconfirmed location nothing may read.
+	if svc.Public {
+		if _, ok := c.Defaults.ResolvedTunnelDir(); !ok {
+			return nil, fmt.Sprintf("public: true but defaults.tunnel_dir is not set — run 'hemma set tunnel-dir <dir>' (the directory every host's cloudflared container mounts as /etc/cloudflared)")
+		}
 	}
 	// Loop guard: the service that IS the forward-auth backend (defaults.
 	// auth_service, e.g. an Authelia portal) must not also be protected by any

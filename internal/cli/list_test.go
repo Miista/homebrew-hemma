@@ -86,6 +86,9 @@ func containsField(line, want string) bool {
 // config rather than an observer of a foreign hand-maintained one.
 func TestList_PublicColumn(t *testing.T) {
 	dir := listSetup(t, "")
+	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "cloudflared"}); code != 0 {
+		t.Fatalf("set tunnel-dir exit %d", code)
+	}
 	if code := Run([]string{"-C", dir, "update", "service", "docs", "--public"}); code != 0 {
 		t.Fatalf("--public exit %d", code)
 	}
