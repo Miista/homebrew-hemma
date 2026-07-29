@@ -259,6 +259,67 @@ func domainRemove(cfgPath string, args []string) int {
 	return runSync(filepath.Dir(cfgPath), cfg, syncpkg.Complete)
 }
 
+// SetKey is one `hemma set <key> ...` setting. A typed constant rather than a
+// bare string so a typo'd key at a call site (dispatchSet, a help/completion
+// generator, a test) is a compile error instead of a silent runtime miss.
+type SetKey string
+
+const (
+	SetDNSHost     SetKey = "dns-host"
+	SetDeployHost  SetKey = "deploy-host"
+	SetAuthSnippet SetKey = "auth-snippet"
+	SetAuthService SetKey = "auth-service"
+	SetTunnelDir   SetKey = "tunnel-dir"
+)
+
+// setSpec is everything dispatchSet, the top-level usage summary, and the
+// shell completion scripts need for one `set` key. It exists so those THREE
+// places (a fourth, help.go's longer per-command prose, is covered instead by
+// TestHelpTopicsCoverEverySetKey) are generated from ONE list rather than
+// hand-duplicated — the exact class of miss that happened when tunnel-dir was
+// added: dispatchSet, help.go, and the usage summary were updated, but
+// completion.go's two independently hardcoded set_keys lists were not, and
+// nothing caught it until a stale shell completion was noticed by hand.
+type setSpec struct {
+	key SetKey
+	// usage is the single-line form shown in the top-level usage summary and
+	// in dispatchSet's own error hint, e.g. "hemma set tunnel-dir <host> <dir>
+	// (use '-' for <dir> to clear)".
+	usage string
+	// summary is the one-line description in the top-level usage listing.
+	summary string
+	run     func(cfgPath string, args []string) int
+}
+
+// setSpecs is the single source of truth for every `hemma set <key>`. Add a
+// new setting by appending one entry here, adding its cmdSet* function, and
+// its help.go prose entry — TestSetSpecs_HelpTopicsCoverEveryKey enforces the
+// last part; dispatchSet, the usage summary, and both completion scripts are
+// all generated from this slice, so they cannot independently drift again.
+var setSpecs = []setSpec{
+	{SetDNSHost, "hemma set dns-host <name>",
+		"Set the default resolver host for DNS records.", cmdSetDNSHost},
+	{SetDeployHost, "hemma set deploy-host <name>   (use '-' to clear)",
+		"Name the one host 'hemma deploy' may run from ('-' clears); doctor audits deploy readiness only there.", cmdSetDeployHost},
+	{SetAuthSnippet, "hemma set auth-snippet <path>   (use '-' to clear)",
+		"Set the (auth) snippet source ('-' clears). Services opt in with --auth.", cmdSetAuthSnippet},
+	{SetAuthService, "hemma set auth-service <name>   (use '-' to clear)",
+		"Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.", cmdSetAuthService},
+	{SetTunnelDir, "hemma set tunnel-dir <host> <dir>   (use '-' for <dir> to clear)",
+		"Per-host override of where that host's cloudflared config.yml is written ('-' clears).", cmdSetTunnelDir},
+}
+
+// setKeyStrings returns every SetKey as a plain string, in setSpecs order —
+// for building error messages, completion word lists, and test assertions
+// without repeating the enum-to-string cast at every call site.
+func setKeyStrings() []string {
+	out := make([]string, len(setSpecs))
+	for i, s := range setSpecs {
+		out[i] = string(s.key)
+	}
+	return out
+}
+
 // cmdSetDNSHost handles `set dns-host <name>` — sets defaults.dns_host, the
 // host whose dnsmasq receives address= records unless a service overrides it.
 // Without this, a CLI-only bootstrap leaves dns_host unset and sync refuses.
