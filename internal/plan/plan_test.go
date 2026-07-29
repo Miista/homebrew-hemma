@@ -458,28 +458,44 @@ func TestBuild_CloudflaredConfig_HonorsConfiguredDir(t *testing.T) {
 	}
 }
 
-// A public: true service on ANY host is refused, with no file generated at
-// all, while defaults.tunnel_dir is unset — there is no safe path to guess
-// (verified: two real hosts once genuinely disagreed on it), so this must be
-// a hard skip rather than a silently-guessed config.yml nothing may read.
-func TestBuild_CloudflaredConfig_RefusedWithoutTunnelDir(t *testing.T) {
+// A public: true service with defaults.tunnel_dir unset must KEEP its DNS
+// record and Caddy site — the internal horizon works regardless of the
+// tunnel — and must NOT be a full Skipped entry (that would silently drop
+// its DNS/Caddy files too, which was a real bug: unsetting tunnel_dir on the
+// live repo deleted every public service's internal-horizon config, not just
+// its cloudflared entry). It shows up in UnresolvedTunnels instead, and no
+// cloudflared-config file is generated for it — there is no safe path to
+// guess (verified: two real hosts once genuinely disagreed on it).
+func TestBuild_CloudflaredConfig_UnresolvedWithoutTunnelDirKeepsOtherFiles(t *testing.T) {
 	c := base() // no Defaults.TunnelDir set
 	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Public: true}
 
 	p := Build(c)
-	if reason := p.Skipped["docs"]; !strings.Contains(reason, "tunnel_dir") {
-		t.Errorf("expected docs to be skipped for missing tunnel_dir, got skip reason %q (skipped=%v)", reason, p.Skipped)
+	if _, skipped := p.Skipped["docs"]; skipped {
+		t.Errorf("docs must NOT be a full skip (would drop its DNS/Caddy files too), got skipped=%v", p.Skipped)
+	}
+	files := p.Files["docs"]
+	if len(files) != 2 {
+		t.Fatalf("docs should still have its 2 files (DNS + Caddy) despite tunnel_dir being unset, got %d: %+v", len(files), files)
+	}
+	if len(p.UnresolvedTunnels) != 1 || p.UnresolvedTunnels[0] != "docs" {
+		t.Errorf("expected docs in UnresolvedTunnels, got %v", p.UnresolvedTunnels)
 	}
 	for k := range p.Files {
 		if IsCloudflaredConfigOwner(k) {
 			t.Errorf("expected no cloudflared-config file while tunnel_dir is unset, got %q: %+v", k, p.Files[k])
 		}
 	}
-	// A non-public service must still plan fine — the refusal is scoped to
-	// public: true, not a repo-wide block on planning anything.
+	// A non-public service must still plan fine and must not appear in
+	// UnresolvedTunnels — the condition is scoped to public: true only.
 	c.Services["private"] = config.Service{FQDN: "private.example.com", Host: "appbox", Backend: "priv:80"}
 	p2 := Build(c)
 	if _, skipped := p2.Skipped["private"]; skipped {
 		t.Errorf("a non-public service must not be affected by tunnel_dir being unset: %v", p2.Skipped)
+	}
+	for _, name := range p2.UnresolvedTunnels {
+		if name == "private" {
+			t.Errorf("a non-public service must never appear in UnresolvedTunnels: %v", p2.UnresolvedTunnels)
+		}
 	}
 }

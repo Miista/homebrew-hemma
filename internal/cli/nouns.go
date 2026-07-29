@@ -306,7 +306,7 @@ var setSpecs = []setSpec{
 	{SetAuthService, "hemma set auth-service <name>   (use '-' to clear)",
 		"Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.", cmdSetAuthService},
 	{SetTunnelDir, "hemma set tunnel-dir <dir>   (use '-' to clear)",
-		"Set where every host's cloudflared config.yml is written ('-' clears; a public: true service is refused until it's set).", cmdSetTunnelDir},
+		"Set where every host's cloudflared config.yml is written ('-' clears; a public: true service becomes publicly unreachable until it's set — its DNS/Caddy config is unaffected).", cmdSetTunnelDir},
 }
 
 // setKeyStrings returns every SetKey as a plain string, in setSpecs order —
@@ -487,10 +487,10 @@ func cmdSetAuthService(cfgPath string, args []string) int {
 // divergence that turned out to be incidental, not structural.
 //
 // Unlike dns-host, clearing this is NOT a no-op fallback to a hardcoded
-// default: planService hard-refuses any public: true service while
-// tunnel_dir is unset, so clearing it will make `hemma add/update service
-// --public` (and a sync of an already-public service) fail until it's set
-// again.
+// default: any public: true service becomes publicly unreachable while
+// tunnel_dir is unset (plan.Plan.UnresolvedTunnels) — but its DNS record and
+// Caddy site (the internal horizon) are unaffected, deliberately, since a
+// missing tunnel_dir says nothing about whether the service itself is valid.
 func cmdSetTunnelDir(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <dir>.")
@@ -510,7 +510,7 @@ func cmdSetTunnelDir(cfgPath string, args []string) int {
 			errf("%v", err)
 			return 1
 		}
-		fmt.Println("Cleared tunnel_dir — public: true services will fail to plan until it's set again.")
+		fmt.Println("Cleared tunnel_dir — any public: true service becomes publicly unreachable until it's set again (its DNS/Caddy config is unaffected).")
 		// The path is now unset, so every host's config.yml becomes an orphan.
 		return runSync(repoRoot, cfg, syncpkg.Complete)
 	}

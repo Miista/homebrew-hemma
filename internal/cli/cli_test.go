@@ -416,9 +416,12 @@ func TestRun_SetAuthServiceClear(t *testing.T) {
 
 // set tunnel-dir persists the ONE repo-wide path and regenerates config.yml
 // at the new location for every host with a public service; clearing it GCs
-// those files and makes any public: true service fail to plan again — there
-// is no per-host override and no default to fall back to (see
-// TestBuild_CloudflaredConfig_RefusedWithoutTunnelDir in internal/plan).
+// those files and reports any still-public service as publicly unreachable
+// (exit 1) — but critically, its DNS record and Caddy site (the internal
+// horizon) must NOT be touched by this. A real bug on the live repo did
+// exactly that: unsetting tunnel_dir deleted every public service's DNS/
+// Caddy files, not just its cloudflared entry, because the check originally
+// lived in planService as a full skip rather than as Plan.UnresolvedTunnels.
 func TestRun_SetTunnelDirThenClears(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver", "appbox")
@@ -434,35 +437,46 @@ func TestRun_SetTunnelDirThenClears(t *testing.T) {
 		t.Errorf("expected config.yml at the configured path: %v", err)
 	}
 
-	// Clearing while docs is STILL public: true correctly exits 1 — docs
-	// becomes an unplannable skip (report-but-proceed), same as any other
-	// skip reason, not a silent success.
+	// Clearing while docs is STILL public: true exits 1 (publicly
+	// unreachable) — but its DNS/Caddy files must survive.
 	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "-"}); code != 1 {
-		t.Fatalf("clear with a still-public service should exit 1 (skipped), got %d", code)
+		t.Fatalf("clear with a still-public service should exit 1 (unresolved tunnel), got %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "appbox", "cloudflared", "config.yml")); !os.IsNotExist(err) {
 		t.Errorf("expected config.yml to be GC'd after clearing tunnel_dir, err=%v", err)
 	}
+	if _, err := os.Stat(filepath.Join(dir, "appbox", "caddy", "data", "sites", "docs.caddy")); err != nil {
+		t.Errorf("docs's Caddy site must survive clearing tunnel_dir (internal horizon is independent of the tunnel): %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "resolver", "pihole", "data", "dnsmasq.d", "docs.generated.conf")); err != nil {
+		t.Errorf("docs's DNS record must survive clearing tunnel_dir: %v", err)
+	}
 }
 
-// A public: true service with tunnel_dir unset is a plan-time skip, not a
-// validate-before-persist rejection (tunnel_dir is a fact about the whole
-// repo the planner discovers, not a shape check persistNewService can catch
-// up front) — same report-but-proceed pattern as any other skip reason
-// (design §8): the entry DOES persist to services.yaml, `add` exits 1, and
-// the skip reason names tunnel_dir so it's actionable rather than silent.
-func TestRun_PublicServiceSkippedWithoutTunnelDir(t *testing.T) {
+// A public: true service with tunnel_dir unset still gets its normal DNS/
+// Caddy files (the internal horizon doesn't depend on the tunnel) but is
+// reported as publicly unreachable (exit 1) rather than a plan skip — see
+// plan.Plan.UnresolvedTunnels and its doc comment for why this must not be a
+// Skipped reason (that would drop the DNS/Caddy files too — the real bug
+// this guards against).
+func TestRun_PublicServiceUnresolvedWithoutTunnelDir(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
 	out := captureStdout(t, func() {
 		if code := Run([]string{"-C", dir, "add", "service", "docs",
 			"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", "--public"}); code != 1 {
-			t.Errorf("add --public should exit 1 (skipped) while tunnel_dir is unset, got %d", code)
+			t.Errorf("add --public should exit 1 (unresolved tunnel) while tunnel_dir is unset, got %d", code)
 		}
 	})
 	if !contains(out, "tunnel_dir") {
-		t.Errorf("skip reason should name tunnel_dir, got:\n%s", out)
+		t.Errorf("should report the tunnel_dir problem, got:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "appbox", "caddy", "data", "sites", "docs.caddy")); err != nil {
+		t.Errorf("docs's Caddy site must still be generated (internal horizon works regardless): %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "resolver", "pihole", "data", "dnsmasq.d", "docs.generated.conf")); err != nil {
+		t.Errorf("docs's DNS record must still be generated: %v", err)
 	}
 	cfg, _ := os.ReadFile(filepath.Join(dir, configName))
 	if !contains(string(cfg), "docs") {

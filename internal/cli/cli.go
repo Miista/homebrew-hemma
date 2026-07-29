@@ -828,11 +828,28 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 			fmt.Printf("  • %s\n", name)
 		}
 	}
+	// A public: true service with no tunnel_dir configured still gets its
+	// internal DNS/Caddy files (Plan.UnresolvedTunnels — see its doc comment
+	// for why this is deliberately NOT a Skipped reason), but it has no
+	// working public ingress, which is a real, actionable misconfiguration:
+	// surface it and count it toward a non-zero exit, same as any other
+	// skip, rather than reporting a clean "Synced" while public reach is
+	// silently broken.
+	if len(p.UnresolvedTunnels) > 0 {
+		fmt.Printf("%d publicly unreachable (tunnel_dir not set):\n", len(p.UnresolvedTunnels))
+		for _, name := range p.UnresolvedTunnels {
+			fmt.Printf("  • %s\n", name)
+		}
+		hint("Run 'hemma set tunnel-dir <dir>' to fix, or 'hemma update service <name> --public=false' if it was not meant to be public.")
+	}
 	if len(errored) > 0 {
 		fmt.Printf("%d skipped:\n", len(errored))
 		for _, name := range sortedSkip(errored) {
 			fmt.Printf("  • %s: %s\n", name, errored[name])
 		}
+		return 1
+	}
+	if len(p.UnresolvedTunnels) > 0 {
 		return 1
 	}
 
