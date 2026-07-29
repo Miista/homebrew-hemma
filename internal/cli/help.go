@@ -191,6 +191,18 @@ so the original request host survives the hairpin through Caddy; without it,
 post-login redirects loop back to the portal. Parallels 'set dns-host': one
 repo-wide role named by service. Clearing it ('-') drops the header-preserve.`},
 
+	{"set tunnel-dir", `hemma set tunnel-dir — override where a host's cloudflared config.yml is written
+
+Usage: hemma set tunnel-dir <host> <dir>   (use '-' for <dir> to clear)
+
+<dir> is a path relative to <host>'s own repo directory — the directory that
+host's cloudflared container mounts as /etc/cloudflared. Per-host rather than
+a single repo-wide setting (unlike dns-host/auth-service) because this
+genuinely differs per host in practice: one host's compose file might mount
+cloudflared-local/data, another might mount cloudflared directly. Falls back
+to defaults.tunnel_dir ("cloudflared") when unset. Regenerates that host's
+config.yml at the new path and GCs it from the old one.`},
+
 	{"create app", `hemma create app oidc — generate OIDC client credentials for an app
 
 Usage: hemma create app oidc <app_name> [callback_path]

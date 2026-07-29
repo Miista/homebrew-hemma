@@ -415,3 +415,49 @@ func cmdSetAuthService(cfgPath string, args []string) int {
 	// Its site block changes (gains the header_up), so regenerate.
 	return runSync(repoRoot, cfg, syncpkg.Complete)
 }
+
+// cmdSetTunnelDir sets (or clears) a per-host override of where hemma writes
+// that host's cloudflared config.yml, relative to the host's own repo dir
+// (Host.TunnelDir; falls back to defaults.tunnel_dir when unset). Per-host
+// rather than a single repo-wide setting like dns-host/auth-service because
+// the path genuinely differs per host in practice — one host's cloudflared
+// container mounts cloudflared-local/data as /etc/cloudflared, another mounts
+// cloudflared directly — so a single value could not cover both.
+func cmdSetTunnelDir(cfgPath string, args []string) int {
+	if len(args) < 2 {
+		errf("Missing the <host> and <dir>.")
+		hint("Usage: hemma set tunnel-dir <host> <dir>   (use '-' for <dir> to clear the per-host override)")
+		return 2
+	}
+	host, dir := args[0], args[1]
+
+	cfg, code := loadExisting(cfgPath, "set the tunnel-dir in")
+	if cfg == nil {
+		return code
+	}
+	hostM, exists := cfg.Hosts[host]
+	if !exists {
+		errf("Host %q does not exist — add it first with: hemma add host %s <ip>", host, host)
+		return 1
+	}
+	repoRoot := filepath.Dir(cfgPath)
+	if dir == "-" || dir == "" {
+		hostM.TunnelDir = ""
+		cfg.Hosts[host] = hostM
+		if err := cfg.Save(); err != nil {
+			errf("%v", err)
+			return 1
+		}
+		fmt.Printf("Cleared %s's tunnel-dir override — it now uses defaults.tunnel_dir (%q).\n", host, cfg.Defaults.ResolvedTunnelDir())
+		// The path changes, so the old config.yml location becomes an orphan.
+		return runSync(repoRoot, cfg, syncpkg.Complete)
+	}
+	hostM.TunnelDir = dir
+	cfg.Hosts[host] = hostM
+	if err := cfg.Save(); err != nil {
+		errf("%v", err)
+		return 1
+	}
+	fmt.Printf("Set %s's tunnel-dir to %q.\n", host, dir)
+	return runSync(repoRoot, cfg, syncpkg.Complete)
+}
