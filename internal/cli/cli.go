@@ -225,11 +225,11 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 }
 
 // dispatchSet routes `set <thing> <args>`: `set dns-host`, `set deploy-host`,
-// `set auth-snippet`, and `set auth-service`.
+// `set auth-snippet`, `set auth-service`, and `set tunnel-dir`.
 func dispatchSet(cfgPath string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing what to set — expected dns-host, deploy-host, auth-snippet, or auth-service.")
-		hint("Usage: hemma set dns-host <name>  |  hemma set deploy-host <name>  |  hemma set auth-snippet <path>  |  hemma set auth-service <name>")
+		errf("Missing what to set — expected dns-host, deploy-host, auth-snippet, auth-service, or tunnel-dir.")
+		hint("Usage: hemma set dns-host <name>  |  hemma set deploy-host <name>  |  hemma set auth-snippet <path>  |  hemma set auth-service <name>  |  hemma set tunnel-dir <host> <dir>")
 		return 2
 	}
 	switch args[0] {
@@ -241,8 +241,10 @@ func dispatchSet(cfgPath string, args []string) int {
 		return cmdSetAuthSnippet(cfgPath, args[1:])
 	case "auth-service":
 		return cmdSetAuthService(cfgPath, args[1:])
+	case "tunnel-dir":
+		return cmdSetTunnelDir(cfgPath, args[1:])
 	default:
-		errf("Unknown setting %q — expected dns-host, deploy-host, auth-snippet, or auth-service.", args[0])
+		errf("Unknown setting %q — expected dns-host, deploy-host, auth-snippet, auth-service, or tunnel-dir.", args[0])
 		return 2
 	}
 }
@@ -1025,6 +1027,7 @@ Building blocks (a service references a host and a domain):
   hemma set    deploy-host <name>    Name the one host 'hemma deploy' may run from ('-' clears); doctor audits deploy readiness only there.
   hemma set    auth-snippet <path>   Set the (auth) snippet source ('-' clears). Services opt in with --auth.
   hemma set    auth-service <name>   Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.
+  hemma set    tunnel-dir <host> <dir>  Per-host override of where that host's cloudflared config.yml is written ('-' clears).
 
 Credentials (print-only; the auth provider's config and users database are never written):
   hemma create app oidc <app_name> [callback_path]   Generate OIDC client credentials + a config snippet to paste in.

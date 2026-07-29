@@ -414,6 +414,47 @@ func TestRun_SetAuthServiceClear(t *testing.T) {
 	}
 }
 
+// set tunnel-dir refuses a host that doesn't exist and doesn't persist it.
+func TestRun_SetTunnelDirRejectsUnknownHost(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "ghost", "somewhere"}); code != 1 {
+		t.Errorf("unknown host should exit 1, got %d", code)
+	}
+	cfg, _ := os.ReadFile(filepath.Join(dir, configName))
+	if contains(string(cfg), "tunnel_dir") {
+		t.Errorf("rejected tunnel-dir must not persist: %s", cfg)
+	}
+}
+
+// set tunnel-dir persists a per-host override and regenerates that host's
+// config.yml at the new path; clearing it moves generation back to the
+// repo-wide default and GCs the file from the old path.
+func TestRun_SetTunnelDirOverridesThenClears(t *testing.T) {
+	dir := t.TempDir()
+	mkdirs(t, dir, "resolver", "appbox")
+	seed(t, dir)
+	Run([]string{"-C", dir, "add", "service", "docs",
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", "--public"})
+
+	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "appbox", "custom/path"}); code != 0 {
+		t.Fatalf("set tunnel-dir should exit 0, got %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "appbox", "custom", "path", "config.yml")); err != nil {
+		t.Errorf("expected config.yml at the overridden path: %v", err)
+	}
+
+	if code := Run([]string{"-C", dir, "set", "tunnel-dir", "appbox", "-"}); code != 0 {
+		t.Fatalf("clear should exit 0, got %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "appbox", "custom", "path", "config.yml")); !os.IsNotExist(err) {
+		t.Errorf("expected the old-path config.yml to be GC'd after clearing, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "appbox", "cloudflared", "config.yml")); err != nil {
+		t.Errorf("expected config.yml back at the default path after clearing: %v", err)
+	}
+}
+
 // authConfigWarnings covers the reverse (service without snippet) and the
 // unused-auth note, exercised through `list` output.
 func TestRun_AuthConfigWarnings(t *testing.T) {
