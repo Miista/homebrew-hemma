@@ -159,7 +159,7 @@ func cmdAddInteractive(repoRoot, cfgPath, name string) int {
 
 	// Render the form on stderr so stdout stays clean for the summary and the
 	// sync report (same contract as the update editor).
-	if err := huh.NewForm(groups...).WithOutput(os.Stderr).Run(); err != nil {
+	if err := huh.NewForm(groups...).WithTheme(formTheme()).WithOutput(os.Stderr).Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			fmt.Fprintln(os.Stderr, "Aborted — nothing added.")
 			return 0

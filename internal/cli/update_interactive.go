@@ -146,7 +146,7 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 
 	// Render the form on stderr so stdout stays clean for the summary and the
 	// sync report (same contract as the create-user prompts).
-	if err := huh.NewForm(groups...).WithOutput(os.Stderr).Run(); err != nil {
+	if err := huh.NewForm(groups...).WithTheme(formTheme()).WithOutput(os.Stderr).Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			fmt.Fprintln(os.Stderr, "Aborted — no changes made.")
 			return 0
