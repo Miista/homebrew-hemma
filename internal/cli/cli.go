@@ -1191,7 +1191,7 @@ Notes:
   - A host's name is its repo directory (e.g. host "pi" -> ./pi/), which must already exist.
   - Each domain gets a TLS snippet generated on every host, deriving cert paths from
     the convention caddy/data/certs/<domain>/{fullchain.cer,privkey.key}.
-  - Config edits (add/update/remove/enable/disable) regenerate files automatically, then
+  - Config edits (add/update/remove/enable/disable/rename) regenerate files automatically, then
     print which hosts to run 'hemma apply' on to make the change live.
   - Removing a host or domain is refused while any service still references it.
 `

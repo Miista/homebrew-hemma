@@ -535,6 +535,7 @@ hemma update  service <name> [--fqdn ...] [--host ...] [--backend ...]
 hemma remove  service <name>
 hemma enable  service <name>
 hemma disable service <name>
+hemma rename  service <old> <new>
 ```
 
 - **`add`**: validates required flags, that the fqdn matches a defined domain, and that the host
@@ -571,15 +572,24 @@ hemma disable service <name>
 - **`disable`**: sets `disabled: true`, keeps the entry in YAML, and **deletes its generated
   files immediately** so it stops being served. **`enable`** clears the flag and regenerates.
   Disabled services are reported separately from validation-skipped ones.
+- **`rename`**: moves the entry to a new map key. Generated filenames embed the service name
+  (§4.1/§4.3), so there is no in-place rename on disk: it deletes the old name's manifest-tracked
+  files via the same targeted delete primitive `remove`/`disable` use, then reconciles
+  (Incremental) so the new name's files are written. Refuses if `<new>` already exists (never
+  silently overwrites another service), or if `<old>` is `defaults.auth_service` — renaming that
+  would leave the docker-compose container name, and any hand-pasted auth-provider OIDC client
+  registration (§6.5), still pointing at the old name; those are outside hemma's write authority
+  (§4.6/§4.5) and must be updated by hand first, then `hemma set auth-service <new>`.
 
 **Reconcile mode by mutation shape** (`runSync`): add/update/enable use **Incremental**
-(write/update, never delete). remove/disable use the targeted delete primitive. Every
+(write/update, never delete). remove/disable/rename use the targeted delete primitive (rename
+additionally reconciles Incremental afterward, to write the new name's files). Every
 host/domain/dns-host/auth-snippet/auth-service mutation (§6.2) uses **Complete**, because they
 can orphan files (a removed service's records, or a host/domain's now-dead cross-product of TLS
 snippets, or auth-snippet content that changed on every host) that must be GC'd/rewritten so the
 repo is left clean and `apply` won't refuse on drift.
 
-`update`, `remove`, `enable`, `disable` (and the read/host/domain commands) read existing state:
+`update`, `remove`, `enable`, `disable`, `rename` (and the read/host/domain commands) read existing state:
 if `services.yaml` is **absent** (as opposed to present-but-empty), they refuse with a message
 pointing at `add` and exit non-zero. `add` is exempt — it creates `services.yaml` when missing.
 (A present-but-unparseable file is the §7 globally-fatal case; missing ≠ malformed.)
