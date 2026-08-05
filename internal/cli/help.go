@@ -109,6 +109,24 @@ Usage: hemma enable service <name>`},
 
 Usage: hemma disable service <name>`},
 
+	{"rename service", `hemma rename service — rename a service, regenerating its files under the new name
+
+Usage: hemma rename service <old> <new>
+
+Generated filenames embed the service name, so the rename deletes the old
+service's tracked DNS/Caddy files and writes new ones under <new> — the same
+targeted delete primitive 'hemma disable service' uses, followed by a normal
+sync.
+
+Refused if:
+  - <new> already exists as a service.
+  - <old> is the configured auth_service (defaults.auth_service) — renaming it
+    would leave the docker-compose container name, and any hand-pasted Authelia
+    OIDC client registration, still pointing at the old name. Rename those by
+    hand first, then 'hemma defaults set auth-service <new>', then retry.
+
+Regenerates files immediately, then prints which hosts need 'hemma apply'.`},
+
 	{"add host", `hemma add host — declare a host (its name is its repo directory)
 
 Usage: hemma add host <name> <ip> [--ssh <dest>]

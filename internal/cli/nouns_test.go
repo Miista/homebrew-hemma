@@ -250,6 +250,95 @@ func TestServiceRemove_NonexistentIsIdempotent(t *testing.T) {
 	}
 }
 
+// Renaming deletes the old-named generated files and writes new-named ones —
+// filenames embed the service name, so there's no in-place rename on disk.
+func TestServiceRename_RegeneratesUnderNewName(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+	Run([]string{"-C", dir, "add", "service", "docs",
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+
+	oldDNS := filepath.Join(dir, "resolver", "pihole/data/dnsmasq.d/docs.generated.conf")
+	if _, err := os.Stat(oldDNS); err != nil {
+		t.Fatalf("old service's DNS file should exist before rename: %v", err)
+	}
+
+	if code := Run([]string{"-C", dir, "rename", "service", "docs", "paperless"}); code != 0 {
+		t.Fatalf("rename should exit 0, got %d", code)
+	}
+
+	c := load(t, dir)
+	if _, ok := c.Services["docs"]; ok {
+		t.Error("old service name should no longer exist")
+	}
+	svc, ok := c.Services["paperless"]
+	if !ok {
+		t.Fatal("new service name should exist")
+	}
+	if svc.FQDN != "docs.example.com" || svc.Host != "appbox" || svc.Backend != "paperless:8000" {
+		t.Errorf("renamed service should keep its fields, got %+v", svc)
+	}
+
+	if _, err := os.Stat(oldDNS); !os.IsNotExist(err) {
+		t.Error("old service's DNS file should be deleted by rename")
+	}
+	newDNS := filepath.Join(dir, "resolver", "pihole/data/dnsmasq.d/paperless.generated.conf")
+	if _, err := os.Stat(newDNS); err != nil {
+		t.Errorf("new service's DNS file should exist after rename: %v", err)
+	}
+
+	if d := detectDrift(dir, c, loadManifest(dir, c)); d.Any() {
+		t.Errorf("repo should have no drift after rename, got %d files", d.Count())
+	}
+}
+
+func TestServiceRename_RefusesOnCollision(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+	Run([]string{"-C", dir, "add", "service", "docs",
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+	Run([]string{"-C", dir, "add", "service", "photos",
+		"--fqdn", "photos.example.com", "--host", "appbox", "--backend", "photoprism:2342"})
+
+	if code := Run([]string{"-C", dir, "rename", "service", "docs", "photos"}); code != 1 {
+		t.Errorf("rename onto an existing name should exit 1, got %d", code)
+	}
+	c := load(t, dir)
+	if _, ok := c.Services["docs"]; !ok {
+		t.Error("old service should be untouched after a refused rename")
+	}
+	if c.Services["photos"].Backend != "photoprism:2342" {
+		t.Error("colliding service should be untouched after a refused rename")
+	}
+}
+
+func TestServiceRename_RefusesNonexistent(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+	if code := Run([]string{"-C", dir, "rename", "service", "ghost", "spectre"}); code != 1 {
+		t.Errorf("renaming a nonexistent service should exit 1, got %d", code)
+	}
+}
+
+func TestServiceRename_RefusesAuthService(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+	Run([]string{"-C", dir, "add", "service", "authelia",
+		"--fqdn", "auth.example.com", "--host", "appbox", "--backend", "authelia:9091"})
+	Run([]string{"-C", dir, "defaults", "set", "auth-service", "authelia"})
+
+	if code := Run([]string{"-C", dir, "rename", "service", "authelia", "sso"}); code != 1 {
+		t.Errorf("renaming the configured auth_service should exit 1, got %d", code)
+	}
+	c := load(t, dir)
+	if _, ok := c.Services["authelia"]; !ok {
+		t.Error("auth_service should be untouched after a refused rename")
+	}
+	if c.Defaults.AuthService != "authelia" {
+		t.Error("defaults.auth_service should be untouched after a refused rename")
+	}
+}
+
 // TLS snippets are generated per (host × domain). host/domain mutations now
 // reconcile automatically (Complete mode), so `add domain` materializes every
 // host's snippet and `remove host` GCs that host's now-orphaned snippet — no

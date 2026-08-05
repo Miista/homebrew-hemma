@@ -138,6 +138,8 @@ func Run(args []string) int {
 		return dispatchNoun(repoRoot, cfgPath, "enable", rest)
 	case "disable":
 		return dispatchNoun(repoRoot, cfgPath, "disable", rest)
+	case "rename":
+		return dispatchNoun(repoRoot, cfgPath, "rename", rest)
 	case "defaults":
 		return dispatchDefaults(cfgPath, rest)
 	case "create":
@@ -191,6 +193,8 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 			return cmdEnableDisable(repoRoot, cfgPath, rest, false)
 		case "disable":
 			return cmdEnableDisable(repoRoot, cfgPath, rest, true)
+		case "rename":
+			return cmdRename(repoRoot, cfgPath, rest)
 		}
 	case "host":
 		switch verb {
@@ -786,6 +790,66 @@ func cmdEnableDisable(repoRoot, cfgPath string, args []string, disable bool) int
 	return runSync(repoRoot, cfg, syncpkg.Incremental)
 }
 
+// cmdRename renames a service's key in services.yaml. Generated filenames
+// embed the service name (design: internal/plan), so a rename can't be done
+// in place on disk — it deletes the old-named files via the same targeted
+// RemoveService primitive cmdEnableDisable(disable) uses, then a plain
+// Incremental sync writes the new-named files. Refuses if <new> already
+// exists (never silently overwrite another service's entry) or if <old> is
+// the configured auth_service (hemma can't rename the docker-compose
+// container or any hand-pasted Authelia OIDC client registration that also
+// refer to the old name, so that follow-up must stay a manual, deliberate
+// step rather than something this command papers over).
+func cmdRename(repoRoot, cfgPath string, args []string) int {
+	if len(args) < 2 {
+		errf("Missing <old> and/or <new> service name.")
+		hint("Usage: hemma rename service <old> <new>")
+		return 2
+	}
+	oldName, newName := args[0], args[1]
+
+	cfg, code := loadExisting(cfgPath, "rename")
+	if cfg == nil {
+		return code
+	}
+	svc, exists := cfg.Services[oldName]
+	if !exists {
+		errf("Service %q does not exist.", oldName)
+		return 1
+	}
+	if _, collide := cfg.Services[newName]; collide {
+		errf("Service %q already exists.", newName)
+		return 1
+	}
+	if cfg.Defaults.AuthService == oldName {
+		errf("Service %q is the configured auth_service — rename refused.", oldName)
+		hint("Renaming it would leave the docker-compose container name and any hand-pasted")
+		hint("Authelia OIDC client registration pointed at the old name. Rename those by hand")
+		hint("first, then 'hemma set auth-service " + newName + "', then retry.")
+		return 1
+	}
+
+	delete(cfg.Services, oldName)
+	cfg.Services[newName] = svc
+	if err := cfg.Save(); err != nil {
+		errf("%v", err)
+		return 1
+	}
+
+	mf := loadManifest(repoRoot, cfg)
+	eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: mf}
+	res, err := eng.RemoveService(oldName)
+	if err != nil {
+		errf("%v", err)
+		return 1
+	}
+	fmt.Printf(tick+" Renamed service %q to %q\n", oldName, newName)
+	if n := len(res.Deleted); n > 0 {
+		fmt.Printf(tick+" Deleted %d old generated %s\n", n, plural(n, "file"))
+	}
+	return runSync(repoRoot, cfg, syncpkg.Incremental)
+}
+
 // runSync builds the plan, reconciles, reports, and returns an exit code
 // (design §8). It is the single sync path, invoked as the tail of every
 // mutation rather than reimplemented.
@@ -1089,6 +1153,8 @@ Services (an app reached at an fqdn, on a host, under a domain):
   hemma remove  service <name>
   hemma disable service <name>   Stop generating DNS/Caddy config for a service (keeps it in services.yaml).
   hemma enable  service <name>   Re-enable a disabled service (regenerates its files).
+  hemma rename  service <old> <new>   Rename a service; regenerates its files under the new name. Refused if <new>
+                                 already exists, or if <old> is the configured auth_service (see 'defaults set auth-service').
 
 Building blocks (a service references a host and a domain):
   hemma add    host   <name> <ip> [--ssh <dest>]
