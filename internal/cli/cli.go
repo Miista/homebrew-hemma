@@ -422,7 +422,7 @@ func persistNewService(repoRoot string, cfg *config.Config, name string, svc con
 // blockers — only repo-wide preconditions are.
 func syncBlockedReason(cfg *config.Config) string {
 	if len(cfg.Services) > 0 && cfg.Defaults.DNSHost == "" {
-		return "no dns_host is set, so DNS records can't be routed. Set the resolver with: hemma set dns-host <name>"
+		return "no dns_host is set, so DNS records can't be routed. Set the resolver with: hemma defaults set dns-host <name>"
 	}
 	return ""
 }
@@ -465,21 +465,21 @@ func authConfigWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 			Headline: "post-login redirects will loop back to the auth portal",
 			Body: []string{"auth_snippet is set but auth_service is not, so the auth backend's site block",
 				"does not preserve X-Forwarded-Host."},
-			Fix: []string{"hemma set auth-service <name>"},
+			Fix: []string{"hemma defaults set auth-service <name>"},
 		})
 	}
 	if service && !snippet {
 		w = append(w, auth.Advisory{
 			Headline: "auth is configured but does nothing — the (auth) snippet is an empty no-op",
 			Body:     []string{"auth_service is set but auth_snippet is not."},
-			Fix:      []string{"hemma set auth-snippet <path>"},
+			Fix:      []string{"hemma defaults set auth-snippet <path>"},
 		})
 	}
 	if service {
 		if _, ok := cfg.Services[cfg.Defaults.AuthService]; !ok {
 			w = append(w, auth.Advisory{
 				Headline: fmt.Sprintf("auth_service %q is not a defined service", cfg.Defaults.AuthService),
-				Fix:      []string{"hemma set auth-service <name>  (or add the service first)"},
+				Fix:      []string{"hemma defaults set auth-service <name>  (or add the service first)"},
 			})
 		}
 	}
@@ -541,7 +541,7 @@ func oidcClientWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 	if cfg.Defaults.AuthService == "" {
 		return []auth.Advisory{{
 			Headline: "OIDC clients can't be verified — auth_service is not set",
-			Fix:      []string{"hemma set auth-service <name>"},
+			Fix:      []string{"hemma defaults set auth-service <name>"},
 		}}
 	}
 	authSvc, ok := cfg.Services[cfg.Defaults.AuthService]
@@ -825,7 +825,7 @@ func cmdRename(repoRoot, cfgPath string, args []string) int {
 		errf("Service %q is the configured auth_service — rename refused.", oldName)
 		hint("Renaming it would leave the docker-compose container name and any hand-pasted")
 		hint("Authelia OIDC client registration pointed at the old name. Rename those by hand")
-		hint("first, then 'hemma set auth-service " + newName + "', then retry.")
+		hint("first, then 'hemma defaults set auth-service " + newName + "', then retry.")
 		return 1
 	}
 
@@ -905,7 +905,7 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 	// Surface an incomplete bootstrap so a no-op/partial sync explains itself,
 	// rather than leaving the user wondering why nothing happened.
 	if cfg.Defaults.DNSHost == "" {
-		fmt.Println("Note: no dns_host set — run 'hemma set dns-host <name>' (records can't be routed without it).")
+		fmt.Println("Note: no dns_host set — run 'hemma defaults set dns-host <name>' (records can't be routed without it).")
 	}
 	if len(cfg.Domains) == 0 {
 		fmt.Println("Note: no domains defined — run 'hemma add domain <name>' (a service's fqdn must match a domain).")
@@ -940,7 +940,7 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 		for _, name := range p.UnresolvedTunnels {
 			fmt.Printf("  • %s\n", name)
 		}
-		hint("Run 'hemma set tunnel-dir <dir>' to fix, or 'hemma update service <name> --public=false' if it was not meant to be public.")
+		hint("Run 'hemma defaults set tunnel-dir <dir>' to fix, or 'hemma update service <name> --public=false' if it was not meant to be public.")
 	}
 	if len(errored) > 0 {
 		fmt.Printf("%d skipped:\n", len(errored))
@@ -1176,10 +1176,10 @@ Credentials (print-only; the auth provider's config and users database are never
 Other:
   hemma apply                    Make config live on THIS host: validate caddy + auth config first, then restart pihole / reload caddy / restart the auth provider. Run on each host. Refuses if the repo has drift.
   hemma deploy [<host> ...]      Push-based fan-out over ssh: 'git pull --ff-only' on every target host (any failure aborts everything), then 'hemma apply' per host, remotes first and this host last. Targets default to all hosts with a role. Requires a clean, pushed local repo.
-  hemma list [--all]             Overview: hosts, domains, services (with PUBLIC: internet-reachable or local-only, read from compose tunnel labels), and auth groups (users + restricted services). Services default to THIS host; --all shows every host.
+  hemma list [--all]             Overview: hosts, domains, services (with PUBLIC: internet-reachable or local-only, echoing each service's declared 'public' field), and auth groups (users + restricted services). Services default to THIS host; --all shows every host.
   hemma verify [--all] [<fqdn>]  Check live DNS/Caddy per service. Defaults to services this host can check; --all includes the rest. Run on each host; needs docker.
   hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>  Time the request breakdown (dns/connect/tls/ttfb) for a service or any URL. --compare A/Bs split-horizon vs public read-only (dns-host only, services only).
-  hemma doctor [--fix]           Audit the repo (gitignored files, Caddyfile imports, generated-file drift, auth wiring, public horizon: auth bypass / declared-but-not-served / undeclared exposure / orphan ingress); --fix reconciles files and .gitignore.
+  hemma doctor [--fix]           Audit the repo (gitignored files, Caddyfile imports, generated-file drift — including cloudflared config.yml, auth wiring); --fix reconciles files and .gitignore.
   hemma version
   hemma completion <bash|zsh>    Print a shell completion script to stdout (see 'hemma help completion' to install).
   hemma help [<command>]         Show this text, or a command's help (same as <command> --help).

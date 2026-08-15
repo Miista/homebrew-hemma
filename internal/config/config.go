@@ -216,7 +216,7 @@ type Defaults struct {
 	// hairpin through Caddy — without it, forward-auth reconstructs the auth
 	// domain as the target and post-login redirects loop back to the portal.
 	// Parallels dns_host: one repo-wide role, named by service, set via
-	// `hemma set auth-service <name>`.
+	// `hemma defaults set auth-service <name>`.
 	AuthService string `yaml:"auth_service,omitempty"`
 	// TunnelDir is the ONE repo-wide path every host's cloudflared container
 	// mounts as /etc/cloudflared — hemma writes each host's config.yml there
@@ -242,7 +242,7 @@ type Defaults struct {
 	// Empty means unset: the readiness check then runs everywhere, which is the
 	// pre-existing behaviour, so adopting the field is opt-in. Parallels
 	// dns_host and auth_service: one repo-wide role, named by host, set via
-	// `hemma set deploy-host <name>`.
+	// `hemma defaults set deploy-host <name>`.
 	DeployHost string `yaml:"deploy_host,omitempty"`
 }
 

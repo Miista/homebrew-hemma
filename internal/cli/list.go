@@ -38,7 +38,7 @@ func cmdList(cfgPath string, args []string) int {
 	// Big fat warning first: without a dns_host, nothing can sync.
 	if cfg.Defaults.DNSHost == "" {
 		fmt.Println(warn + " No dns_host set — services cannot sync.")
-		fmt.Println("   Set the resolver host:  hemma set dns-host <name>")
+		fmt.Println("   Set the resolver host:  hemma defaults set dns-host <name>")
 		fmt.Println()
 	}
 
@@ -72,12 +72,12 @@ func cmdList(cfgPath string, args []string) int {
 		if cfg.Defaults.AuthSnippet != "" {
 			fmt.Printf("  snippet:  %s\n", cfg.Defaults.AuthSnippet)
 		} else {
-			fmt.Println("  snippet:  (none — set with 'hemma set auth-snippet <path>')")
+			fmt.Println("  snippet:  (none — set with 'hemma defaults set auth-snippet <path>')")
 		}
 		if cfg.Defaults.AuthService != "" {
 			fmt.Printf("  service:  %s\n", cfg.Defaults.AuthService)
 		} else {
-			fmt.Println("  service:  (none — set with 'hemma set auth-service <name>')")
+			fmt.Println("  service:  (none — set with 'hemma defaults set auth-service <name>')")
 		}
 	}
 

@@ -84,7 +84,7 @@ func joinOrPlaceholder(items []string, unknown bool, emptyReason string) string 
 // unavailable; the note says why.
 func loadUserGroups(repoRoot string, cfg *config.Config) (map[string][]string, string) {
 	if cfg.Defaults.AuthService == "" {
-		return nil, "auth_service not set (hemma set auth-service <name>)"
+		return nil, "auth_service not set (hemma defaults set auth-service <name>)"
 	}
 	authSvc, ok := cfg.Services[cfg.Defaults.AuthService]
 	if !ok {

@@ -18,7 +18,7 @@ import (
 //
 // Like verify, apply is host-split: the DNS half (restart pihole) can only run
 // on the resolver, the Caddy half (validate + reload) only on a host that runs
-// caddy, and the tunnel half (recreate cloudflared) only on a host with public
+// caddy, and the tunnel half (restart cloudflared) only on a host with public
 // services. apply identifies which host it is via a local-IP match, then
 // performs the parts it is responsible for. Run it on each affected host to
 // make the whole change live — apply does not (and cannot) SSH elsewhere.
@@ -29,10 +29,10 @@ import (
 // caddy) is captured and shown only on failure — success prints just the ticks.
 // reload is idempotent, so apply acts unconditionally on whatever this host owns
 // (there is no "changed this run" notion outside sync) — the tunnel half follows
-// the same rule: recreate cloudflared unconditionally rather than trying to
-// detect whether THIS run's docker-compose.override.yml differs from the
-// previous one, matching how Caddy is reloaded every run regardless of whether
-// its config actually changed.
+// the same rule: restart cloudflared unconditionally rather than trying to
+// detect whether THIS run's generated config.yml differs from the previous one,
+// matching how Caddy is reloaded every run regardless of whether its config
+// actually changed.
 func cmdApply(repoRoot, cfgPath string, args []string) int {
 	cfg, code := loadExisting(cfgPath, "apply")
 	if cfg == nil {

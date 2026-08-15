@@ -259,7 +259,7 @@ func domainRemove(cfgPath string, args []string) int {
 	return runSync(filepath.Dir(cfgPath), cfg, syncpkg.Complete)
 }
 
-// SetKey is one `hemma set <key> ...` setting. A typed constant rather than a
+// SetKey is one `hemma defaults set <key> ...` setting. A typed constant rather than a
 // bare string so a typo'd key at a call site (dispatchSet, a help/completion
 // generator, a test) is a compile error instead of a silent runtime miss.
 type SetKey string
@@ -338,7 +338,7 @@ func setKeyStrings() []string {
 func cmdSetDNSHost(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: hemma set dns-host <name>")
+		hint("Usage: hemma defaults set dns-host <name>")
 		return 2
 	}
 	name := args[0]
@@ -369,7 +369,7 @@ func cmdSetDNSHost(cfgPath string, args []string) int {
 func cmdSetDeployHost(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: hemma set deploy-host <name>   (use '-' to clear)")
+		hint("Usage: hemma defaults set deploy-host <name>   (use '-' to clear)")
 		return 2
 	}
 	name := args[0]
@@ -407,7 +407,7 @@ func cmdSetDeployHost(cfgPath string, args []string) int {
 func cmdSetAuthSnippet(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <path>.")
-		hint("Usage: hemma set auth-snippet <path>   (use '-' to clear)")
+		hint("Usage: hemma defaults set auth-snippet <path>   (use '-' to clear)")
 		return 2
 	}
 	path := args[0]
@@ -454,7 +454,7 @@ func cmdSetAuthSnippet(cfgPath string, args []string) int {
 func cmdSetAuthService(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <name>.")
-		hint("Usage: hemma set auth-service <name>   (use '-' to clear)")
+		hint("Usage: hemma defaults set auth-service <name>   (use '-' to clear)")
 		return 2
 	}
 	name := args[0]
@@ -506,7 +506,7 @@ func cmdSetAuthService(cfgPath string, args []string) int {
 func cmdSetTunnelDir(cfgPath string, args []string) int {
 	if len(args) < 1 {
 		errf("Missing the <dir>.")
-		hint("Usage: hemma set tunnel-dir <dir>   (use '-' to clear)")
+		hint("Usage: hemma defaults set tunnel-dir <dir>   (use '-' to clear)")
 		return 2
 	}
 	dir := args[0]

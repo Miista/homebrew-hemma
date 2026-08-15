@@ -75,15 +75,14 @@ domains:
   - example.net
 
 defaults:
-  dns_host: pi                        # the single resolver host (set via: hemma set dns-host)
+  dns_host: pi                        # the single resolver host (set via: hemma defaults set dns-host)
   auth_snippet: authelia/forward-auth.caddy  # optional; auth directive copied into (auth) — §4.5
   auth_service: authelia              # optional; the service that IS the auth backend — §4.5
   # deploy_host: pi                   # optional; the ONE host `hemma deploy` may run from —
                                       # deploy refuses elsewhere, doctor audits readiness only there (§6.8)
-  # public_label: cloudflare.io/hostname       # optional; compose label key that declares public
-                                               # ingress, read-only — list's PUBLIC column ('none' disables) — §12
-  # public_proxy_label: cloudflare.io/reverseproxy  # optional; label meaning "routed via a proxy",
-                                               # for doctor's auth-bypass check ('none' disables) — §12
+  # tunnel_dir: cloudflared           # optional; where each host's cloudflared config.yml is
+                                      # written (relative to that host's repo dir) — §12. Unset:
+                                      # public services get no ingress entry generated for them yet.
 
 services:
   docs:
@@ -106,7 +105,7 @@ Notes:
 - A host's repo directory defaults to its name (`hosts` key). A `dir:` field exists for the
   rare case where directory ≠ name, but the convention (and the whole fleet today) is dir == name.
 - `deploy_host` names the **single fan-out origin** for `hemma deploy` (§6.8). Set via
-  `hemma set deploy-host <name>`. Two effects: deploy **refuses** to run anywhere else (before
+  `hemma defaults set deploy-host <name>`. Two effects: deploy **refuses** to run anywhere else (before
   the preflight and before any ssh), and `doctor` audits deploy readiness only there. Both exist
   because readiness is a property of the ORIGIN, not of every host: on a segmented network a
   non-origin host may have no route to its peers, so the finding would be unfixable by design and
@@ -114,7 +113,7 @@ Notes:
   host counts as "not the origin" for both. Unset preserves the old behaviour — runnable and
   audited everywhere — so adoption is opt-in. Nothing is generated from it.
 - `dns_host` is a **single repo-wide resolver** (`defaults.dns_host`, set via
-  `hemma set dns-host`). Every service's DNS record is routed through it; there is **no
+  `hemma defaults set dns-host`). Every service's DNS record is routed through it; there is **no
   per-service override**. **Do not hardcode which host that is** — always read `defaults.dns_host`.
 - `public` **opts a service into the public horizon**: `true` means it is meant to be reachable
   from the internet as well; absent means local only. Set via `add/update service --public`
@@ -123,10 +122,9 @@ Notes:
   gets a Pi-hole record and a Caddy block. And there is no value for "public but not local", for
   the same reason. Why this is a bool rather than a `horizon` enum or a `horizons` array — and why
   a VPN is not a third horizon — is set out in §12.
-  `doctor` compares it against the labels in **both** directions (§12): an opt-in with no ingress,
-  and — because absent means local-only — ingress with no opt-in, which is the accidental-exposure
-  case. Adopting the field therefore means declaring the existing public surface once; until then
-  the second check reports it.
+  hemma generates the tunnel ingress entry for it directly (§12) — there is no separate
+  reconciliation step; a `public: true` service with no ingress entry (e.g. `tunnel_dir` unset)
+  surfaces as ordinary generated-file drift, the same as a missing DNS record or Caddy block.
 - `auth.bypass_paths` was a top-level `public_paths` until July 2026. It moved under `auth`
   because it is only meaningful with mode `forward`, and because the old name collided with the
   unrelated `public` field. Legacy files are migrated on load and the old key stops being emitted
@@ -316,7 +314,7 @@ generated pieces plus one config role:
 
 **The auth backend** — `defaults.auth_service` names the single service that *is* the
 forward-auth portal (parallels `dns_host`: one repo-wide role, named by service, set via
-`hemma set auth-service <name>`, `-` clears). That service's site block gets the
+`hemma defaults set auth-service <name>`, `-` clears). That service's site block gets the
 `X-Forwarded-Host` preservation described in §4.2.
 
 **Loop guard** (§7): a service with a non-none auth mode **and** `name == defaults.auth_service`
@@ -579,7 +577,7 @@ hemma rename  service <old> <new>
   silently overwrites another service), or if `<old>` is `defaults.auth_service` — renaming that
   would leave the docker-compose container name, and any hand-pasted auth-provider OIDC client
   registration (§6.5), still pointing at the old name; those are outside hemma's write authority
-  (§4.6/§4.5) and must be updated by hand first, then `hemma set auth-service <new>`.
+  (§4.6/§4.5) and must be updated by hand first, then `hemma defaults set auth-service <new>`.
 
 **Reconcile mode by mutation shape** (`runSync`): add/update/enable use **Incremental**
 (write/update, never delete). remove/disable/rename use the targeted delete primitive (rename
@@ -594,7 +592,7 @@ if `services.yaml` is **absent** (as opposed to present-but-empty), they refuse 
 pointing at `add` and exit non-zero. `add` is exempt — it creates `services.yaml` when missing.
 (A present-but-unparseable file is the §7 globally-fatal case; missing ≠ malformed.)
 
-### 6.2 Building-block commands (host, domain) and `set`
+### 6.2 Building-block commands (host, domain) and `defaults set`
 
 ```
 hemma add    host   <name> <ip> [--ssh <dest>]
@@ -602,9 +600,11 @@ hemma update host   <name> [--ip <ip>] [--ssh <dest>]
 hemma remove host   <name>
 hemma add    domain <name>
 hemma remove domain <name>
-hemma set    dns-host     <name>
-hemma set    auth-snippet <path>          ('-' clears)
-hemma set    auth-service <name>          ('-' clears)
+hemma defaults set dns-host     <name>
+hemma defaults set auth-snippet <path>          ('-' clears)
+hemma defaults set auth-service <name>          ('-' clears)
+hemma defaults set deploy-host  <name>          ('-' clears)
+hemma defaults set tunnel-dir   <dir>           ('-' clears)
 ```
 
 - **`add host <name> <ip>`**: both positional. The IP must be a valid address and unique across
@@ -620,15 +620,21 @@ hemma set    auth-service <name>          ('-' clears)
   generated, so **Incremental** suffices.
 - **`add domain <name>`**: name only; the TLS snippet name and cert path are derived (§4.3).
   Fails loud if the domain exists.
-- **`set dns-host <name>`**: sets `defaults.dns_host`. The named host must already exist. Without
-  it, a CLI-only bootstrap leaves `dns_host` unset and reconcile refuses to route records.
-- **`set auth-snippet <path>`**: sets `defaults.auth_snippet` (the forward-auth block source,
-  §4.5). Validates the source file exists **before** persisting, so a typo is caught here rather
-  than as a keep-last-good warning at every future reconcile. `-` clears it (reverting `(auth)`
-  to the empty stub).
-- **`set auth-service <name>`**: sets `defaults.auth_service` (the portal service, §4.5). The
-  named service must exist. `-` clears it (the auth backend's block stops preserving
+- **`defaults set dns-host <name>`**: sets `defaults.dns_host`. The named host must already exist.
+  Without it, a CLI-only bootstrap leaves `dns_host` unset and reconcile refuses to route records.
+- **`defaults set auth-snippet <path>`**: sets `defaults.auth_snippet` (the forward-auth block
+  source, §4.5). Validates the source file exists **before** persisting, so a typo is caught here
+  rather than as a keep-last-good warning at every future reconcile. `-` clears it (reverting
+  `(auth)` to the empty stub).
+- **`defaults set auth-service <name>`**: sets `defaults.auth_service` (the portal service, §4.5).
+  The named service must exist. `-` clears it (the auth backend's block stops preserving
   `X-Forwarded-Host`).
+- **`defaults set deploy-host <name>`**: sets `defaults.deploy_host` (§6.8), the single host
+  `hemma deploy` may fan out from. `-` clears it (deploy runnable from anywhere again).
+- **`defaults set tunnel-dir <dir>`**: sets `defaults.tunnel_dir` (§12), the per-host directory
+  cloudflared's config.yml is written into. `-` clears it — every host's `config.yml` becomes an
+  orphan and is GC'd on the next Complete-mode reconcile, and every `public: true` service's
+  DNS/Caddy files are left untouched (only the tunnel ingress entry is affected).
 - **`remove host` / `remove domain`**: **refuse** while any service still references the target,
   and report the blockers. A host is referenced if any service names it as `host` **or** it is
   the resolver (`defaults.dns_host`); a domain is referenced if any service's fqdn matches it
@@ -675,7 +681,7 @@ SSH.
 hemma doctor [--fix]     (-f)
 ```
 
-`doctor` audits the repo (no docker needed) and, with `--fix`, repairs it. Five checks:
+`doctor` audits the repo (no docker needed, except where noted) and, with `--fix`, repairs it. Six checks:
 
 1. **Gitignore**: are any generated output paths swallowed by a `.gitignore` rule (e.g. a broad
    `**/data/**`)? Such files generate fine but never commit/deploy. `--fix` writes a managed
@@ -689,7 +695,13 @@ hemma doctor [--fix]     (-f)
 4. **Auth config consistency** (§4.5): the half-configured-auth warnings are printed; most are
    advisory, but snippet-set-but-no-`auth_service` counts as a problem (redirect-loop hazard).
    An unreadable `auth_snippet` source also counts as a problem (keep-last-good still applies).
-5. **Access-control wiring** (§4.6, advisory only — never affects the exit code): when the plan
+5. **Deploy readiness** (§6.8): for each remote target `hemma deploy` would fan out to, checks
+   THIS machine's `known_hosts` already trusts that host (`ssh-keygen -F` against its declared ip
+   and its ssh destination — either counts). `deploy` sshes with `BatchMode=yes`, which cannot
+   answer a first-connection host-key prompt, so a missing entry fails deploy outright. Not
+   `--fix`-able (hemma does not own `known_hosts`); scoped to `defaults.deploy_host` when set —
+   see the rationale in §6.2 — else audited from every host.
+6. **Access-control wiring** (§4.6, advisory only — never affects the exit code): when the plan
    includes the generated access-control artifact, the auth host's `docker-compose.yml` is
    parsed from the checkout (read-only, no docker calls; env in both map and list form) to find
    the `auth_service`'s container and check that its `X_AUTHELIA_CONFIG` lists the artifact.
@@ -789,10 +801,9 @@ hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>   (-c/--a
   It warns first if `dns_host` is unset, marks disabled services `[disabled]`, and reports repo
   drift at the end. **Services default to the current host** (matched by local IP); `--all` shows
   every host. If the local IP matches no host, it falls back to showing everything.
-  The **PUBLIC** column marks each service `yes` or `no` — read-only, from the host's
-  compose tunnel label (`defaults.public_label`); see the §12 amendment for scope and caveats.
-  It is dropped entirely when no host's compose file is readable, so a repo whose hosts are not
-  compose-managed sees no change.
+  The **PUBLIC** column marks each service `yes` or `no` — a direct echo of the declared
+  `public` field (§12), since hemma is the sole author of the cloudflared `config.yml` a `yes`
+  generates an ingress entry into.
   When `auth_snippet` or `auth_service` is configured, an `== Auth ==` section (showing both,
   with a set-command hint for a missing one) precedes the services table, and the §4.5
   half-configured-auth warnings are printed at the end.
@@ -997,61 +1008,36 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
   `doctor --fix`.
 - No parsing/validation of the auth snippet body — it is copied verbatim and is opaque
   to hemma (§4.5).
-- **No public-horizon *management* — but it is *reported*.** hemma sets up the *internal* horizon
-  only (Pi-hole record + Caddy block). It deliberately does **not** create or modify the *public*
-  horizon — the public DNS + tunnel ingress that must already exist for a split-horizon setup to
-  be meaningful. On this homelab that public side is a `cloudflare.io/hostname` label on the
-  service's container, read off the docker socket by cloudflared-wrapper. Rationale for keeping
-  management of it out of hemma:
-  - hemma only writes files it *owns* (its Pi-hole/Caddy subdirs). The tunnel label lives in
-    a hand-maintained `docker-compose.yml` — a foreign, human-owned file. Surgically editing it
-    (preserving comments/formatting) is a categorically riskier operation than rewriting an owned
-    file wholesale.
-  - The tunnel tool already reads the docker socket and is better placed to *act* when a container
-    is served but has no ingress.
+- **Public-horizon *ingress* is now generated by hemma; the docker-compose.yml boundary still
+  holds absolutely.** Earlier revisions of this design kept the public horizon (public DNS +
+  tunnel ingress) entirely out of hemma's hands: it read a `cloudflare.io/hostname` label off a
+  hand-maintained `docker-compose.yml`, and later, read-only, surfaced that label's presence in
+  `list`'s PUBLIC column and three `doctor` advisories. That label-reading architecture is
+  **retired** (commit `e49d8bb`, July 2026): hemma is now the sole author of each host's
+  cloudflared **`config.yml`**, generated from every service's `public` field exactly like the
+  Pi-hole/Caddy files (`internal/plan/plan.go`'s `planCloudflaredConfig`), gated on
+  `defaults.tunnel_dir` being set (§6.2). What this changes:
+  - `list`'s PUBLIC column (§6.6) is now a **direct echo** of the declared `public` field, not an
+    observation of foreign state — there is no longer a "what does the tunnel actually serve"
+    question to reconcile against a hand-maintained file.
+  - The former **auth bypass** / **declared but not served** / **undeclared exposure** doctor
+    checks, which compared the label against `services.yaml`, no longer apply: there is no foreign
+    file left to drift against. A `public: true` service with no ingress entry (`tunnel_dir` unset,
+    or the file not yet regenerated) now surfaces as ordinary **generated-file drift** (§6.4 check
+    3), the same as a missing DNS record or Caddy block.
+  - `defaults.public_label` and `defaults.public_proxy_label` are gone; there is nothing left to
+    configure a label key for.
 
-  **Amendment (July 2026): read-only reporting is in scope.** This non-goal originally also
-  forbade *any* awareness of the public side, "even a read-only warning", on the grounds that it
-  would couple hemma to one tunnel tool's private label convention. That absolute is now relaxed:
-  `list` has a **PUBLIC** column marking each service `yes` or `no` (§6.6). The question
-  "is this FQDN internal-only?" is a first-class thing to want from an inventory command, and it
-  is unanswerable from `services.yaml` alone. What changed the calculus:
-  - The coupling is removed by making the label KEY configuration, not code:
-    `defaults.public_label` (default `cloudflare.io/hostname`, `none` to disable). Swap tunnels and
-    you change one line of YAML — the generator core still knows nothing but Pi-hole and Caddy.
-  - Reading a foreign compose file read-only was already precedent, not a new boundary crossing:
-    `auth.ValidateWiring` (§4.6) parses `<hostDir>/docker-compose.yml` for `X_AUTHELIA_CONFIG`.
-    The line that matters is **never write compose**, which still holds absolutely.
-  - Label presence is trustworthy, not a guess: cloudflared-wrapper upserts the public DNS record
-    for every hostname it is given, so a label implies the public name resolves — the two halves
-    of "publicly reachable" cannot drift apart.
+  **What is unaffected: `hemma never writes docker-compose.yml`.** That absolute predates and
+  survives this change — hemma authors `config.yml` (cloudflared's own config file, mounted
+  separately), never the compose file itself. The auth-provider wiring check (§4.6,
+  `auth.ValidateWiring`) still reads a host's `docker-compose.yml` read-only for
+  `X_AUTHELIA_CONFIG`, unrelated to the tunnel.
 
-  `doctor` acts on the same read (three checks, all advisory-only since hemma never writes
-  compose, and all scoped to a service DECLARED in services.yaml — hemma reports on what it
-  manages, never on hostnames outside its source of truth): **auth bypass** — a `forward`-auth
-  service whose ingress points DIRECT at the container, so the tunnel never traverses Caddy and
-  the generated `(auth)` gate never runs (detected via `defaults.public_proxy_label`, default
-  `cloudflare.io/reverseproxy`; the `auth_service` is exempt because `auth: forward` on it is
-  refused by the planner, so no gate exists to bypass); **declared but not served** — `public:
-  true` with no label backing it; and **undeclared exposure** — a label on a declared service
-  that never opted in, i.e. exposure nobody wrote down (grouped into one advisory, since it fires
-  in bulk on first adoption, and deliberately not `--fix`-able: auto-adopting an observed label
-  would silence the alarm in the one case it exists for). All three count as doctor problems.
-
-  There is deliberately NO check for a publicly-served hostname that has no service entry at all.
-  An earlier "orphan ingress" check did that, and it was removed: it reported on something hemma
-  neither manages nor could always generate (a service may need custom Caddy hemma cannot yet
-  express), and its suggested `hemma add service …` fix could therefore make things worse. A
-  hostname absent from services.yaml is out of scope by definition.
-
-  The suggested label snippet is **auth-aware**: a `forward`-auth service is told to route through
-  Caddy, because the direct form would be exactly the auth bypass of the first check. Blindly
-  emitting one recipe for every service would have doctor recommending a security hole.
-
-  Matching is by FQDN against the label's value (port suffix stripped), not by container name —
-  the label often sits on the Caddy container rather than the app's. A missing or unparseable
-  compose file yields `?`, never `local`: a read failure must not be reported as a fact about
-  exposure. When no host's compose can be read at all, the column is dropped.
+  A GC edge case is deliberately handled: unsetting `tunnel_dir` orphans every host's `config.yml`
+  (removed on the next Complete-mode reconcile) but must **not** touch the affected services' own
+  DNS/Caddy files — a public service losing its tunnel config stays reachable on the LAN. See the
+  `tunnel_dir`-unset test coverage in `internal/plan/plan_test.go`.
 
   **Why `public` is a bool, and not `horizon: local|public` or `horizons: [...]`** (settled July
   2026, after four passes over the naming — recorded here so it stops being re-litigated).
@@ -1084,16 +1070,11 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
   one-element case: `public: true` ≡ `horizons: [public]`, via the same accept-both-then-re-emit
   approach used for the manifest, import-line, and `public_paths` renames.
 
-  Gotcha this documents: a service can have a correct *internal* horizon (hemma did its job)
-  yet be publicly broken because the `cloudflare.io/hostname` label is missing — the FQDN then
-  falls back to the zone apex publicly (e.g. `auth.palmund.net` → `palmund.net`). The label is a
-  manual, per-service step that lives with the compose file, not with hemma; PUBLIC now makes
-  its absence *visible*, but fixing it is still a hand edit to the compose file.
-
-  Known limitation: ingress declared in cloudflared's own `config.yml` `ingress:` list instead of
-  by a compose label is invisible to this check, and such a service would read `local`. That is
-  accepted — on this homelab static ingress entries are considered legacy and should be migrated
-  to labels.
+  Remaining gotcha: a `public: true` service can still have a correct *internal* horizon (hemma
+  did its job) yet be publicly unreachable if `defaults.tunnel_dir` was never set — the ingress
+  entry is then never generated at all. Unlike the old label-based design this is no longer a
+  silent gap: it is ordinary generated-file drift (§6.4 check 3), so `doctor` reports it and
+  `doctor --fix` resolves it like any other missing file.
 
 - **No writing of the users database — deferred, designed (July 2026).** User→group membership
   (`users_database.yml`) is read-only to hemma today: `list` joins it, `doctor` cross-checks it,

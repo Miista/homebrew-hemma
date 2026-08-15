@@ -108,7 +108,7 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 		huh.NewSelect[string]().Title("host").Options(huh.NewOptions(hosts...)...).Value(&host),
 		huh.NewInput().Title("backend").Value(&backend),
 		huh.NewConfirm().Title("public").
-			Description("Reachable from the internet too? Records intent only — hemma never writes the tunnel's compose labels; 'hemma doctor' reports a mismatch either way.").
+			Description("Reachable from the internet too? Generates a tunnel ingress entry in this host's cloudflared config.yml (needs defaults.tunnel-dir set).").
 			Affirmative("public").Negative("local only").
 			Value(&public),
 		huh.NewConfirm().Title("disabled").

@@ -38,7 +38,7 @@ Flags:
       --auth-mode <mode>  How the service authenticates (default none):
                             none      no authentication.
                             forward   Authelia forward-auth — imports the (auth) snippet
-                                      (a gate); requires 'hemma set auth-snippet <path>'.
+                                      (a gate); requires 'hemma defaults set auth-snippet <path>'.
                             oidc      Authelia, but the app speaks OIDC itself — no gate,
                                       and hemma verifies an Authelia OIDC client exists.
                             external  authenticated by something that is NOT Authelia (the
@@ -53,8 +53,9 @@ Flags:
       --public            Opt this service into the public horizon: it is meant to be
                           reachable from the internet as well. Omit for local-only
                           (every service is reachable on the LAN either way).
-                          Intent only — hemma never writes the tunnel's compose
-                          labels; 'hemma doctor' reports if the intent is unmet.
+                          Generates a tunnel ingress entry in this host's cloudflared
+                          config.yml (needs defaults.tunnel-dir set — otherwise the
+                          entry is skipped and 'hemma doctor' flags the drift).
 
 Regenerates files immediately, then prints which hosts need 'hemma apply'.`},
 
@@ -90,10 +91,10 @@ Flags:
                           auth mode (forward or oidc).
       --auth[=false]      Back-compat shorthand: --auth = forward, --auth=false = none.
       --public            Opt into the public horizon (meant to be reachable from the
-                          internet as well); --public=false opts back out. Intent
-                          only — hemma never writes the tunnel's compose labels;
-                          'hemma doctor' reports a service that opted in but has no
-                          tunnel ingress backing it up.
+                          internet as well); --public=false opts back out. Generates
+                          a tunnel ingress entry in this host's cloudflared config.yml
+                          (needs defaults.tunnel-dir set — otherwise the entry is
+                          skipped and 'hemma doctor' flags the drift).
 
 Only the given flags change; regenerated files and apply-hints follow.`},
 
@@ -270,18 +271,14 @@ Usage: hemma list [--all]
 By default the services list is filtered to those running on THIS host
 (matched by local IP).
 
-The PUBLIC column says whether an FQDN is reachable from the internet ('yes')
-or is internal-only ('no'). hemma generates the internal horizon (Pi-hole record
-+ Caddy block); the public side is the tunnel's business, so this is read —
-never written — from the host's docker-compose.yml: a 'cloudflare.io/hostname'
-label whose value is the FQDN means yes, its absence means no. Set
-defaults.public_label in services.yaml to match another tunnel tool's label
-key, or to 'none' to drop the column. The column is also dropped when no host's
-compose file can be read; '?' marks one host whose compose is missing or
-unparseable, so a read failure is never reported as 'no'.
-
-PUBLIC reports what IS. To declare what SHOULD be, set 'public: true|false' on
-the service in services.yaml; 'hemma doctor' then reports any contradiction.
+The PUBLIC column echoes the service's declared 'public' field: 'yes' means
+hemma generates a tunnel ingress entry for the FQDN in this host's cloudflared
+config.yml (alongside the internal horizon — Pi-hole record + Caddy block);
+'no' means internal horizon only. This is a direct echo of the declaration,
+not an observation of foreign state — hemma is the sole author of config.yml,
+so there is nothing else to reconcile against. If defaults.tunnel-dir isn't
+set, a 'public: true' service has no config.yml entry generated for it yet;
+'hemma doctor' flags that drift.
 
 When any auth group exists, a Groups section follows the services table: the
 union of the auth provider's users database (user -> groups, read-only) and
@@ -357,35 +354,11 @@ advisory prints a headline (the consequence), the mechanism, and a fixed
 X_AUTHELIA_CONFIG value that wires the generated access-control file into
 the auth container) and the follow-up command (usually 'hemma apply').
 
-The public-horizon checks read each host's docker-compose.yml (never write it)
-and compare the tunnel-ingress labels against services.yaml. A service with
-'public: true' is meant to be reachable from the internet; without it, local
-only. In descending severity:
-
-  * AUTH BYPASS — a forward-auth service whose ingress points DIRECT at the
-    container. The tunnel never traverses Caddy, so the (auth) gate hemma
-    generated never runs and the service is publicly reachable with no
-    authentication. Counts as a problem.
-  * DECLARED BUT NOT SERVED — the service says 'public: true' and no tunnel
-    label backs that up: hemma wired the internal half, the public half was
-    never done. Counts as a problem.
-  * UNDECLARED EXPOSURE — the tunnel serves a service that never opted in. No
-    'public: true' means local-only, so the label exposed it without that being
-    written down anywhere — this is the accidental-exposure check. Grouped into
-    one advisory, since it fires in bulk when a repo first declares its existing
-    public surface. Counts as a problem, and 'doctor --fix' deliberately does
-    NOT resolve it: auto-adopting an observed label would silence the alarm in
-    exactly the case it exists for.
-  * ORPHAN INGRESS — a hostname served publicly in a managed domain with no
-    service entry, so hemma generated no split-horizon record for it. It still
-    works on the LAN, but by hairpin: the name resolves via public DNS, so
-    traffic leaves the network and comes back through the tunnel.
-    Informational; does not fail doctor.
-
-Each carries the exact label to add or remove. A missing or unparseable compose
-file yields no findings at all — absence of evidence is not evidence. Configure
-the label keys with defaults.public_label and defaults.public_proxy_label
-('none' disables either).
+There is no separate public-horizon check: hemma is the sole author of each
+host's cloudflared config.yml (generated from every service's 'public' field,
+same as the DNS/Caddy files), so a 'public: true' service with no matching
+config.yml entry — e.g. because defaults.tunnel-dir isn't set — surfaces as
+ordinary generated-file drift, the same as any other missing/orphaned file.
 
 The deploy-readiness check verifies each remote deploy target has a host key
 in THIS machine's known_hosts ('ssh-keygen -F' against the host's ip and its

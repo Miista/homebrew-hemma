@@ -320,7 +320,7 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 	// The single resolver host (defaults.dns_host) receives every DNS record.
 	dnsHostName := c.DNSHost()
 	if dnsHostName == "" {
-		return nil, "no dns_host set — run 'hemma set dns-host <name>'"
+		return nil, "no dns_host set — run 'hemma defaults set dns-host <name>'"
 	}
 	dnsM, ok := c.Hosts[dnsHostName]
 	if !ok {

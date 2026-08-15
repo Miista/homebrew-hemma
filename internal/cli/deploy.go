@@ -75,7 +75,7 @@ func cmdDeploy(repoRoot, cfgPath string, args []string) int {
 			where = fmt.Sprintf("%q", self)
 		}
 		errf("deploy_host is %q — refusing to deploy from %s.", dh, where)
-		hint("Run 'hemma deploy' on %s, or drop the restriction with 'hemma set deploy-host -'.", dh)
+		hint("Run 'hemma deploy' on %s, or drop the restriction with 'hemma defaults set deploy-host -'.", dh)
 		return 1
 	}
 	targets, err := resolveDeployTargets(cfg, self, args)

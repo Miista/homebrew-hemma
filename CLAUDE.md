@@ -105,33 +105,25 @@ instead of failing mid-reload; it refuses if the repo has drift.
 
 ## Scope boundary (do not cross)
 
-hemma manages the **internal horizon only** (Pi-hole record + Caddy block). It deliberately does not
-create or modify the **public horizon** (public DNS + tunnel ingress) — on this homelab that is
-a `cloudflare.io/hostname` label read by cloudflared-wrapper off the docker socket, and it lives in a
-hand-maintained `docker-compose.yml` hemma does not own. **Never write a compose file** — that line is
-absolute. See `design.md` §12 for the full rationale.
+**Update (commit `e49d8bb`, 2026-07-28): this section describes an architecture superseded in
+code.** hemma no longer reads a hand-maintained compose file's tunnel labels — it now **writes**
+each host's cloudflared `config.yml` directly (`internal/plan/plan.go`'s `planCloudflaredConfig`),
+generated from every service's `public` field the same way the Pi-hole/Caddy files are. `design.md`
+§12 and this section still describe the pre-`e49d8bb` label-reading design and need a rewrite;
+until that happens, treat the paragraphs below as **historical**, not current behavior, and prefer
+`internal/plan/plan.go`, `internal/cli/list.go`, and `internal/cli/gitignore.go` (its `checkDrift`
+call) as the source of truth.
 
-It does *report* on the public horizon, read-only: `list`'s **PUBLIC** column (`internal/cli/public_horizon.go`)
-parses each host's compose file for the `defaults.public_label` key (default `cloudflare.io/hostname`,
-`none` disables) and marks each service `yes` or `no`. The label key is configuration, not code,
-so the generator core stays tunnel-agnostic. An unreadable compose yields `?`, never `no`. This
-amends the original §12 absolute ("not even a read-only warning") — see the amendment note there.
-A service can still have a correct internal horizon yet be publicly broken; PUBLIC makes that visible
-but fixing it is a hand edit to the compose file.
+`public: true` on a service opts it into the public horizon; absent means local-only. hemma
+generates a tunnel ingress entry for it in the relevant host's `config.yml` (path set by
+`defaults.tunnel-dir`) alongside the DNS/Caddy files — same single-writer, same manifest-tracked
+GC. There is no longer a separate read-only "PUBLIC" observation to reconcile against a
+foreign file: `list`'s PUBLIC column is a direct echo of the declared field, and `doctor`'s
+generic drift check (`checkDrift`) covers a missing/orphaned `config.yml` entry the same way it
+covers any other generated file. The former **auth bypass** / **declared but not served** /
+**undeclared exposure** checks (that read compose tunnel labels) were removed along with the
+label-based design — there is no foreign file left to bypass or drift against.
 
-`public: true` on a service opts it into the public horizon; absent means local-only (a plain bool
-— locality is never in question, since every service is reachable on the LAN either directly or by
-hairpin). `doctor` adds three advisory-only checks over the same compose read
-(`internal/cli/doctor_public.go`), ALL scoped to services declared in services.yaml — hemma reports
-on what it manages, not on the tunnel's whole surface: **auth bypass** (a `forward`-auth service
-served direct from the tunnel bypasses Caddy and so the `(auth)` gate — the one real security
-check; uses `defaults.public_proxy_label`), **declared but not served** (`public: true`, no label),
-and **undeclared exposure** (a label on a declared service that never opted in — accidental
-exposure; grouped into one advisory because it fires in bulk on first adoption). All three fail
-doctor. (An "orphan ingress" check for hostnames with no service entry was removed as scope
-overreach — hemma should not report on what it does not manage.)
-
-Two deliberate refusals: the suggested label snippet is auth-aware, because emitting the
-direct form for a `forward`-auth service would have doctor recommending the very bypass the first
-check exists to catch; and `--fix` never writes `public: true` from an observed label, even though
-hemma owns services.yaml, because auto-adopting would silence the accidental-exposure alarm.
+**Never write a docker-compose.yml** is still absolute — that boundary is unaffected; the compose
+file it used to read (for tunnel labels) is simply no longer read either, since hemma owns
+`config.yml` outright instead.

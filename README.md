@@ -117,7 +117,7 @@ hemma add host resolver 192.0.2.1
 hemma add host appbox   192.0.2.2
 
 # 2. Choose the default resolver host (whose dnsmasq receives the records)
-hemma set dns-host resolver
+hemma defaults set dns-host resolver
 
 # 3. Declare the domains (hemma generates each one's TLS snippet on every host)
 hemma add domain example.com
@@ -128,7 +128,7 @@ hemma add service docs --fqdn docs.example.com --host appbox --backend paperless
 
 # 5. (optional) Put services behind the (auth) snippet
 #    Point at a Caddy file containing any auth directive (forward_auth, basic_auth, …), then opt services in.
-hemma set auth-snippet auth-snippet.caddy
+hemma defaults set auth-snippet auth-snippet.caddy
 hemma update service docs --auth-mode forward
 #    Or, for an app that does OIDC itself (hemma adds no gate, only validates the client):
 hemma update service app --auth-mode oidc
@@ -198,24 +198,19 @@ The `AUTH` column in `hemma list` shows the mode (`forward` / `oidc` / `external
 
 ### Local-only or also public? The `PUBLIC` column
 
-hemma generates the **internal** horizon — the Pi-hole record and the Caddy site block. Whether a
-name is *also* reachable from the internet is the tunnel's business, and hemma never writes that
-config. But it does read it, so `hemma list` can answer the question:
+hemma generates the **internal** horizon (Pi-hole record + Caddy site block) *and* the **public**
+horizon's ingress: for any service opted into `public: true`, it also writes the tunnel ingress
+entry into that host's cloudflared `config.yml`. `hemma list`'s `PUBLIC` column is a direct echo of
+the declared field — not an observation of some other foreign file — since hemma is the sole author
+of `config.yml`:
 
 ```
   NAME       FQDN                 HOST      BACKEND         AUTH     PUBLIC
-  paperless  docs.guldmund.dk     optiplex  paperless:8000  oidc     public
-  pihole     pihole.guldmund.dk   pi        …:8080          forward  local
+  paperless  docs.guldmund.dk     optiplex  paperless:8000  oidc     yes
+  pihole     pihole.guldmund.dk   pi        …:8080          forward  no
 ```
 
-`public` means the host's `docker-compose.yml` carries a `cloudflare.io/hostname` label whose value
-is that FQDN — the tunnel serves it and upserts its public DNS record. `local` means no such label:
-the name resolves only inside the LAN. Matching is by FQDN, not container name, since the label often
-sits on the Caddy container rather than the app's.
-
-### Declaring intent, and what `doctor` checks
-
-The `PUBLIC` column reports what **is**. To say what **should be**, opt a service in:
+### Declaring intent
 
 ```sh
 hemma update service wiki --public        # meant to be reachable from the internet too
@@ -228,7 +223,7 @@ which records:
 services:
   wiki:
     public: true      # meant to be public as well
-  pihole:             # no key = local only, and a label on it is a doctor finding
+  pihole:             # no key = local only
 ```
 
 There is no value for "local", because locality is never in question: every service is reachable
@@ -236,42 +231,11 @@ on the LAN either way — directly via its Pi-hole record, or by hairpin through
 there is no "public but not local", since a declared service always gets both a Pi-hole record and
 a Caddy block. So `public` is a plain opt-in: set, or not set.
 
-`hemma doctor` then runs three read-only checks over the compose files:
-
-| Check | What it catches | Fails doctor |
-|---|---|---|
-| **Auth bypass** | A `forward`-auth service whose ingress points **direct at the container**. The tunnel never traverses Caddy, so the `(auth)` gate never runs and the service is public with **no authentication**. | yes |
-| **Declared but not served** | `public: true` with no tunnel label backing it — hemma wired the internal half, the public half was never done. | yes |
-| **Undeclared exposure** | A label on a service that never opted in. No `public: true` means local-only, so the label exposed it without that being written down — **this is the accidental-exposure check.** | yes |
-
-**Adopting `public` means declaring your existing public surface once.** Until you do, the
-undeclared-exposure check reports every already-exposed service — grouped into a single advisory
-with the commands to run. That is the cost of the field meaning something: once absent genuinely
-means "should be local", a label appearing on `pihole` is a finding rather than a shrug.
-
-`doctor --fix` deliberately does **not** resolve it, even though the fix (`public: true`) is to
-`services.yaml`, a file hemma owns and could safely write. Auto-adopting an observed label would
-silence the alarm in exactly the case it exists for — a label nobody meant to add. So the advisory
-offers removing the label *first*, and declaring second.
-
-Each advisory carries the exact label to add, and the suggested snippet is **auth-aware**: a
-`forward`-auth service is told to route through Caddy, because the direct form would create the
-auth bypass of the first check. A missing or unparseable compose file produces no findings at all —
-absence of evidence is not evidence.
-
-Point it at another tunnel tool by setting the label key in `services.yaml`:
-
-```yaml
-defaults:
-  public_label: my.tunnel/host             # or 'none' to drop the column entirely
-  public_proxy_label: my.tunnel/via-proxy  # the "routed via a proxy" label, for the
-                                           # auth-bypass check ('none' disables just that check)
-```
-
-The column is dropped when no host's compose file can be read (nothing useful to say), and an
-individual host whose compose is missing or unparseable shows `?` — a read failure is never
-reported as `local`. Ingress declared in cloudflared's own `config.yml` rather than by a label is
-not detected.
+The ingress entry is only written once `defaults.tunnel_dir` is set (`hemma defaults set
+tunnel-dir <dir>`, the path each host's cloudflared container mounts as `/etc/cloudflared`); until
+then a `public: true` service has no generated `config.yml` entry, and `hemma doctor`'s ordinary
+generated-file drift check flags the gap — there is no separate public-horizon check, since
+`config.yml` is tracked and reconciled exactly like any other generated file.
 
 **Back-compat:** a legacy `auth: true` in services.yaml still parses (as `forward`) and is
 re-emitted as `auth: forward` on the next mutation; `auth: false`/absent = `none`.
@@ -309,7 +273,7 @@ its contents. This section works through the common case: putting services behin
 provider (Authelia, Authentik, oauth2-proxy, …). The design keeps one shared,
 substitution-free snippet for the whole fleet:
 
-- **`defaults.auth_snippet`** (`hemma set auth-snippet <path>`) points at a Caddy file whose
+- **`defaults.auth_snippet`** (`hemma defaults set auth-snippet <path>`) points at a Caddy file whose
   contents are your `forward_auth` block. Its body is copied verbatim into a generated
   **`caddy/data/hemma.auth.generated.caddy`** on *every* host, wrapped as a Caddy snippet named
   `(auth)` and imported before the site blocks. Because the target is a **public FQDN**
@@ -336,7 +300,7 @@ forward_auth https://auth.example.com {
 }
 ```
 
-`hemma set auth-snippet auth-snippet.caddy` generates on every host:
+`hemma defaults set auth-snippet auth-snippet.caddy` generates on every host:
 
 ```
 # <host>/caddy/data/hemma.auth.generated.caddy
@@ -489,7 +453,7 @@ domains:
   - example.net
 
 defaults:
-  dns_host: resolver          # the single resolver host (set via: hemma set dns-host)
+  dns_host: resolver          # the single resolver host (set via: hemma defaults set dns-host)
   auth_snippet: auth-snippet.caddy   # optional; auth directive copied into (auth) on every host
 
 services:
