@@ -101,7 +101,10 @@ the Caddy half (validate + reload) only on a host running Caddy; `apply` additio
 (provider `ApplyCommands`: validate then restart the auth container) that runs only on the host running
 the non-disabled `auth_service`. Neither command SSHes elsewhere — run on each host.
 `apply` runs `caddy validate` **before** `caddy reload` so a missing/wrong cert aborts with a clear error
-instead of failing mid-reload; it refuses if the repo has drift.
+instead of failing mid-reload; it refuses if the repo has drift, and also if this host's Caddyfile
+does not import `hemma.trusted_proxies.generated.caddy` (design §4.7 — hemma authors that trust
+boundary, so it refuses to reload a Caddy that would silently ignore it; `doctor` only advises
+there, since the global options block it belongs in is hand-maintained).
 
 ## Scope boundary (do not cross)
 
