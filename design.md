@@ -504,7 +504,8 @@ so trusting the whole declared fleet as legitimate proxy sources is a deliberate
 narrower trust boundary than trusting an entire subnet (see the rejected alternative below). A
 host's own `hosts.<name>.trusted_proxies: [ip/cidr, …]` list is appended on top of that base —
 typically just that host's own Cloudflare Tunnel daemon's container IP, the one non-host proxy
-in the chain:
+in the chain. Set it with `--trusted-proxies` on `add`/`update host`, or in `update host`'s
+interactive editor (§6.2):
 
 ```yaml
 hosts:
@@ -706,8 +707,9 @@ pointing at `add` and exit non-zero. `add` is exempt — it creates `services.ya
 ### 6.2 Building-block commands (host, domain) and `defaults set`
 
 ```
-hemma add    host   <name> <ip> [--ssh <dest>]
-hemma update host   <name> [--ip <ip>] [--ssh <dest>]
+hemma add    host   <name> <ip> [--ssh <dest>] [--trusted-proxies <ip,cidr,...>]
+hemma update host   <name> [--ip <ip>] [--ssh <dest>] [--trusted-proxies <ip,cidr,...>]
+                    (zero flags → interactive editor)
 hemma remove host   <name>
 hemma add    domain <name>
 hemma remove domain <name>
@@ -729,10 +731,20 @@ hemma defaults set tunnel-dir   <dir>           ('-' clears)
   (the host name). Reconcile mode by mutation shape: a **changed ip** syncs **Complete** (every
   DNS record embedding the ip is rewritten, orphans GC'd); an ssh-only change touches nothing
   generated, so **Incremental** suffices.
-- `hosts.<name>.trusted_proxies` (§4.7) has no CLI mutation command yet — it is hand-edited
-  directly in `services.yaml` (a plain YAML string list), same as any other field this tool
-  hasn't grown a dedicated flag for. The next `hemma add`/`update`/`sync` invocation regenerates
-  `hemma.trusted_proxies.generated.caddy` from whatever is on disk regardless of how it got there.
+- **`--trusted-proxies <ip,cidr,...>`** on both `add host` and `update host` sets
+  `hosts.<name>.trusted_proxies` (§4.7) — the EXTRA trusted peers for that host, on top of every
+  declared host's ip, which is trusted automatically. Comma-separated, deduped, order preserved;
+  `''` clears. Each entry must parse as a bare IP or a CIDR, validated **before** the YAML is
+  touched: this is a trust boundary, so a typo that would silently widen or void it is a usage
+  error, not a generated Caddy directive. A changed list syncs **Complete** (every host's
+  generated trusted-proxies file embeds every declared host's ip, so all of them are rewritten).
+- **`update host` with zero flags** opens an interactive editor (terminal only), pre-filled with
+  the host's current ip / ssh / trusted_proxies — the same zero-flags convention as
+  `update service` (§6.1), and the same strict split: the editor only collects fields and funnels
+  through `persistUpdatedHost`, the shared tail the flags form uses, so validation and sync mode
+  cannot diverge between the two entry points. The trusted-proxies field takes one entry per line
+  and names the already-automatic host IPs in its description, so the field is not mistaken for
+  the whole trust list.
 - **`add domain <name>`**: name only; the TLS snippet name and cert path are derived (§4.3).
   Fails loud if the domain exists.
 - **`defaults set dns-host <name>`**: sets `defaults.dns_host`. The named host must already exist.
