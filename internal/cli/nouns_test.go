@@ -467,9 +467,10 @@ func TestHostUpdate_Validation(t *testing.T) {
 	if code := Run([]string{"-C", dir, "update", "host", "ghost", "--ip", "192.0.2.9"}); code != 1 {
 		t.Errorf("update of unknown host should exit 1, got %d", code)
 	}
-	// No flags is a usage error.
+	// No flags routes to the interactive editor, which is TTY-gated — under
+	// `go test` stdin is not a terminal, so it refuses rather than hanging.
 	if code := Run([]string{"-C", dir, "update", "host", "appbox"}); code != 2 {
-		t.Errorf("update host without flags should exit 2, got %d", code)
+		t.Errorf("update host without flags should exit 2 (no TTY), got %d", code)
 	}
 	// Invalid ip refused before persisting.
 	if code := Run([]string{"-C", dir, "update", "host", "appbox", "--ip", "not-an-ip"}); code != 2 {
@@ -481,6 +482,86 @@ func TestHostUpdate_Validation(t *testing.T) {
 	}
 	if got := load(t, dir).Hosts["appbox"].IP; got != "192.0.2.2" {
 		t.Errorf("failed updates must not persist, ip is %q", got)
+	}
+}
+
+// --trusted-proxies round-trips through add and update, and reaches the
+// generated per-host trusted-proxies file (design §4.7).
+func TestHost_TrustedProxiesFlag(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+
+	if code := Run([]string{"-C", dir, "update", "host", "appbox", "--trusted-proxies", "172.18.0.12/32,10.9.9.9"}); code != 0 {
+		t.Fatalf("update host --trusted-proxies should exit 0, got %d", code)
+	}
+	got := load(t, dir).Hosts["appbox"].TrustedProxies
+	want := []string{"172.18.0.12/32", "10.9.9.9"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("trusted_proxies = %v, want %v", got, want)
+	}
+
+	// It lands in the generated file, alongside the always-trusted host IPs.
+	b, err := os.ReadFile(filepath.Join(dir, "appbox", config.DefaultCaddyDataDir, "hemma.trusted_proxies.generated.caddy"))
+	if err != nil {
+		t.Fatalf("generated file missing: %v", err)
+	}
+	for _, want := range []string{"172.18.0.12/32", "10.9.9.9", "192.0.2.1/32", "192.0.2.2/32"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("generated file missing %q:\n%s", want, string(b))
+		}
+	}
+
+	// '' clears the extras; the automatic host-IP base list remains.
+	if code := Run([]string{"-C", dir, "update", "host", "appbox", "--trusted-proxies", ""}); code != 0 {
+		t.Fatalf("clearing should exit 0, got %d", code)
+	}
+	if got := load(t, dir).Hosts["appbox"].TrustedProxies; len(got) != 0 {
+		t.Errorf("'' should clear trusted_proxies, got %v", got)
+	}
+	b, _ = os.ReadFile(filepath.Join(dir, "appbox", config.DefaultCaddyDataDir, "hemma.trusted_proxies.generated.caddy"))
+	if strings.Contains(string(b), "172.18.0.12") {
+		t.Errorf("cleared entry still generated:\n%s", string(b))
+	}
+	if !strings.Contains(string(b), "192.0.2.2/32") {
+		t.Errorf("host-IP base list should survive clearing:\n%s", string(b))
+	}
+}
+
+// A malformed entry is refused before the YAML is touched — this is a trust
+// boundary, so a typo must not reach a generated Caddy directive.
+func TestHost_TrustedProxiesValidation(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+	for _, bad := range []string{"nonsense", "10.0.0.0/99", "10.0.0.1/", "1.2.3"} {
+		if code := Run([]string{"-C", dir, "update", "host", "appbox", "--trusted-proxies", bad}); code != 2 {
+			t.Errorf("--trusted-proxies %q should exit 2, got %d", bad, code)
+		}
+		if got := load(t, dir).Hosts["appbox"].TrustedProxies; len(got) != 0 {
+			t.Fatalf("%q must not persist, got %v", bad, got)
+		}
+	}
+	// add host validates the same way, before creating anything.
+	mkdirs(t, dir, "newbox")
+	if code := Run([]string{"-C", dir, "add", "host", "newbox", "192.0.2.7", "--trusted-proxies", "nope"}); code != 2 {
+		t.Errorf("add host with a bad --trusted-proxies should exit 2, got %d", code)
+	}
+	if _, exists := load(t, dir).Hosts["newbox"]; exists {
+		t.Error("add host must not persist when --trusted-proxies is invalid")
+	}
+}
+
+func TestSummarizeHostChanges(t *testing.T) {
+	old := config.Host{IP: "10.0.0.1", SSH: "pi", TrustedProxies: []string{"172.18.0.6/32"}}
+	if lines := summarizeHostChanges(old, old); len(lines) != 0 {
+		t.Errorf("identical hosts should produce no lines, got %v", lines)
+	}
+	next := config.Host{IP: "10.0.0.2", TrustedProxies: []string{"172.18.0.6/32", "172.18.0.9/32"}}
+	lines := summarizeHostChanges(old, next)
+	joined := strings.Join(lines, "\n")
+	for _, want := range []string{"ip: 10.0.0.1 -> 10.0.0.2", "ssh: pi -> (unset)", "trusted_proxies:"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("summary missing %q:\n%s", want, joined)
+		}
 	}
 }
 

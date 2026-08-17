@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"hemma/internal/config"
@@ -35,12 +36,17 @@ func hostAdd(cfgPath string, args []string) int {
 	name, ip := args[0], args[1]
 	fs := flag.NewFlagSet("add host", flag.ContinueOnError)
 	sshDest := fs.String("ssh", "", "ssh(1) destination for 'hemma deploy' (defaults to the host name)")
+	trusted := fs.String("trusted-proxies", "", "comma-separated extra trusted proxy IPs/CIDRs (e.g. this host's cloudflared container)")
 	if err := fs.Parse(args[2:]); err != nil {
 		return 2
 	}
 
 	if net.ParseIP(ip) == nil {
 		errf("%q is not a valid IP address.", ip)
+		return 2
+	}
+	proxies, ok := parseTrustedProxies(*trusted)
+	if !ok {
 		return 2
 	}
 
@@ -72,8 +78,10 @@ func hostAdd(cfgPath string, args []string) int {
 	}
 	// Dir is left empty; it defaults to the host name (config.Host.ResolvedDir).
 	// SSH is set only when --ssh was passed; empty defaults to the host name
-	// (config.Host.SSHDest).
-	cfg.Hosts[name] = config.Host{IP: ip, SSH: *sshDest}
+	// (config.Host.SSHDest). TrustedProxies is additive on top of every
+	// declared host's ip, which is trusted automatically (design §4.7), so an
+	// empty list is the correct default rather than a gap.
+	cfg.Hosts[name] = config.Host{IP: ip, SSH: *sshDest, TrustedProxies: proxies}
 	if err := cfg.Save(); err != nil {
 		errf("%v", err)
 		return 1
@@ -130,33 +138,45 @@ func hostUpdate(cfgPath string, args []string) int {
 	name, args, ok := leadingName(args)
 	if !ok {
 		errf("Missing the <name>.")
-		hint("Usage: hemma update host <name> [--ip <ip>] [--ssh <dest>]")
+		hint("Usage: hemma update host <name> [--ip <ip>] [--ssh <dest>] [--trusted-proxies <list>]")
 		return 2
 	}
 	fs := flag.NewFlagSet("update host", flag.ContinueOnError)
 	ip := fs.String("ip", "", "new ip address")
 	sshDest := fs.String("ssh", "", "new ssh(1) destination ('-' or '' clears it back to the host name)")
+	trusted := fs.String("trusted-proxies", "", "comma-separated extra trusted proxy IPs/CIDRs ('' clears)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	ipSet, sshSet := false, false
+	// Zero flags → the interactive editor (TTY-gated; a non-terminal stdin is
+	// refused there), matching `update service`. Any flag keeps the flags path.
+	changed := 0
+	fs.Visit(func(*flag.Flag) { changed++ })
+	if changed == 0 {
+		return hostUpdateInteractive(cfgPath, name)
+	}
+	ipSet, sshSet, trustedSet := false, false, false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "ip":
 			ipSet = true
 		case "ssh":
 			sshSet = true
+		case "trusted-proxies":
+			trustedSet = true
 		}
 	})
-	if !ipSet && !sshSet {
-		errf("Nothing to update — pass --ip and/or --ssh.")
-		hint("Usage: hemma update host <name> [--ip <ip>] [--ssh <dest>]")
-		return 2
-	}
 	// Validate the ip shape BEFORE touching the YAML (validate-before-persist).
 	if ipSet && net.ParseIP(*ip) == nil {
 		errf("%q is not a valid IP address.", *ip)
 		return 2
+	}
+	var proxies []string
+	if trustedSet {
+		proxies, ok = parseTrustedProxies(*trusted)
+		if !ok {
+			return 2
+		}
 	}
 
 	cfg, code := loadExisting(cfgPath, "update a host in")
@@ -168,7 +188,6 @@ func hostUpdate(cfgPath string, args []string) int {
 		errf("Host %q does not exist.", name)
 		return 1
 	}
-	mode := syncpkg.Incremental
 	if ipSet {
 		// A LAN IP identifies exactly one host (same rule as add host).
 		for n, other := range cfg.Hosts {
@@ -176,11 +195,6 @@ func hostUpdate(cfgPath string, args []string) int {
 				errf("IP %s is already used by host %q.", *ip, n)
 				return 1
 			}
-		}
-		if h.IP != *ip {
-			// The ip feeds every DNS record targeting this host; rewrite them
-			// all and GC anything orphaned, leaving the repo clean.
-			mode = syncpkg.Complete
 		}
 		h.IP = *ip
 	}
@@ -192,13 +206,62 @@ func hostUpdate(cfgPath string, args []string) int {
 			h.SSH = *sshDest
 		}
 	}
-	cfg.Hosts[name] = h
+	if trustedSet {
+		h.TrustedProxies = proxies
+	}
+	return persistUpdatedHost(cfgPath, cfg, name, h)
+}
+
+// persistUpdatedHost is the shared tail of `update host`: both the flags form
+// (hostUpdate) and the interactive editor funnel through it, so the sync-mode
+// rule below cannot diverge between the two entry points.
+//
+// Sync mode by mutation shape (matching the other host mutations): a changed
+// ip rewrites every DNS record pointing at the host, and changed
+// trusted_proxies rewrites every host's generated trusted-proxies file (each
+// one embeds every declared host's ip), so both sync Complete; an ssh-only
+// change touches nothing generated, so Incremental (a no-op reconcile).
+func persistUpdatedHost(cfgPath string, cfg *config.Config, name string, updated config.Host) int {
+	mode := syncpkg.Incremental
+	old := cfg.Hosts[name]
+	if old.IP != updated.IP || !slices.Equal(old.TrustedProxies, updated.TrustedProxies) {
+		mode = syncpkg.Complete
+	}
+	cfg.Hosts[name] = updated
 	if err := cfg.Save(); err != nil {
 		errf("%v", err)
 		return 1
 	}
 	fmt.Printf(tick+" Updated host %q\n", name)
 	return runSync(filepath.Dir(cfgPath), cfg, mode)
+}
+
+// parseTrustedProxies splits and validates a comma-separated trusted-proxies
+// list. Each entry must be a bare IP or a CIDR — this is a trust boundary
+// (design §4.7), so a typo that would silently widen or void it is refused
+// here rather than written into a generated Caddy directive. An empty string
+// clears the list.
+func parseTrustedProxies(s string) ([]string, bool) {
+	var out []string
+	for _, raw := range strings.Split(s, ",") {
+		e := strings.TrimSpace(raw)
+		if e == "" {
+			continue
+		}
+		if strings.Contains(e, "/") {
+			if _, _, err := net.ParseCIDR(e); err != nil {
+				errf("%q is not a valid CIDR.", e)
+				return nil, false
+			}
+		} else if net.ParseIP(e) == nil {
+			errf("%q is not a valid IP address or CIDR.", e)
+			return nil, false
+		}
+		if !slices.Contains(out, e) {
+			out = append(out, e)
+		}
+	}
+	return out, true
 }
 
 func domainAdd(cfgPath string, args []string) int {

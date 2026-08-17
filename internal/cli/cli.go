@@ -1157,8 +1157,11 @@ Services (an app reached at an fqdn, on a host, under a domain):
                                  already exists, or if <old> is the configured auth_service (see 'defaults set auth-service').
 
 Building blocks (a service references a host and a domain):
-  hemma add    host   <name> <ip> [--ssh <dest>]
-  hemma update host   <name> [--ip <ip>] [--ssh <dest>]
+  hemma add    host   <name> <ip> [--ssh <dest>] [--trusted-proxies <ip,cidr,...>]
+  hemma update host   <name> [--ip <ip>] [--ssh <dest>] [--trusted-proxies <ip,cidr,...>]
+                                 With no flags: an interactive editor (terminal only), pre-filled with current values.
+                                 --trusted-proxies lists EXTRA trusted proxies (e.g. this host's cloudflared
+                                 container); every declared host's ip is trusted automatically. '' clears.
   hemma remove host   <name>
   hemma add    domain <name>
   hemma remove domain <name>
