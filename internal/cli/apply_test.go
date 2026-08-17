@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"hemma/internal/config"
+	"hemma/internal/render"
 )
 
 // captureStderr runs f with os.Stderr redirected to a pipe and returns what
@@ -82,6 +83,56 @@ func TestRunQuietIn_EmptyDirMatchesRunQuiet(t *testing.T) {
 // hostHasPublicService mirrors planComposeOverrides' own condition: true iff
 // that host's docker-compose.override.yml exists on disk (the file is omitted
 // entirely for a host with no public: true service, never written empty).
+// apply refuses to reload a Caddy whose generated trust boundary (§4.7) is
+// never imported — hemma authored that file, so it must actually take effect.
+// This covers the decision helper; cmdApply's own docker calls are untestable
+// here, same as the rest of apply's phases.
+func TestCaddyfileMissingTrustedProxiesImport(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{Hosts: map[string]config.Host{"appbox": {IP: "192.0.2.2", Dir: "appbox"}}}
+	cfDir := filepath.Join(dir, "appbox", config.DefaultCaddyDataDir)
+	if err := os.MkdirAll(cfDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfPath := filepath.Join(cfDir, "Caddyfile")
+
+	// Import absent -> missing.
+	os.WriteFile(cfPath, []byte("import hemma.generated.caddy\n"), 0o644)
+	missing, err := caddyfileMissingTrustedProxiesImport(dir, cfg, "appbox")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !missing {
+		t.Error("Caddyfile without the import should report missing")
+	}
+
+	// Import present (inside a servers block, the real shape) -> satisfied.
+	os.WriteFile(cfPath, []byte("{\n\tservers {\n\t\timport "+render.TrustedProxiesFilename+"\n\t}\n}\n"), 0o644)
+	missing, err = caddyfileMissingTrustedProxiesImport(dir, cfg, "appbox")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if missing {
+		t.Error("Caddyfile with the import should not report missing")
+	}
+
+	// No Caddyfile at all -> not this check's problem (the reload fails on its
+	// own with a clearer error).
+	os.Remove(cfPath)
+	missing, err = caddyfileMissingTrustedProxiesImport(dir, cfg, "appbox")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if missing {
+		t.Error("absent Caddyfile should not be reported as missing the import")
+	}
+
+	// Unknown host -> nothing to check.
+	if missing, err := caddyfileMissingTrustedProxiesImport(dir, cfg, "ghost"); err != nil || missing {
+		t.Errorf("unknown host should be a no-op, got missing=%v err=%v", missing, err)
+	}
+}
+
 func TestHostHasPublicService(t *testing.T) {
 	dir := listSetup(t, "")
 	if code := Run([]string{"-C", dir, "defaults", "set", "tunnel-dir", "cloudflared"}); code != 0 {

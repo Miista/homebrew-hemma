@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"hemma/internal/config"
 )
 
 func gitInit(t *testing.T, dir string) {
@@ -124,6 +126,86 @@ func writeAuthComposeFixture(t *testing.T, dir, composeYAML string) {
 	mkdirs(t, dir, "appbox")
 	if err := os.WriteFile(filepath.Join(dir, "appbox", "docker-compose.yml"), []byte(composeYAML), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The check reports the missing import (its return value is the count), but
+// cmdDoctor deliberately does NOT add it to the exit-code tally — see the
+// call site. Enforcement is apply's job (TestApply-side coverage below).
+func TestCheckTrustedProxiesImport_MissingReportsProblem(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "appbox", config.DefaultCaddyDataDir), 0o755)
+	os.WriteFile(filepath.Join(dir, "appbox", config.DefaultCaddyDataDir, "Caddyfile"),
+		[]byte("import hemma.generated.caddy\n"), 0o644)
+	cfg := &config.Config{Hosts: map[string]config.Host{"appbox": {IP: "192.0.2.2"}}}
+
+	if got := checkTrustedProxiesImport(dir, cfg, false); got != 1 {
+		t.Fatalf("expected 1 reported problem for missing import, got %d", got)
+	}
+}
+
+// The advisory must not break `doctor --fix`'s ability to reach a clean exit:
+// hemma cannot write the hand-maintained global options block, so a missing
+// import is reported but never counted toward the exit code.
+func TestDoctor_TrustedProxiesImportDoesNotBlockCleanExit(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+	seed(t, dir)
+	// No Caddyfile carries the trusted-proxies import, yet doctor --fix must
+	// still be able to exit 0 once everything it CAN fix is fixed.
+	if code := Run([]string{"-C", dir, "doctor", "--fix"}); code != 0 {
+		t.Fatalf("doctor --fix exit = %d, want 0 (trusted-proxies advisory must not gate)", code)
+	}
+}
+
+func TestCheckTrustedProxiesImport_PresentIsSilent(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "appbox", config.DefaultCaddyDataDir), 0o755)
+	os.WriteFile(filepath.Join(dir, "appbox", config.DefaultCaddyDataDir, "Caddyfile"),
+		[]byte("{\n\tservers {\n\t\timport hemma.trusted_proxies.generated.caddy\n\t}\n}\n"), 0o644)
+	cfg := &config.Config{Hosts: map[string]config.Host{"appbox": {IP: "192.0.2.2"}}}
+
+	if got := checkTrustedProxiesImport(dir, cfg, false); got != 0 {
+		t.Fatalf("expected 0 problems when import present, got %d", got)
+	}
+}
+
+// The check is REPORT-ONLY: --fix must never touch the Caddyfile, because the
+// global options block the import belongs in is hand-maintained territory
+// (Caddy allows exactly one per file). The finding still surfaces on every
+// mutation, so it stays discoverable without hemma editing that block.
+func TestCheckTrustedProxiesImport_FixNeverEditsCaddyfile(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content string
+	}{
+		{"no global block", "import hemma.generated.caddy\n"},
+		{"existing global block", "{\n\tdebug\n}\n\nimport hemma.generated.caddy\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			os.MkdirAll(filepath.Join(dir, "appbox", config.DefaultCaddyDataDir), 0o755)
+			cfPath := filepath.Join(dir, "appbox", config.DefaultCaddyDataDir, "Caddyfile")
+			os.WriteFile(cfPath, []byte(tc.content), 0o644)
+			cfg := &config.Config{Hosts: map[string]config.Host{"appbox": {IP: "192.0.2.2"}}}
+
+			// Still a problem in --fix mode: it is not mechanically fixable.
+			if got := checkTrustedProxiesImport(dir, cfg, true); got != 1 {
+				t.Fatalf("expected the problem to persist under --fix, got %d", got)
+			}
+			b, _ := os.ReadFile(cfPath)
+			if string(b) != tc.content {
+				t.Fatalf("--fix must not modify the Caddyfile:\n got: %q\nwant: %q", string(b), tc.content)
+			}
+		})
+	}
+}
+
+func TestCheckTrustedProxiesImport_NoCaddyfileSkipped(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{Hosts: map[string]config.Host{"appbox": {IP: "192.0.2.2"}}}
+	if got := checkTrustedProxiesImport(dir, cfg, false); got != 0 {
+		t.Fatalf("host with no Caddyfile should be skipped, got %d problems", got)
 	}
 }
 

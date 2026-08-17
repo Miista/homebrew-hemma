@@ -176,6 +176,13 @@ type Host struct {
 	// owns that machinery. Empty means the host's NAME is the destination
 	// (consistent with the name == repo-dir convention).
 	SSH string `yaml:"ssh,omitempty"`
+	// TrustedProxies is an optional list of extra IPs/CIDRs this host's Caddy
+	// should trust for forwarded-header client-IP resolution (Caddyfile's
+	// global servers > trusted_proxies option), beyond every other declared
+	// host's IP (trusted automatically — see render.TrustedProxiesSnippet).
+	// Typically just this host's own cloudflared container IP. Empty means
+	// only the other hosts are trusted.
+	TrustedProxies []string `yaml:"trusted_proxies,omitempty"`
 }
 
 // ResolvedDir returns the host's repo directory: the explicit Dir if set,

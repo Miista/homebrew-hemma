@@ -91,6 +91,31 @@ func cmdApply(repoRoot, cfgPath string, args []string) int {
 	if runsCaddy || authValidate != nil {
 		fmt.Printf("\n%s== Validate (%s) ==%s\n", boldOn, self, boldOff)
 		if runsCaddy {
+			// hemma AUTHORED this host's trusted_proxies content (§4.7) — a
+			// trust boundary derived from services.yaml, not user-supplied
+			// content hemma merely relays like the (auth) snippet. An
+			// unimported trusted-proxies file is therefore hemma asserting a
+			// security posture that is not in effect, while every other signal
+			// (sync succeeded, no drift, caddy validate passes — an unimported
+			// file is not a Caddy error) says all is well. That silence is the
+			// whole hazard, so it refuses HERE rather than only warning in
+			// doctor: if hemma generates the file, hemma makes it count.
+			if missing, err := caddyfileMissingTrustedProxiesImport(repoRoot, cfg, self); err != nil {
+				fmt.Printf("  "+cross+" could not read this host's Caddyfile: %v\n", err)
+				fmt.Println()
+				errf("Validation failed — nothing was restarted or reloaded.")
+				return 1
+			} else if missing {
+				fmt.Printf("  "+cross+" Caddyfile does not import %s\n", render.TrustedProxiesFilename)
+				fmt.Printf("      hemma generated this host's trusted_proxies config, but Caddy never loads it —\n")
+				fmt.Printf("      client IPs would resolve to the nearest proxy, silently voiding any\n")
+				fmt.Printf("      source-IP-based auth rule. Add it inside your global options block:\n")
+				fmt.Printf("        {\n            servers {\n                import %s\n            }\n        }\n", render.TrustedProxiesFilename)
+				fmt.Println()
+				errf("Validation failed — nothing was restarted or reloaded.")
+				return 1
+			}
+			fmt.Printf("  "+tick+" Caddyfile imports %s\n", render.TrustedProxiesFilename)
 			// Validate provisions the TLS app, so a missing cert fails HERE
 			// rather than during the reload (verified: caddy v2.11 validate exit 1).
 			if !runQuiet("docker", "exec", caddyContainer, "caddy", "validate", "--config", cf, "--adapter", "caddyfile") {
@@ -181,6 +206,30 @@ func hostRunsCaddy(cfg *config.Config, host string) bool {
 		}
 	}
 	return false
+}
+
+// caddyfileMissingTrustedProxiesImport reports whether host's Caddyfile in the
+// checkout lacks the `import hemma.trusted_proxies.generated.caddy` line that
+// puts hemma's generated trust boundary (§4.7) into effect. A Caddyfile that
+// does not exist is NOT reported missing-the-import: there is no Caddy config
+// for apply to make live in that case, and the reload step would fail on its
+// own with a clearer error. Read-only, same repo path doctor checks — apply
+// never edits the Caddyfile (the global options block it belongs in is
+// hand-maintained; hemma only insists the line is there).
+func caddyfileMissingTrustedProxiesImport(repoRoot string, cfg *config.Config, host string) (bool, error) {
+	h, ok := cfg.Hosts[host]
+	if !ok {
+		return false, nil
+	}
+	cfPath := filepath.Join(repoRoot, h.ResolvedDir(host), config.DefaultCaddyDataDir, "Caddyfile")
+	data, err := os.ReadFile(cfPath)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return !strings.Contains(string(data), "import "+render.TrustedProxiesFilename), nil
 }
 
 // hostHasPublicService reports whether host has a cloudflared config.yml on

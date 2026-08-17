@@ -195,7 +195,38 @@ func Build(c *config.Config) *Plan {
 	// IsSyntheticOwner treat it uniformly.
 	planCloudflaredConfig(c, p)
 
+	// hemma.trusted_proxies.generated.caddy per host: every declared host's
+	// IP, trusted automatically, plus that host's own extra trusted_proxies
+	// (typically its cloudflared container IP). Always planned, like the auth
+	// snippet — the trust boundary is establishable the moment any host
+	// exists, not conditional on any service opting in.
+	planTrustedProxies(c, p)
+
 	return p
+}
+
+// planTrustedProxies emits one hemma.trusted_proxies.generated.caddy per
+// host: the base list is every declared host's IP (every host in
+// services.yaml is hemma-managed infra, so all are trusted proxy sources by
+// default — design rationale: the real spoofing risk is an arbitrary
+// container on a shared bridge network, not another declared host), plus
+// that host's own Host.TrustedProxies additions (typically just its local
+// cloudflared container IP). One key per host, synthetic-owner tracked like
+// cloudflaredConfigOwnerPrefix, so GC removes it if the host itself is removed.
+func planTrustedProxies(c *config.Config, p *Plan) {
+	var baseIPs []string
+	for _, h := range c.Hosts {
+		if h.IP != "" {
+			baseIPs = append(baseIPs, h.IP+"/32")
+		}
+	}
+	sort.Strings(baseIPs)
+	for hostName, h := range c.Hosts {
+		ips := append(append([]string{}, baseIPs...), h.TrustedProxies...)
+		path := filepath.Join(h.ResolvedDir(hostName), config.DefaultCaddyDataDir, render.TrustedProxiesFilename)
+		key := trustedProxiesOwnerPrefix + hostName
+		p.Files[key] = []File{{Path: path, Content: render.TrustedProxiesSnippet(ips)}}
+	}
 }
 
 // planAccessControl asks the auth provider for its access-control artifact
@@ -384,12 +415,23 @@ func IsCloudflaredConfigOwner(key string) bool {
 	return strings.HasPrefix(key, cloudflaredConfigOwnerPrefix)
 }
 
+// trustedProxiesOwnerPrefix marks synthetic manifest/plan keys that own a
+// host's hemma.trusted_proxies.generated.caddy (one key per host: prefix +
+// host name), mirroring cloudflaredConfigOwnerPrefix's per-host shape.
+const trustedProxiesOwnerPrefix = "@trusted-proxies:"
+
+// IsTrustedProxiesOwner reports whether key is a synthetic trusted-proxies
+// file owner.
+func IsTrustedProxiesOwner(key string) bool {
+	return strings.HasPrefix(key, trustedProxiesOwnerPrefix)
+}
+
 // IsSyntheticOwner reports whether a plan/manifest key is synthetic (not a
 // real service name). Covers domain TLS owners, the caddy-import owner, the
-// auth-snippet owner, the auth access-control owner, and the per-host
-// cloudflared-config owner.
+// auth-snippet owner, the auth access-control owner, the per-host
+// cloudflared-config owner, and the per-host trusted-proxies owner.
 func IsSyntheticOwner(key string) bool {
-	return IsDomainOwner(key) || key == caddyImportKey || key == authSnippetKey || key == authAccessKey || IsCloudflaredConfigOwner(key)
+	return IsDomainOwner(key) || key == caddyImportKey || key == authSnippetKey || key == authAccessKey || IsCloudflaredConfigOwner(key) || IsTrustedProxiesOwner(key)
 }
 
 // PinAuthSnippetToDisk rewrites the planned content of every auth-snippet file

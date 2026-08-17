@@ -132,6 +132,13 @@ func cmdDoctor(cfgPath string, args []string) int {
 
 	// --- Caddyfile import line check ---
 	problems += checkCaddyfileImports(repoRoot, cfg, fix)
+	// Advisory, NOT counted toward problems: hemma cannot fix this one (the
+	// global options block it belongs in is hand-maintained, §4.7), so
+	// counting it would make `doctor --fix` permanently unable to exit 0 —
+	// the same reasoning that keeps the access-control wiring check advisory.
+	// Enforcement lives in `apply`, which hard-refuses rather than reload a
+	// Caddy whose generated trust boundary is never loaded.
+	checkTrustedProxiesImport(repoRoot, cfg, fix)
 
 	// --- generated-file drift check (missing / modified / orphaned) ---
 	problems += checkDrift(repoRoot, cfg, fix)
@@ -309,6 +316,44 @@ func checkCaddyfileImports(repoRoot string, cfg *config.Config, fix bool) int {
 			fmt.Printf(tick+" %s: added `%s` to Caddyfile\n", hostName, importLine)
 		}
 		problems--
+	}
+	return problems
+}
+
+// checkTrustedProxiesImport checks that each host's Caddyfile contains the
+// line `import hemma.trusted_proxies.generated.caddy`. Unlike
+// checkCaddyfileImports, this is REPORT-ONLY — --fix never edits the
+// Caddyfile for it. The import must sit inside a global `servers {}` options
+// block (Caddy's trusted_proxies option is server-wide only, never valid in a
+// site block), Caddy allows exactly one global options block per file, and
+// that block is hand-maintained territory (it may already carry `debug` or
+// anything else). Writing into it would mean parsing and rewriting Caddyfile
+// syntax hemma does not own — and guessing wrong appends a second global
+// block, which Caddy refuses to load. A one-time manual line per host is the
+// cheaper, safer contract, so this check states what to add and stops there
+// (an instructive advisory in the §6.4 two-tier sense, not a mechanical fix).
+func checkTrustedProxiesImport(repoRoot string, cfg *config.Config, fix bool) int {
+	const importLine = "import " + render.TrustedProxiesFilename
+	problems := 0
+	for hostName, h := range cfg.Hosts {
+		cfPath := filepath.Join(repoRoot, h.ResolvedDir(hostName), config.DefaultCaddyDataDir, "Caddyfile")
+		data, err := os.ReadFile(cfPath)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			fmt.Printf(cross+" %s: cannot read Caddyfile: %v\n", hostName, err)
+			problems++
+			continue
+		}
+		if strings.Contains(string(data), importLine) {
+			fmt.Printf(tick+" %s: Caddyfile imports %s\n", hostName, render.TrustedProxiesFilename)
+			continue
+		}
+		problems++
+		fmt.Printf(cross+" %s: Caddyfile missing `%s`\n", hostName, importLine)
+		fmt.Printf("    add it inside your global options block (hemma does not edit that block):\n")
+		fmt.Printf("      {\n          servers {\n              %s\n          }\n      }\n", importLine)
 	}
 	return problems
 }

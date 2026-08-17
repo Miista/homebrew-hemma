@@ -67,6 +67,65 @@ func TestBuild_ValidService(t *testing.T) {
 	}
 }
 
+// hemma.trusted_proxies.generated.caddy is always planned on every host,
+// same as the auth snippet, and trusts every declared host's IP by default.
+func TestBuild_TrustedProxiesAlwaysPresent(t *testing.T) {
+	c := base()
+	p := Build(c)
+
+	byHost := map[string]File{}
+	for hostName := range c.Hosts {
+		key := trustedProxiesOwnerPrefix + hostName
+		files := p.Files[key]
+		if len(files) != 1 {
+			t.Fatalf("expected 1 trusted-proxies file for %q, got %d", hostName, len(files))
+		}
+		byHost[hostName] = files[0]
+		if !IsSyntheticOwner(key) {
+			t.Errorf("%q should be a synthetic owner", key)
+		}
+		if !IsTrustedProxiesOwner(key) {
+			t.Errorf("%q should report IsTrustedProxiesOwner", key)
+		}
+	}
+
+	// Every host trusts both declared hosts' IPs — including its own.
+	for hostName, f := range byHost {
+		if !strings.HasSuffix(f.Path, "caddy/data/hemma.trusted_proxies.generated.caddy") {
+			t.Errorf("%s: trusted-proxies path wrong: %q", hostName, f.Path)
+		}
+		if !strings.Contains(f.Content, "192.0.2.1/32") || !strings.Contains(f.Content, "192.0.2.2/32") {
+			t.Errorf("%s: expected both host IPs trusted, got: %q", hostName, f.Content)
+		}
+	}
+}
+
+// A host's own Host.TrustedProxies entries (e.g. its cloudflared container
+// IP) are appended after the automatic all-hosts base list.
+func TestBuild_TrustedProxiesIncludesHostAdditions(t *testing.T) {
+	c := base()
+	appbox := c.Hosts["appbox"]
+	appbox.TrustedProxies = []string{"172.18.0.12/32"}
+	c.Hosts["appbox"] = appbox
+
+	p := Build(c)
+
+	appboxFile := p.Files[trustedProxiesOwnerPrefix+"appbox"][0]
+	if !strings.Contains(appboxFile.Content, "172.18.0.12/32") {
+		t.Errorf("appbox: expected its own extra trusted proxy present, got: %q", appboxFile.Content)
+	}
+	if !strings.Contains(appboxFile.Content, "192.0.2.1/32") {
+		t.Errorf("appbox: expected the other host's IP still trusted, got: %q", appboxFile.Content)
+	}
+
+	// resolver did not declare any extra trusted_proxies — it should only see
+	// the automatic base list, not appbox's cloudflared IP.
+	resolverFile := p.Files[trustedProxiesOwnerPrefix+"resolver"][0]
+	if strings.Contains(resolverFile.Content, "172.18.0.12/32") {
+		t.Errorf("resolver: should not inherit appbox's extra trusted proxy, got: %q", resolverFile.Content)
+	}
+}
+
 // The (auth) snippet file is always planned on every host, regardless of
 // whether any service opts in. Empty body → empty stub.
 func TestBuild_AuthSnippetAlwaysPresent(t *testing.T) {

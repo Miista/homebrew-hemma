@@ -111,6 +111,24 @@ func TestCaddySite_ForwardIsUniform_NoPublicPathBranches(t *testing.T) {
 	}
 }
 
+func TestTrustedProxiesSnippet_Empty(t *testing.T) {
+	got := TrustedProxiesSnippet(nil)
+	want := Header + "\n"
+	if got != want {
+		t.Fatalf("empty TrustedProxiesSnippet mismatch:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestTrustedProxiesSnippet_Body(t *testing.T) {
+	got := TrustedProxiesSnippet([]string{"10.0.5.50/32", "172.18.0.12/32"})
+	want := Header + "\n" +
+		"trusted_proxies static 10.0.5.50/32 172.18.0.12/32\n" +
+		"client_ip_headers Cf-Connecting-Ip X-Forwarded-For\n"
+	if got != want {
+		t.Fatalf("TrustedProxiesSnippet body mismatch:\n got: %q\nwant: %q", got, want)
+	}
+}
+
 func TestAuthSnippet_EmptyStub(t *testing.T) {
 	got := AuthSnippet("")
 	want := Header + "\n(auth) {\n}\n"

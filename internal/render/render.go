@@ -145,6 +145,34 @@ func CaddySite(fqdn, tlsImport, backend string, mode config.AuthMode, authBacken
 	return fmt.Sprintf("%s\n%s {\n\timport %s\n\t%s\n}\n", Header, fqdn, tlsImport, proxyLine)
 }
 
+// TrustedProxiesFilename is the generated file holding the trusted_proxies
+// and client_ip_headers directives for one host's Caddy. It sits directly in
+// caddy/data/ (a sibling of hemma.generated.caddy and
+// hemma.auth.generated.caddy), so it is not picked up by any glob import and
+// must be imported by name — inside the operator's own global `servers {}`
+// options block, since Caddy only allows trusted_proxies there (never in a
+// site block). hemma cannot write that block itself when it also carries
+// hand-maintained options (e.g. `debug`), so this one import line is a
+// manual, one-time step per host; `hemma doctor` only checks for its
+// presence anywhere in the Caddyfile, not its placement inside servers {}.
+const TrustedProxiesFilename = "hemma.trusted_proxies.generated.caddy"
+
+// TrustedProxiesSnippet renders one host's trusted_proxies file: every IP in
+// ips (already deduped/sorted by the caller) as a `trusted_proxies static`
+// list, plus a fixed client_ip_headers line covering both a Cloudflare
+// Tunnel's real-client-IP header and the standard X-Forwarded-For chain.
+// ips is always non-empty in practice (every declared host's IP is trusted
+// automatically — see plan.planTrustedProxies), but an empty list still
+// renders a header-only, functionally inert file rather than being omitted,
+// matching AuthSnippet's always-present-even-when-inert convention.
+func TrustedProxiesSnippet(ips []string) string {
+	if len(ips) == 0 {
+		return Header + "\n"
+	}
+	return fmt.Sprintf("%s\ntrusted_proxies static %s\nclient_ip_headers Cf-Connecting-Ip X-Forwarded-For\n",
+		Header, strings.Join(ips, " "))
+}
+
 // CloudflaredConfigFilename is the file hemma writes wholesale into each
 // host's configured tunnel directory (defaults.tunnel_dir — one repo-wide
 // path, required before any public: true service can plan), replacing what
