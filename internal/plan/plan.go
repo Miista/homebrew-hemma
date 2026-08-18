@@ -49,6 +49,17 @@ type Plan struct {
 	// MORE auth than asked for, never less. Dropping the whole service over that
 	// would be the worse trade. The caller decides how loudly to report it.
 	UnresolvedLocalPolicy []string
+	// UnresolvedAuthTarget is set when defaults.auth_snippet needs a
+	// forward-auth target (it contains render.AuthServiceToken) but none could
+	// be resolved — auth_service unset, naming an unknown service, or one with
+	// no backend. Every host then gets the empty (auth) {} stub instead of a
+	// half-substituted directive, so `import auth` gates NOTHING: a stub is
+	// valid Caddy, which means nothing downstream fails loudly. That silence is
+	// why this is reported. Same posture as the Unresolved* fields above and
+	// deliberately not a Skipped reason (it is repo-global, not per-service),
+	// but unlike them it fails toward LESS auth, so the caller should treat it
+	// as an error rather than an advisory.
+	UnresolvedAuthTarget bool
 }
 
 // IsDisabled reports whether a skipped service was explicitly disabled (as
@@ -179,11 +190,33 @@ func Build(c *config.Config) *Plan {
 	// manifest-tracked, drift detection compares its on-disk content to the
 	// (live) source content for free — no special-casing in doctor. Owned under
 	// a synthetic key so GC tracks it independently of services/domains.
+	//
+	// The forward-auth target is resolved PER HOST (hence the render inside the
+	// loop, unlike the single shared body this used to write everywhere): on the
+	// host running auth_service it is that service's own backend, a direct
+	// container hop; elsewhere it is the public FQDN. See render.AuthSnippet for
+	// why the same-host case must not use the FQDN.
 	var authFiles []File
-	authContent := render.AuthSnippet(c.AuthSnippetBody)
+	needsTarget := strings.Contains(c.AuthSnippetBody, render.AuthServiceToken)
+	authSvcName := c.Defaults.AuthService
+	authSvc, authSvcOK := c.Services[authSvcName]
+	if needsTarget && (authSvcName == "" || !authSvcOK || authSvc.Disabled ||
+		(authSvc.Backend == "" && authSvc.FQDN == "")) {
+		p.UnresolvedAuthTarget = true
+	}
 	for hostName, h := range c.Hosts {
+		target := ""
+		if authSvcOK && !authSvc.Disabled {
+			// Same host: dial the container directly. Other host: via its FQDN,
+			// where the cross-host hop IS trusted (§4.7) so the client IP survives.
+			if authSvc.Host == hostName && authSvc.Backend != "" {
+				target = authSvc.Backend
+			} else if authSvc.FQDN != "" {
+				target = "https://" + authSvc.FQDN
+			}
+		}
 		path := filepath.Join(h.ResolvedDir(hostName), config.DefaultCaddyDataDir, render.AuthSnippetFilename)
-		authFiles = append(authFiles, File{Path: path, Content: authContent})
+		authFiles = append(authFiles, File{Path: path, Content: render.AuthSnippet(c.AuthSnippetBody, target)})
 	}
 	if len(authFiles) > 0 {
 		p.Files[authSnippetKey] = authFiles

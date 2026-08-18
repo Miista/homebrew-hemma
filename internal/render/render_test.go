@@ -130,16 +130,18 @@ func TestTrustedProxiesSnippet_Body(t *testing.T) {
 }
 
 func TestAuthSnippet_EmptyStub(t *testing.T) {
-	got := AuthSnippet("")
+	got := AuthSnippet("", "authelia:9091")
 	want := Header + "\n(auth) {\n}\n"
 	if got != want {
 		t.Fatalf("empty AuthSnippet mismatch:\n got: %q\nwant: %q", got, want)
 	}
 }
 
+// A body that hardcodes its own target needs no substitution and must survive
+// verbatim, so an unresolved target does NOT stub it out.
 func TestAuthSnippet_Body(t *testing.T) {
 	body := "forward_auth https://auth.example.com {\n\turi /api/authz/forward-auth\n}"
-	got := AuthSnippet(body)
+	got := AuthSnippet(body, "")
 	want := Header + "\n(auth) {\n" +
 		"\tforward_auth https://auth.example.com {\n" +
 		"\t\turi /api/authz/forward-auth\n" +
@@ -147,6 +149,38 @@ func TestAuthSnippet_Body(t *testing.T) {
 		"}\n"
 	if got != want {
 		t.Fatalf("AuthSnippet body mismatch:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// The token is replaced everywhere it appears, so one snippet serves both the
+// same-host (container backend) and cross-host (FQDN) shapes.
+func TestAuthSnippet_SubstitutesToken(t *testing.T) {
+	body := "forward_auth " + AuthServiceToken + " {\n\turi /api/authz/forward-auth\n}"
+	for _, target := range []string{"authelia:9091", "https://auth.example.com"} {
+		got := AuthSnippet(body, target)
+		want := Header + "\n(auth) {\n" +
+			"\tforward_auth " + target + " {\n" +
+			"\t\turi /api/authz/forward-auth\n" +
+			"\t}\n" +
+			"}\n"
+		if got != want {
+			t.Fatalf("AuthSnippet(%q) mismatch:\n got: %q\nwant: %q", target, got, want)
+		}
+		if strings.Contains(got, AuthServiceToken) {
+			t.Fatalf("AuthSnippet(%q) left the token unsubstituted: %q", target, got)
+		}
+	}
+}
+
+// An unresolvable target must yield the empty stub, never a forward_auth with a
+// missing or literal-token upstream: a stub gates nothing but is valid Caddy,
+// whereas a half-substituted directive would reach a live reload.
+func TestAuthSnippet_UnresolvedTargetStubs(t *testing.T) {
+	body := "forward_auth " + AuthServiceToken + " {\n\turi /api/authz/forward-auth\n}"
+	got := AuthSnippet(body, "")
+	want := Header + "\n(auth) {\n}\n"
+	if got != want {
+		t.Fatalf("unresolved-target AuthSnippet mismatch:\n got: %q\nwant: %q", got, want)
 	}
 }
 

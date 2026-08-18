@@ -34,17 +34,39 @@ const AuthSnippetName = "auth"
 // name — which CaddyImportFile does, before the site blocks.
 const AuthSnippetFilename = "hemma.auth.generated.caddy"
 
+// AuthServiceToken is the placeholder defaults.auth_snippet writes in place of
+// the forward-auth target, substituted per host by AuthSnippet. Deliberately
+// NOT Caddy's own {$VAR} env syntax: if substitution were ever missed, Caddy
+// would silently expand {$...} to empty and dial nothing, whereas this token
+// survives into `caddy validate` as an obvious unresolvable upstream.
+const AuthServiceToken = "@@AUTH_SERVICE@@"
+
 // AuthSnippet renders the (auth) snippet file. When body is non-empty it is the
-// user-provided auth directive(s) (copied verbatim from defaults.auth_snippet);
-// when empty, an empty (auth) {} stub is emitted. Every site block imports
-// (auth) unconditionally, so the empty stub is a deliberate no-op: it lets a
-// service opt in via `import auth` while global auth is off, and lets auth be
-// turned on/off by changing this one file's content rather than rewriting sites.
-func AuthSnippet(body string) string {
+// user-provided auth directive(s) from defaults.auth_snippet, with every
+// AuthServiceToken replaced by authService — the forward-auth target resolved
+// for THIS host (§4.7): the auth service's own backend when it runs here (a
+// direct container hop), its public FQDN when it lives on another host. The
+// same-host case must not go via the FQDN: that hairpins out and back through
+// the host's own NAT, arriving from the bridge gateway rather than a trusted
+// peer, which resets the client IP exactly as §4.7 describes for a cross-host
+// hop — except no trusted_proxies entry can fix it without trusting the whole
+// NAT path.
+//
+// When body is empty, OR body needs a target that could not be resolved (no
+// auth_service, or it names an unknown service), an empty (auth) {} stub is
+// emitted. Every site block imports (auth) unconditionally, so the empty stub
+// is a deliberate no-op: it lets a service opt in via `import auth` while
+// global auth is off, and lets auth be turned on/off by changing this one
+// file's content rather than rewriting sites. Emitting the stub rather than a
+// half-substituted directive keeps a broken forward_auth out of a live Caddy —
+// `import auth` then gates nothing, which `caddy validate` accepts, so callers
+// must report the unresolved target rather than relying on a load failure.
+func AuthSnippet(body, authService string) string {
 	inner := strings.TrimRight(body, "\n")
-	if inner == "" {
+	if inner == "" || (strings.Contains(inner, AuthServiceToken) && authService == "") {
 		return fmt.Sprintf("%s\n(%s) {\n}\n", Header, AuthSnippetName)
 	}
+	inner = strings.ReplaceAll(inner, AuthServiceToken, authService)
 	// Indent each line of the provided body one tab into the snippet block.
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n(%s) {\n", Header, AuthSnippetName)

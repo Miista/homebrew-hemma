@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"hemma/internal/config"
+	"hemma/internal/render"
 )
 
 // base returns a valid config with one service we can mutate per test.
@@ -145,6 +146,68 @@ func TestBuild_AuthSnippetAlwaysPresent(t *testing.T) {
 	}
 	if !IsSyntheticOwner(authSnippetKey) {
 		t.Errorf("%q should be a synthetic owner", authSnippetKey)
+	}
+}
+
+// The forward-auth target resolves per host: the auth service's own host dials
+// the container directly (the FQDN would hairpin through that host's NAT and
+// reset the client IP), every other host goes via the FQDN.
+func TestBuild_AuthSnippetTargetPerHost(t *testing.T) {
+	c := base()
+	c.AuthSnippetBody = "forward_auth " + render.AuthServiceToken + " {\n\turi /api/authz/forward-auth\n}"
+	c.Defaults.AuthService = "authelia"
+	c.Services["authelia"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091"}
+
+	p := Build(c)
+	if p.UnresolvedAuthTarget {
+		t.Fatalf("target was resolvable, should not be reported unresolved")
+	}
+	want := map[string]string{
+		"appbox":   "forward_auth authelia:9091 {",            // same host → container
+		"resolver": "forward_auth https://auth.example.com {", // other host → FQDN
+	}
+	for _, f := range p.Files[authSnippetKey] {
+		host := strings.Split(f.Path, "/")[0]
+		if !strings.Contains(f.Content, want[host]) {
+			t.Errorf("host %q: want %q in:\n%s", host, want[host], f.Content)
+		}
+		if strings.Contains(f.Content, render.AuthServiceToken) {
+			t.Errorf("host %q: token left unsubstituted:\n%s", host, f.Content)
+		}
+	}
+}
+
+// A snippet that needs a target but has no resolvable auth_service degrades to
+// the empty stub on every host, and says so — `import auth` would otherwise gate
+// nothing while still validating as correct Caddy.
+func TestBuild_AuthSnippetUnresolvedTarget(t *testing.T) {
+	body := "forward_auth " + render.AuthServiceToken + " {\n\turi /api/authz/forward-auth\n}"
+	for name, mutate := range map[string]func(*config.Config){
+		"auth_service unset":    func(c *config.Config) {},
+		"names unknown service": func(c *config.Config) { c.Defaults.AuthService = "nope" },
+		"service disabled": func(c *config.Config) {
+			c.Defaults.AuthService = "authelia"
+			c.Services["authelia"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091", Disabled: true}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := base()
+			c.AuthSnippetBody = body
+			mutate(c)
+
+			p := Build(c)
+			if !p.UnresolvedAuthTarget {
+				t.Errorf("expected UnresolvedAuthTarget to be reported")
+			}
+			for _, f := range p.Files[authSnippetKey] {
+				if !strings.Contains(f.Content, "(auth) {\n}") {
+					t.Errorf("expected empty stub, got:\n%s", f.Content)
+				}
+				if strings.Contains(f.Content, "forward_auth") {
+					t.Errorf("stub must not carry a forward_auth directive:\n%s", f.Content)
+				}
+			}
+		})
 	}
 }
 

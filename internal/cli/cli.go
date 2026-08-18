@@ -15,6 +15,7 @@ import (
 	"hemma/internal/config"
 	"hemma/internal/manifest"
 	"hemma/internal/plan"
+	"hemma/internal/render"
 	syncpkg "hemma/internal/sync"
 )
 
@@ -1002,6 +1003,15 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 		}
 		hint("Set the home network with 'hemma defaults set local-networks <cidr,...>' — until then these services apply their public policy to every request, including from the LAN.")
 	}
+	// The auth snippet asked for a forward-auth target that could not be
+	// resolved, so every host got the empty (auth) stub instead
+	// (Plan.UnresolvedAuthTarget). Unlike the local-policy case this fails toward
+	// LESS auth — `import auth` still parses and still validates, it just gates
+	// nothing — so it is reported loudly and forces a non-zero exit below.
+	if p.UnresolvedAuthTarget {
+		fmt.Printf("%s auth_snippet needs a %s target but defaults.auth_service does not resolve to a service with a backend or fqdn.\n", warn, render.AuthServiceToken)
+		hint("Every host got an empty (auth) stub: services that 'import auth' are NOT protected. Set it with 'hemma defaults set auth-service <name>'.")
+	}
 	if len(errored) > 0 {
 		fmt.Printf("%d skipped:\n", len(errored))
 		for _, name := range sortedSkip(errored) {
@@ -1022,7 +1032,9 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 
 	// An unreadable auth_snippet source is an error even though the sync
 	// proceeded around it (keep-last-good above): exit non-zero (design §8).
-	if authErr != nil {
+	// An unresolved forward-auth target is the same class of problem — the files
+	// were written, but what they contain leaves `import auth` gating nothing.
+	if authErr != nil || p.UnresolvedAuthTarget {
 		return 1
 	}
 	return 0
