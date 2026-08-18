@@ -196,10 +196,10 @@ service is authenticated some other way entirely, use `external`. If it is genui
 
 The `AUTH` column in `hemma list` shows the mode (`forward` / `oidc` / `external` / `-`).
 
-### Local-only or also public? The `PUBLIC` column
+### Local-only or also reachable from the internet? The `TUNNEL` column
 
 hemma generates the **internal** horizon (Pi-hole record + Caddy site block) *and* the **public**
-horizon's ingress: for any service opted into `public: true`, it also writes the tunnel ingress
+horizon's ingress: for any service opted into `tunnel: true`, it also writes the tunnel ingress
 entry into that host's cloudflared `config.yml`. `hemma list`'s `PUBLIC` column is a direct echo of
 the declared field — not an observation of some other foreign file — since hemma is the sole author
 of `config.yml`:
@@ -213,8 +213,8 @@ of `config.yml`:
 ### Declaring intent
 
 ```sh
-hemma update service wiki --public        # meant to be reachable from the internet too
-hemma update service wiki --public=false  # opt back out
+hemma update service wiki --tunnel        # meant to be reachable from the internet too
+hemma update service wiki --tunnel=false  # opt back out
 ```
 
 which records:
@@ -222,18 +222,20 @@ which records:
 ```yaml
 services:
   wiki:
-    public: true      # meant to be public as well
+    tunnel: true      # reachable from the internet as well
   pihole:             # no key = local only
 ```
 
 There is no value for "local", because locality is never in question: every service is reachable
 on the LAN either way — directly via its Pi-hole record, or by hairpin through the tunnel. And
 there is no "public but not local", since a declared service always gets both a Pi-hole record and
-a Caddy block. So `public` is a plain opt-in: set, or not set.
+a Caddy block. So `tunnel` is a plain opt-in: set, or not set. (It was called `public` until
+August 2026; the old key and the `--public` flag are still accepted, and the key is rewritten to
+`tunnel` on the next mutation.)
 
 The ingress entry is only written once `defaults.tunnel_dir` is set (`hemma defaults set
 tunnel-dir <dir>`, the path each host's cloudflared container mounts as `/etc/cloudflared`); until
-then a `public: true` service has no generated `config.yml` entry, and `hemma doctor`'s ordinary
+then a `tunnel: true` service has no generated `config.yml` entry, and `hemma doctor`'s ordinary
 generated-file drift check flags the gap — there is no separate public-horizon check, since
 `config.yml` is tracked and reconciled exactly like any other generated file.
 
@@ -461,7 +463,7 @@ services:
     fqdn: docs.example.com
     host: appbox        # host that runs the service; Caddy site block goes in its dir
     backend: paperless:8000
-    public: true        # optional; declared public horizon (true|false); absent = undeclared
+    tunnel: true        # optional; generate a cloudflared ingress entry; absent = local only
     auth: forward       # optional; forward|oidc|none (or legacy true=forward)
     # auth:               # object form when groups or bypass paths are set:
     #   mode: forward     #   required: forward|oidc|none

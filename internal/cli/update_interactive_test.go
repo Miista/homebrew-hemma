@@ -248,7 +248,7 @@ func TestPersistUpdatedService_OrdinaryEditKeepsFiles(t *testing.T) {
 	}
 	cfg.Defaults.TunnelDir = "cloudflared" // required for any public: true service to plan
 	svc := cfg.Services["docs"]
-	svc.Public = true // the kind of edit the editor now allows
+	svc.Tunnel = true // the kind of edit the editor now allows
 	captureStdout(t, func() {
 		if code := persistUpdatedService(dir, cfg, "docs", svc); code != 0 {
 			t.Errorf("exit %d", code)

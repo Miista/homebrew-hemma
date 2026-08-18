@@ -37,6 +37,33 @@ services: {}
 	}
 }
 
+// The pre-rename --public flag is still accepted as an alias for --tunnel, so
+// existing scripts and muscle memory keep working; both spellings set the same
+// field, and the YAML is always written with the current key.
+func TestServiceTunnelFlag_PublicAliasAccepted(t *testing.T) {
+	for _, flag := range []string{"--tunnel", "--public"} {
+		dir := t.TempDir()
+		seed(t, dir)
+		if code := Run([]string{"-C", dir, "defaults", "set", "tunnel-dir", "cloudflared"}); code != 0 {
+			t.Fatalf("%s: set tunnel-dir exit %d", flag, code)
+		}
+		if code := Run([]string{"-C", dir, "add", "service", "docs",
+			"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", flag}); code != 0 {
+			t.Fatalf("add with %s should exit 0, got %d", flag, code)
+		}
+		if !mustLoad(t, dir).Services["docs"].Tunnel {
+			t.Errorf("%s did not set Tunnel", flag)
+		}
+		b, _ := os.ReadFile(filepath.Join(dir, configName))
+		if !strings.Contains(string(b), "tunnel: true") {
+			t.Errorf("%s: YAML should carry the current key:\n%s", flag, string(b))
+		}
+		if strings.Contains(string(b), "public:") {
+			t.Errorf("%s: YAML must not carry the pre-rename key:\n%s", flag, string(b))
+		}
+	}
+}
+
 func TestRun_ApplyMissingConfig(t *testing.T) {
 	dir := t.TempDir()
 	if code := Run([]string{"-C", dir, "apply"}); code != 1 {

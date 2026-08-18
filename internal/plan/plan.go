@@ -294,7 +294,7 @@ func planCloudflaredConfig(c *config.Config, p *Plan) {
 			if IsSyntheticOwner(name) {
 				continue
 			}
-			if svc, exists := c.Services[name]; exists && svc.Public {
+			if svc, exists := c.Services[name]; exists && svc.Tunnel {
 				p.UnresolvedTunnels = append(p.UnresolvedTunnels, name)
 			}
 		}
@@ -307,7 +307,7 @@ func planCloudflaredConfig(c *config.Config, p *Plan) {
 			continue
 		}
 		svc, ok := c.Services[name]
-		if !ok || !svc.Public {
+		if !ok || !svc.Tunnel {
 			continue
 		}
 		byHost[svc.Host] = append(byHost[svc.Host], render.CloudflaredIngressEntry{

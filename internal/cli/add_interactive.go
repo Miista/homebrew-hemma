@@ -75,7 +75,7 @@ func cmdAddInteractive(repoRoot, cfgPath, name string) int {
 	mode := "none"
 	var selGroups []string
 	newGroup := ""
-	public := false
+	tunnel := false
 	bypass := ""
 
 	// Group options come from reality (users db ∪ services.yaml), not from a
@@ -124,10 +124,10 @@ func cmdAddInteractive(repoRoot, cfgPath, name string) int {
 		huh.NewInput().Title("backend").
 			Description("reverse_proxy upstream, e.g. " + name + ":8080.").
 			Value(&backend).Validate(nonEmpty("the backend")),
-		huh.NewConfirm().Title("public").
+		huh.NewConfirm().Title("tunnel").
 			Description("Reachable from the internet too? Generates a tunnel ingress entry in this host's cloudflared config.yml (needs defaults.tunnel-dir set).").
-			Affirmative("public").Negative("local only").
-			Value(&public),
+			Affirmative("internet").Negative("local only").
+			Value(&tunnel),
 	}
 	if !isAuthService {
 		fields = append(fields,
@@ -172,7 +172,7 @@ func cmdAddInteractive(repoRoot, cfgPath, name string) int {
 		FQDN:    strings.TrimSpace(fqdn),
 		Host:    host,
 		Backend: strings.TrimSpace(backend),
-		Public:  public,
+		Tunnel:  tunnel,
 	}
 	// `disabled` is deliberately not offered here: a service being added is
 	// being added to work. Turn it off afterwards with `hemma disable service`
@@ -209,7 +209,7 @@ func summarizeNewService(svc config.Service) []string {
 		"  fqdn: " + svc.FQDN,
 		"  host: " + svc.Host,
 		"  backend: " + svc.Backend,
-		"  public: " + map[bool]string{true: "yes", false: "local only"}[svc.Public],
+		"  tunnel: " + map[bool]string{true: "yes", false: "local only"}[svc.Tunnel],
 	}
 	if svc.Auth.Mode != config.AuthNone {
 		lines = append(lines, "  auth mode: "+string(svc.Auth.Mode))

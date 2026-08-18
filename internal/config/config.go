@@ -294,17 +294,24 @@ type Service struct {
 	// mapping when either carries data. Legacy `auth: true` is accepted on load
 	// and re-emitted as `auth: forward`.
 	Auth Auth `yaml:"auth,omitempty"`
-	// Public opts the service into the public horizon: true = it is meant to be
-	// reachable from the internet as well, absent = local only. Every service
-	// is local either way — directly via Pi-hole, or by hairpin through the
-	// tunnel — so locality is never in question and has no value here (§12).
+	// Tunnel opts the service into the public horizon: true = a cloudflared
+	// tunnel ingress entry is generated for its fqdn, so the internet can reach
+	// it; absent = local only. Every service is local either way — directly via
+	// Pi-hole, or by hairpin through the tunnel — so locality is never in
+	// question and has no value here (§12).
+	//
+	// Named for the MECHANISM (it is exactly "does this get a tunnel route",
+	// pairing with defaults.tunnel_dir) rather than the older `public`, which
+	// invited reading it as "not local" and sat one word away from auth
+	// concepts that are about a request's ORIGIN rather than reachability. The
+	// legacy key is still accepted on load and re-emitted as `tunnel`.
 	//
 	// A plain bool, because this is an OPT-IN and not a tri-state: absent and
 	// false mean the same thing. `doctor` uses it in one direction only — a
-	// service that says it should be public is checked against whether it
+	// service that says it should be reachable is checked against whether it
 	// actually is. Exposure that was never opted into is not reported, so
 	// adopting the field costs an existing repo nothing.
-	Public bool `yaml:"public,omitempty"`
+	Tunnel bool `yaml:"tunnel,omitempty"`
 }
 
 // serviceWire is the on-disk form of Service, carrying the legacy keys that are
@@ -316,7 +323,10 @@ type serviceWire struct {
 	Backend  string `yaml:"backend"`
 	Disabled bool   `yaml:"disabled,omitempty"`
 	Auth     Auth   `yaml:"auth,omitempty"`
-	Public   bool   `yaml:"public,omitempty"`
+	Tunnel   bool   `yaml:"tunnel,omitempty"`
+	// Public is the pre-rename name of Tunnel. Accepted on load, re-emitted as
+	// `tunnel`.
+	Public bool `yaml:"public,omitempty"`
 	// PublicPaths is the pre-move name of Auth.BypassPaths, when auth-exempt
 	// paths sat at the top level. Accepted on load, re-emitted under `auth`.
 	PublicPaths []string `yaml:"public_paths,omitempty"`
@@ -341,10 +351,15 @@ func (s *Service) UnmarshalYAML(value *yaml.Node) error {
 		Backend:  w.Backend,
 		Disabled: w.Disabled,
 		Auth:     w.Auth,
-		Public:   w.Public,
+		Tunnel:   w.Tunnel,
 	}
 	if len(w.PublicPaths) > 0 && len(s.Auth.BypassPaths) == 0 {
 		s.Auth.BypassPaths = w.PublicPaths
+	}
+	// Pre-rename `public:` means what `tunnel:` means now. An explicit
+	// `tunnel:` wins if a file somehow carries both.
+	if w.Public && !s.Tunnel {
+		s.Tunnel = true
 	}
 	return nil
 }

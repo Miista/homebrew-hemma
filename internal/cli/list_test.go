@@ -84,7 +84,7 @@ func containsField(line, want string) bool {
 // PUBLIC directly echoes the declared `public` field — no compose read, no
 // unknown state, since hemma is now the sole author of the tunnel's ingress
 // config rather than an observer of a foreign hand-maintained one.
-func TestList_PublicColumn(t *testing.T) {
+func TestList_TunnelColumn(t *testing.T) {
 	dir := listSetup(t, "")
 	if code := Run([]string{"-C", dir, "defaults", "set", "tunnel-dir", "cloudflared"}); code != 0 {
 		t.Fatalf("set tunnel-dir exit %d", code)
@@ -93,8 +93,8 @@ func TestList_PublicColumn(t *testing.T) {
 		t.Fatalf("--public exit %d", code)
 	}
 	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
-	if !strings.Contains(out, "PUBLIC") {
-		t.Fatalf("expected PUBLIC header column, got:\n%s", out)
+	if !strings.Contains(out, "TUNNEL") {
+		t.Fatalf("expected TUNNEL header column, got:\n%s", out)
 	}
 	docsLine := serviceLine(out, "docs.example.com")
 	blogLine := serviceLine(out, "blog.example.com")

@@ -17,12 +17,12 @@ type HelpTopic struct {
 var HelpTopics = []HelpTopic{
 	{"add service", `hemma add service — declare a service and generate its DNS/Caddy config
 
-Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--public]
+Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--tunnel]
 
 With no flags (and stdin a terminal) an interactive editor opens instead: the
 fqdn is pre-filled with <name>.<domain> when exactly one domain is defined and
 validated live (must match a domain, must not collide with another service),
-the host and auth mode are pickers, public is a confirm, auth groups are a
+the host and auth mode are pickers, tunnel is a confirm, auth groups are a
 multi-select built from the groups that actually exist — on users in the auth
 provider's users database (members shown per group) and on other services —
 plus a 'new group…' escape hatch, and auth bypass paths are one per line. On
@@ -50,10 +50,11 @@ Flags:
                           the generated access-control rules (multiple groups are OR'd).
                           Requires an auth mode (forward or oidc).
       --auth              Back-compat shorthand for --auth-mode forward.
-      --public            Opt this service into the public horizon: it is meant to be
-                          reachable from the internet as well. Omit for local-only
+      --tunnel            Generate a cloudflared tunnel ingress entry for this
+                          service, so the internet can reach it. Omit for local-only
                           (every service is reachable on the LAN either way).
-                          Generates a tunnel ingress entry in this host's cloudflared
+                          Accepts --public as a pre-rename alias.
+                          Writes the entry into this host's cloudflared
                           config.yml (needs defaults.tunnel-dir set — otherwise the
                           entry is skipped and 'hemma doctor' flags the drift).
 
@@ -61,12 +62,12 @@ Regenerates files immediately, then prints which hosts need 'hemma apply'.`},
 
 	{"update service", `hemma update service — change a service's fqdn, host, backend, or auth
 
-Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--public]
+Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--tunnel]
 
 With no flags (and stdin a terminal) an interactive editor opens instead:
 EVERY field is pre-filled with the service's current values and editable
-(Enter keeps them): fqdn, host, backend, public, disabled, auth mode, auth
-groups, and auth bypass paths. The host and auth mode are pickers, public and
+(Enter keeps them): fqdn, host, backend, tunnel, disabled, auth mode, auth
+groups, and auth bypass paths. The host and auth mode are pickers, tunnel and
 disabled are confirms, auth groups are a multi-select built from the groups
 that actually exist — on users in the auth provider's users database (members
 shown per group) and on other services — plus a 'new group…' escape hatch, and
@@ -90,9 +91,9 @@ Flags:
                           generated access-control rules). '' clears them. Requires an
                           auth mode (forward or oidc).
       --auth[=false]      Back-compat shorthand: --auth = forward, --auth=false = none.
-      --public            Opt into the public horizon (meant to be reachable from the
-                          internet as well); --public=false opts back out. Generates
-                          a tunnel ingress entry in this host's cloudflared config.yml
+      --tunnel            Generate a cloudflared tunnel ingress entry (so the internet
+                          can reach it); --tunnel=false opts back out. Accepts --public
+                          as a pre-rename alias. Writes into this host's cloudflared config.yml
                           (needs defaults.tunnel-dir set — otherwise the entry is
                           skipped and 'hemma doctor' flags the drift).
 
@@ -231,7 +232,7 @@ that host's cloudflared container mounts as /etc/cloudflared. One repo-wide
 value (like dns-host/auth-service), on the assumption every host's compose
 follows the same convention. Unlike dns-host, there is no automatic fallback:
 while tunnel_dir is unset, hemma will not write a tunnel ingress entry for
-any public: true service (there is no safe path to guess), and that service
+any tunnel: true service (there is no safe path to guess), and that service
 is reported as publicly unreachable. Its DNS record and Caddy site are NOT
 affected — the internal horizon works whether or not the tunnel does.
 Clearing tunnel_dir GCs every host's config.yml and reports every currently-

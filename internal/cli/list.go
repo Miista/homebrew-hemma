@@ -114,8 +114,8 @@ func cmdList(cfgPath string, args []string) int {
 
 // printServiceTable renders the services as an aligned table with an AUTH
 // column showing the auth MODE (forward/oidc/external/-, or (portal) for the
-// service that IS the auth provider) and a PUBLIC column echoing the declared
-// `public` field. This is a direct echo, not an observation, because hemma is
+// service that IS the auth provider) and a TUNNEL column echoing the declared
+// `tunnel` field. This is a direct echo, not an observation, because hemma is
 // now the sole author of the tunnel's ingress config (config.yml, per host) —
 // there is no longer a separate "what does the tunnel actually serve" question
 // to reconcile against the declaration, the way there was when a hand-
@@ -128,7 +128,7 @@ func printServiceTable(cfg *config.Config, svcNames []string) {
 		fmt.Println("  (none)")
 		return
 	}
-	type row struct{ name, fqdn, host, backend, auth, public, note string }
+	type row struct{ name, fqdn, host, backend, auth, tunnel, note string }
 	rows := make([]row, 0, len(svcNames))
 	anyAuth := false
 	for _, name := range svcNames {
@@ -159,16 +159,16 @@ func printServiceTable(cfg *config.Config, svcNames []string) {
 		if svc.Disabled {
 			note = "[disabled]"
 		}
-		public := "no"
-		if svc.Public {
-			public = "yes"
+		tunnel := "no"
+		if svc.Tunnel {
+			tunnel = "yes"
 		}
-		rows = append(rows, row{name, svc.FQDN, svc.Host, svc.Backend, auth, public, note})
+		rows = append(rows, row{name, svc.FQDN, svc.Host, svc.Backend, auth, tunnel, note})
 	}
 
-	// Header + width computation. AUTH holds a mode, "-", or "(portal)"; PUBLIC
+	// Header + width computation. AUTH holds a mode, "-", or "(portal)"; TUNNEL
 	// holds "yes"/"no"/"?" and is dropped entirely when disabled.
-	hName, hFQDN, hHost, hBack, hAuth, hPub := "NAME", "FQDN", "HOST", "BACKEND", "AUTH", "PUBLIC"
+	hName, hFQDN, hHost, hBack, hAuth, hPub := "NAME", "FQDN", "HOST", "BACKEND", "AUTH", "TUNNEL"
 	wName, wFQDN, wHost, wBack, wAuth := len(hName), len(hFQDN), len(hHost), len(hBack), len(hAuth)
 	for _, r := range rows {
 		wName = max(wName, len(r.name))
@@ -182,7 +182,7 @@ func printServiceTable(cfg *config.Config, svcNames []string) {
 		boldOn, wName, hName, wFQDN, hFQDN, wHost, hHost, wBack, hBack, wAuth, hAuth, hPub, boldOff)
 	for _, r := range rows {
 		line := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s  %-*s  %s",
-			wName, r.name, wFQDN, r.fqdn, wHost, r.host, wBack, r.backend, wAuth, r.auth, r.public)
+			wName, r.name, wFQDN, r.fqdn, wHost, r.host, wBack, r.backend, wAuth, r.auth, r.tunnel)
 		if r.note != "" {
 			line += "  " + r.note
 		}
@@ -191,7 +191,7 @@ func printServiceTable(cfg *config.Config, svcNames []string) {
 	if anyAuth {
 		fmt.Println("  (AUTH: forward = imports the (auth) snippet; oidc = Authelia, app does OIDC itself; external = authenticated outside Authelia (app login / token / edge); (portal) = this service IS the auth provider; change with 'hemma update service <name> --auth-mode <mode>')")
 	}
-	fmt.Println("  (PUBLIC: yes = a tunnel ingress entry is generated for the FQDN in this host's cloudflared config.yml; no = internal horizon only)")
+	fmt.Println("  (TUNNEL: yes = a cloudflared tunnel ingress entry is generated for the FQDN, so the internet can reach it; no = local horizon only)")
 }
 
 func sortedKeysOf[V any](m map[string]V) []string {

@@ -65,7 +65,7 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 	}
 	selGroups := append([]string(nil), svc.Auth.Groups...)
 	newGroup := ""
-	public := svc.Public
+	tunnel := svc.Tunnel
 	disabled := svc.Disabled
 	bypass := strings.Join(svc.Auth.BypassPaths, "\n")
 
@@ -107,10 +107,10 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 		huh.NewInput().Title("fqdn").Value(&fqdn).Validate(nonEmpty("the fqdn")),
 		huh.NewSelect[string]().Title("host").Options(huh.NewOptions(hosts...)...).Value(&host),
 		huh.NewInput().Title("backend").Value(&backend),
-		huh.NewConfirm().Title("public").
+		huh.NewConfirm().Title("tunnel").
 			Description("Reachable from the internet too? Generates a tunnel ingress entry in this host's cloudflared config.yml (needs defaults.tunnel-dir set).").
-			Affirmative("public").Negative("local only").
-			Value(&public),
+			Affirmative("internet").Negative("local only").
+			Value(&tunnel),
 		huh.NewConfirm().Title("disabled").
 			Description("Stop generating config for this service. It stays in services.yaml; its generated files are removed.").
 			Affirmative("disabled").Negative("enabled").
@@ -159,7 +159,7 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 	updated.FQDN = strings.TrimSpace(fqdn)
 	updated.Host = host
 	updated.Backend = strings.TrimSpace(backend)
-	updated.Public = public
+	updated.Tunnel = tunnel
 	updated.Disabled = disabled
 	if !isAuthService {
 		if mode == "none" {
@@ -306,7 +306,7 @@ func summarizeServiceChanges(oldSvc, newSvc config.Service) []string {
 		}
 		return "no"
 	}
-	displayPublic := func(p bool) string {
+	displayTunnel := func(p bool) string {
 		if p {
 			return "yes"
 		}
@@ -330,7 +330,7 @@ func summarizeServiceChanges(oldSvc, newSvc config.Service) []string {
 	add("fqdn", oldSvc.FQDN, newSvc.FQDN)
 	add("host", oldSvc.Host, newSvc.Host)
 	add("backend", oldSvc.Backend, newSvc.Backend)
-	add("public", displayPublic(oldSvc.Public), displayPublic(newSvc.Public))
+	add("tunnel", displayTunnel(oldSvc.Tunnel), displayTunnel(newSvc.Tunnel))
 	add("disabled", displayBool(oldSvc.Disabled), displayBool(newSvc.Disabled))
 	add("auth mode", displayMode(oldSvc.Auth.Mode), displayMode(newSvc.Auth.Mode))
 	add("auth groups", displayGroups(oldSvc.Auth.Groups), displayGroups(newSvc.Auth.Groups))

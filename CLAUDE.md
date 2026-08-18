@@ -111,13 +111,14 @@ there, since the global options block it belongs in is hand-maintained).
 **Update (commit `e49d8bb`, 2026-07-28): this section describes an architecture superseded in
 code.** hemma no longer reads a hand-maintained compose file's tunnel labels — it now **writes**
 each host's cloudflared `config.yml` directly (`internal/plan/plan.go`'s `planCloudflaredConfig`),
-generated from every service's `public` field the same way the Pi-hole/Caddy files are. `design.md`
+generated from every service's `tunnel` field the same way the Pi-hole/Caddy files are. `design.md`
 §12 and this section still describe the pre-`e49d8bb` label-reading design and need a rewrite;
 until that happens, treat the paragraphs below as **historical**, not current behavior, and prefer
 `internal/plan/plan.go`, `internal/cli/list.go`, and `internal/cli/gitignore.go` (its `checkDrift`
 call) as the source of truth.
 
-`public: true` on a service opts it into the public horizon; absent means local-only. hemma
+`tunnel: true` on a service opts it into the public horizon; absent means local-only (renamed from
+`public` in August 2026; the old key and `--public` flag are still accepted and migrated on load). hemma
 generates a tunnel ingress entry for it in the relevant host's `config.yml` (path set by
 `defaults.tunnel-dir`) alongside the DNS/Caddy files — same single-writer, same manifest-tracked
 GC. There is no longer a separate read-only "PUBLIC" observation to reconcile against a

@@ -429,10 +429,10 @@ func TestBuild_CloudflaredConfig_AggregatesPerHostSorted(t *testing.T) {
 	c := base()
 	c.Defaults.TunnelDir = "cloudflared"
 	c.Defaults.AuthService = "portal"
-	c.Services["portal"] = config.Service{FQDN: "zzz-auth.example.com", Host: "appbox", Backend: "authelia:9091", Public: true}
-	c.Services["zeta"] = config.Service{FQDN: "mmm-zeta.example.com", Host: "appbox", Backend: "zeta:80", Public: true}
-	c.Services["alpha"] = config.Service{FQDN: "aaa-alpha.example.com", Host: "appbox", Backend: "alpha:80", Public: true}
-	c.Services["private"] = config.Service{FQDN: "private.example.com", Host: "appbox", Backend: "priv:80"} // Public: false
+	c.Services["portal"] = config.Service{FQDN: "zzz-auth.example.com", Host: "appbox", Backend: "authelia:9091", Tunnel: true}
+	c.Services["zeta"] = config.Service{FQDN: "mmm-zeta.example.com", Host: "appbox", Backend: "zeta:80", Tunnel: true}
+	c.Services["alpha"] = config.Service{FQDN: "aaa-alpha.example.com", Host: "appbox", Backend: "alpha:80", Tunnel: true}
+	c.Services["private"] = config.Service{FQDN: "private.example.com", Host: "appbox", Backend: "priv:80"} // Tunnel: false
 
 	p := Build(c)
 	key := cloudflaredConfigOwnerPrefix + "appbox"
@@ -475,7 +475,7 @@ func TestBuild_CloudflaredConfig_AggregatesPerHostSorted(t *testing.T) {
 // the moment the last public service on that host loses public: true.
 func TestBuild_CloudflaredConfig_OmittedWhenNoPublicServices(t *testing.T) {
 	c := base()
-	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000"} // Public: false
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000"} // Tunnel: false
 	p := Build(c)
 	for k := range p.Files {
 		if IsCloudflaredConfigOwner(k) {
@@ -489,8 +489,8 @@ func TestBuild_CloudflaredConfig_OmittedWhenNoPublicServices(t *testing.T) {
 func TestBuild_CloudflaredConfig_ExcludesSkippedServices(t *testing.T) {
 	c := base()
 	c.Defaults.TunnelDir = "cloudflared"
-	c.Services["good"] = config.Service{FQDN: "good.example.com", Host: "appbox", Backend: "good:80", Public: true}
-	c.Services["bad"] = config.Service{FQDN: "not a valid fqdn", Host: "appbox", Backend: "bad:80", Public: true}
+	c.Services["good"] = config.Service{FQDN: "good.example.com", Host: "appbox", Backend: "good:80", Tunnel: true}
+	c.Services["bad"] = config.Service{FQDN: "not a valid fqdn", Host: "appbox", Backend: "bad:80", Tunnel: true}
 	p := Build(c)
 	key := cloudflaredConfigOwnerPrefix + "appbox"
 	files := p.Files[key]
@@ -508,7 +508,7 @@ func TestBuild_CloudflaredConfig_ExcludesSkippedServices(t *testing.T) {
 func TestBuild_CloudflaredConfig_HonorsConfiguredDir(t *testing.T) {
 	c := base()
 	c.Defaults.TunnelDir = "cloudflared-local/data"
-	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Public: true}
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Tunnel: true}
 	p := Build(c)
 	key := cloudflaredConfigOwnerPrefix + "appbox"
 	files := p.Files[key]
@@ -527,7 +527,7 @@ func TestBuild_CloudflaredConfig_HonorsConfiguredDir(t *testing.T) {
 // guess (verified: two real hosts once genuinely disagreed on it).
 func TestBuild_CloudflaredConfig_UnresolvedWithoutTunnelDirKeepsOtherFiles(t *testing.T) {
 	c := base() // no Defaults.TunnelDir set
-	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Public: true}
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Tunnel: true}
 
 	p := Build(c)
 	if _, skipped := p.Skipped["docs"]; skipped {

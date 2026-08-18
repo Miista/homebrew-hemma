@@ -72,18 +72,18 @@ func TestSummarizeNewService(t *testing.T) {
 		"  fqdn: a.example.com",
 		"  host: appbox",
 		"  backend: a:80",
-		"  public: local only",
+		"  tunnel: local only",
 	}
 	if got := summarizeNewService(plain); !reflect.DeepEqual(got, want) {
 		t.Errorf("summary mismatch:\n got  %v\n want %v", got, want)
 	}
 
-	// public is always shown — it is a decision the editor asked for, so it
+	// tunnel is always shown — it is a decision the editor asked for, so it
 	// belongs in the confirmation even when the answer was "no".
 	pub := plain
-	pub.Public = true
-	if got := summarizeNewService(pub); got[3] != "  public: yes" {
-		t.Errorf("public line = %q, want \"  public: yes\"", got[3])
+	pub.Tunnel = true
+	if got := summarizeNewService(pub); got[3] != "  tunnel: yes" {
+		t.Errorf("tunnel line = %q, want \"  tunnel: yes\"", got[3])
 	}
 
 	gated := plain

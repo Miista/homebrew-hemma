@@ -328,7 +328,8 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	authFlag := fs.Bool("auth", false, "shorthand for --auth-mode forward")
 	authMode := fs.String("auth-mode", "", "auth mode: forward|oidc|external|none")
 	authGroups := fs.String("auth-groups", "", "comma-separated auth provider groups allowed access")
-	public := fs.Bool("public", false, "opt into the public horizon (also reachable from the internet)")
+	tunnel := fs.Bool("tunnel", false, "generate a cloudflared tunnel ingress entry (reachable from the internet)")
+	fs.BoolVar(tunnel, "public", false, "pre-rename alias for --tunnel")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -374,7 +375,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	}
 	return persistNewService(repoRoot, cfg, name,
 		config.Service{FQDN: *fqdn, Host: *host, Backend: *backend,
-			Auth: config.Auth{Mode: mode, Groups: groups}, Public: *public})
+			Auth: config.Auth{Mode: mode, Groups: groups}, Tunnel: *tunnel})
 }
 
 // persistNewService is the shared tail of `add service`: both the flags form
@@ -639,7 +640,8 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	authFlag := fs.Bool("auth", false, "shorthand for --auth-mode forward (--auth=false clears)")
 	authMode := fs.String("auth-mode", "", "auth mode: forward|oidc|external|none")
 	authGroups := fs.String("auth-groups", "", "comma-separated auth provider groups ('' clears)")
-	public := fs.Bool("public", false, "opt into the public horizon ('--public=false' opts back out)")
+	tunnel := fs.Bool("tunnel", false, "generate a cloudflared tunnel ingress entry ('--tunnel=false' opts back out)")
+	fs.BoolVar(tunnel, "public", false, "pre-rename alias for --tunnel")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -680,10 +682,10 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 		case "auth-groups":
 			// Empty string clears the groups.
 			svc.Auth.Groups = splitGroups(*authGroups)
-		case "public":
-			// --public=false opts back out; omitempty then drops the key, so
+		case "tunnel", "public":
+			// --tunnel=false opts back out; omitempty then drops the key, so
 			// false and absent are the same statement on disk.
-			svc.Public = *public
+			svc.Tunnel = *tunnel
 		}
 	})
 	// Shared tail with the interactive editor: validate-before-persist, save,
@@ -928,7 +930,7 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 			fmt.Printf("  • %s\n", name)
 		}
 	}
-	// A public: true service with no tunnel_dir configured still gets its
+	// A tunnel: true service with no tunnel_dir configured still gets its
 	// internal DNS/Caddy files (Plan.UnresolvedTunnels — see its doc comment
 	// for why this is deliberately NOT a Skipped reason), but it has no
 	// working public ingress, which is a real, actionable misconfiguration:
@@ -940,7 +942,7 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 		for _, name := range p.UnresolvedTunnels {
 			fmt.Printf("  • %s\n", name)
 		}
-		hint("Run 'hemma defaults set tunnel-dir <dir>' to fix, or 'hemma update service <name> --public=false' if it was not meant to be public.")
+		hint("Run 'hemma defaults set tunnel-dir <dir>' to fix, or 'hemma update service <name> --tunnel=false' if it was not meant to be reachable.")
 	}
 	if len(errored) > 0 {
 		fmt.Printf("%d skipped:\n", len(errored))
@@ -1170,7 +1172,7 @@ Building blocks (a service references a host and a domain):
   hemma defaults set deploy-host <name>    Name the one host 'hemma deploy' may run from ('-' clears); doctor audits deploy readiness only there.
   hemma defaults set auth-snippet <path>   Set the (auth) snippet source ('-' clears). Services opt in with --auth.
   hemma defaults set auth-service <name>   Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.
-  hemma defaults set tunnel-dir <dir>      Set where every host's cloudflared config.yml is written ('-' clears; a public: true service becomes publicly unreachable until it's set — its DNS/Caddy config is unaffected).
+  hemma defaults set tunnel-dir <dir>      Set where every host's cloudflared config.yml is written ('-' clears; a tunnel: true service becomes unreachable from the internet until it's set — its DNS/Caddy config is unaffected).
 
 Credentials (print-only; the auth provider's config and users database are never written):
   hemma create app oidc <app_name> [callback_path]   Generate OIDC client credentials + a config snippet to paste in.
@@ -1179,7 +1181,7 @@ Credentials (print-only; the auth provider's config and users database are never
 Other:
   hemma apply                    Make config live on THIS host: validate caddy + auth config first, then restart pihole / reload caddy / restart the auth provider. Run on each host. Refuses if the repo has drift.
   hemma deploy [<host> ...]      Push-based fan-out over ssh: 'git pull --ff-only' on every target host (any failure aborts everything), then 'hemma apply' per host, remotes first and this host last. Targets default to all hosts with a role. Requires a clean, pushed local repo.
-  hemma list [--all]             Overview: hosts, domains, services (with PUBLIC: internet-reachable or local-only, echoing each service's declared 'public' field), and auth groups (users + restricted services). Services default to THIS host; --all shows every host.
+  hemma list [--all]             Overview: hosts, domains, services (with TUNNEL: internet-reachable or local-only, echoing each service's declared 'tunnel' field), and auth groups (users + restricted services). Services default to THIS host; --all shows every host.
   hemma verify [--all] [<fqdn>]  Check live DNS/Caddy per service. Defaults to services this host can check; --all includes the rest. Run on each host; needs docker.
   hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>  Time the request breakdown (dns/connect/tls/ttfb) for a service or any URL. --compare A/Bs split-horizon vs public read-only (dns-host only, services only).
   hemma doctor [--fix]           Audit the repo (gitignored files, Caddyfile imports — including trusted_proxies, generated-file drift — including cloudflared config.yml, auth wiring); --fix reconciles files and .gitignore.

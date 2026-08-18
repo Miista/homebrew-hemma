@@ -90,8 +90,8 @@ services:
     host: optiplex                    # machine that runs the service; Caddy site block goes in its dir
     backend: paperless:8000
     # disabled: true                  # optional; see §6.1 (enable/disable)
-    # public: true                    # optional; DECLARED public horizon (true|false) — §12.
-                                      # absent = undeclared, which doctor leaves alone
+    # tunnel: true                    # optional; generate a cloudflared ingress entry — §12.
+                                      # absent = local horizon only (pre-rename key: public)
     # auth: forward                   # optional auth mode: forward|oidc|external (or legacy true=forward) — §4.5
     # auth:                           # object form when groups or bypass paths are set:
     #   mode: forward
@@ -115,19 +115,26 @@ Notes:
 - `dns_host` is a **single repo-wide resolver** (`defaults.dns_host`, set via
   `hemma defaults set dns-host`). Every service's DNS record is routed through it; there is **no
   per-service override**. **Do not hardcode which host that is** — always read `defaults.dns_host`.
-- `public` **opts a service into the public horizon**: `true` means it is meant to be reachable
-  from the internet as well; absent means local only. Set via `add/update service --public`
-  (§6.1). A plain bool, not a tri-state — absent and `false` are the same statement.
+- `tunnel` **opts a service into the public horizon**: `true` means a cloudflared tunnel ingress
+  entry is generated for its fqdn, so the internet can reach it; absent means local only. Set via
+  `add/update service --tunnel` (§6.1; `--public` is still accepted as a pre-rename alias).
+  A plain bool, not a tri-state — absent and `false` are the same statement.
+  Named `public` until August 2026: the old name invited reading it as "not local" (it does not
+  mean that — see below) and sat one word away from auth concepts that are about a request's
+  ORIGIN rather than reachability. `tunnel` names the mechanism and pairs with
+  `defaults.tunnel_dir`. Legacy files are migrated on load and the old key stops being emitted on
+  the next rewrite (`Service.UnmarshalYAML`) — the same accept-both-then-re-emit approach as
+  `public_paths`, the manifest, and the Caddyfile-import renames.
   There is no value for "local", because locality is never in question: a declared service always
   gets a Pi-hole record and a Caddy block. And there is no value for "public but not local", for
   the same reason. Why this is a bool rather than a `horizon` enum or a `horizons` array — and why
   a VPN is not a third horizon — is set out in §12.
   hemma generates the tunnel ingress entry for it directly (§12) — there is no separate
-  reconciliation step; a `public: true` service with no ingress entry (e.g. `tunnel_dir` unset)
+  reconciliation step; a `tunnel: true` service with no ingress entry (e.g. `tunnel_dir` unset)
   surfaces as ordinary generated-file drift, the same as a missing DNS record or Caddy block.
 - `auth.bypass_paths` was a top-level `public_paths` until July 2026. It moved under `auth`
   because it is only meaningful with mode `forward`, and because the old name collided with the
-  unrelated `public` field. Legacy files are migrated on load and the old key stops being emitted
+  unrelated `public` field (itself since renamed to `tunnel`). Legacy files are migrated on load and the old key stops being emitted
   on the next rewrite (`Service.UnmarshalYAML`) — the same accept-both-then-re-emit approach as
   the manifest and Caddyfile-import renames.
 - A service's domain is chosen by matching its `fqdn`'s longest matching registrable domain
@@ -760,7 +767,7 @@ hemma defaults set tunnel-dir   <dir>           ('-' clears)
   `hemma deploy` may fan out from. `-` clears it (deploy runnable from anywhere again).
 - **`defaults set tunnel-dir <dir>`**: sets `defaults.tunnel_dir` (§12), the per-host directory
   cloudflared's config.yml is written into. `-` clears it — every host's `config.yml` becomes an
-  orphan and is GC'd on the next Complete-mode reconcile, and every `public: true` service's
+  orphan and is GC'd on the next Complete-mode reconcile, and every `tunnel: true` service's
   DNS/Caddy files are left untouched (only the tunnel ingress entry is affected).
 - **`remove host` / `remove domain`**: **refuse** while any service still references the target,
   and report the blockers. A host is referenced if any service names it as `host` **or** it is
@@ -940,8 +947,8 @@ hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>   (-c/--a
   It warns first if `dns_host` is unset, marks disabled services `[disabled]`, and reports repo
   drift at the end. **Services default to the current host** (matched by local IP); `--all` shows
   every host. If the local IP matches no host, it falls back to showing everything.
-  The **PUBLIC** column marks each service `yes` or `no` — a direct echo of the declared
-  `public` field (§12), since hemma is the sole author of the cloudflared `config.yml` a `yes`
+  The **TUNNEL** column marks each service `yes` or `no` — a direct echo of the declared
+  `tunnel` field (§12), since hemma is the sole author of the cloudflared `config.yml` a `yes`
   generates an ingress entry into.
   When `auth_snippet` or `auth_service` is configured, an `== Auth ==` section (showing both,
   with a set-command hint for a missing one) precedes the services table, and the §4.5
@@ -1151,17 +1158,17 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
   holds absolutely.** Earlier revisions of this design kept the public horizon (public DNS +
   tunnel ingress) entirely out of hemma's hands: it read a `cloudflare.io/hostname` label off a
   hand-maintained `docker-compose.yml`, and later, read-only, surfaced that label's presence in
-  `list`'s PUBLIC column and three `doctor` advisories. That label-reading architecture is
+  `list`'s TUNNEL column and three `doctor` advisories. That label-reading architecture is
   **retired** (commit `e49d8bb`, July 2026): hemma is now the sole author of each host's
-  cloudflared **`config.yml`**, generated from every service's `public` field exactly like the
+  cloudflared **`config.yml`**, generated from every service's `tunnel` field exactly like the
   Pi-hole/Caddy files (`internal/plan/plan.go`'s `planCloudflaredConfig`), gated on
   `defaults.tunnel_dir` being set (§6.2). What this changes:
-  - `list`'s PUBLIC column (§6.6) is now a **direct echo** of the declared `public` field, not an
+  - `list`'s TUNNEL column (§6.6) is now a **direct echo** of the declared `tunnel` field, not an
     observation of foreign state — there is no longer a "what does the tunnel actually serve"
     question to reconcile against a hand-maintained file.
   - The former **auth bypass** / **declared but not served** / **undeclared exposure** doctor
     checks, which compared the label against `services.yaml`, no longer apply: there is no foreign
-    file left to drift against. A `public: true` service with no ingress entry (`tunnel_dir` unset,
+    file left to drift against. A `tunnel: true` service with no ingress entry (`tunnel_dir` unset,
     or the file not yet regenerated) now surfaces as ordinary **generated-file drift** (§6.4 check
     3), the same as a missing DNS record or Caddy block.
   - `defaults.public_label` and `defaults.public_proxy_label` are gone; there is nothing left to
@@ -1178,7 +1185,7 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
   DNS/Caddy files — a public service losing its tunnel config stays reachable on the LAN. See the
   `tunnel_dir`-unset test coverage in `internal/plan/plan_test.go`.
 
-  **Why `public` is a bool, and not `horizon: local|public` or `horizons: [...]`** (settled July
+  **Why the horizon opt-in is a bool, and not `horizon: local|public` or `horizons: [...]`** (settled July
   2026, after four passes over the naming — recorded here so it stops being re-litigated).
 
   The horizon axis has exactly **two** values, and one of them is always true:
@@ -1188,7 +1195,7 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
     There is nothing to declare.
   - **public** — the only open question, and a yes/no one.
 
-  One binary degree of freedom is a bool. `public: true` is therefore the *correct* shape rather
+  One binary degree of freedom is a bool. `tunnel: true` is therefore the *correct* shape rather
   than a terse compromise, and `horizon`/`horizons` would model a dimension that does not exist:
 
   - `horizon: local | public` reads as though `public` excludes local (it does not), so the
@@ -1206,10 +1213,10 @@ where `<host-dir>` is the host's `ResolvedDir` (its `dir:` or, by convention, it
   - "Public but not local" is unrepresentable by construction, as above.
 
   Should a genuine second opt-in ever appear, the migration is mechanical and the bool is its
-  one-element case: `public: true` ≡ `horizons: [public]`, via the same accept-both-then-re-emit
+  one-element case: `tunnel: true` ≡ `horizons: [public]`, via the same accept-both-then-re-emit
   approach used for the manifest, import-line, and `public_paths` renames.
 
-  Remaining gotcha: a `public: true` service can still have a correct *internal* horizon (hemma
+  Remaining gotcha: a `tunnel: true` service can still have a correct *internal* horizon (hemma
   did its job) yet be publicly unreachable if `defaults.tunnel_dir` was never set — the ingress
   entry is then never generated at all. Unlike the old label-based design this is no longer a
   silent gap: it is ordinary generated-file drift (§6.4 check 3), so `doctor` reports it and

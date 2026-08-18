@@ -406,11 +406,12 @@ func TestHostSSH_RoundTripAndDefault(t *testing.T) {
 	}
 }
 
-// `public` is a plain opt-in bool: true round-trips, and absent stays absent
-// rather than being written back as `public: false`. A legacy `public: false`
+// `tunnel` is a plain opt-in bool: true round-trips, and absent stays absent
+// rather than being written back as `tunnel: false`. A legacy `public: false`
 // from the brief tri-state era decodes to the zero value and the key is dropped
-// on rewrite — false and absent are the same statement.
-func TestServicePublic_OptIn(t *testing.T) {
+// on rewrite — false and absent are the same statement. The fixture is written
+// with the PRE-RENAME `public:` key, so this also covers the rename migration.
+func TestServiceTunnel_OptIn(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "services.yaml")
 	write(t, path, `hosts: {}
@@ -437,8 +438,8 @@ services:
 		t.Fatal(err)
 	}
 	for name, want := range map[string]bool{"wanted": true, "legacyfalse": false, "undeclared": false} {
-		if got := c.Services[name].Public; got != want {
-			t.Errorf("%s: Public = %v, want %v", name, got, want)
+		if got := c.Services[name].Tunnel; got != want {
+			t.Errorf("%s: Tunnel = %v, want %v", name, got, want)
 		}
 	}
 
@@ -447,12 +448,18 @@ services:
 	}
 	b, _ := os.ReadFile(path)
 	out := string(b)
-	if !strings.Contains(out, "public: true") {
-		t.Errorf("opt-in must round-trip:\n%s", out)
+	// The opt-in round-trips under the CURRENT key: a legacy `public: true`
+	// input is re-emitted as `tunnel: true` (one-way rename migration).
+	if !strings.Contains(out, "tunnel: true") {
+		t.Errorf("opt-in must round-trip as tunnel:\n%s", out)
 	}
-	// Exactly one `public:` key — the false and the absent both emit nothing.
-	if n := strings.Count(out, "public:"); n != 1 {
-		t.Errorf("expected exactly 1 public: key, got %d:\n%s", n, out)
+	// Exactly one `tunnel:` key — the false and the absent both emit nothing.
+	if n := strings.Count(out, "tunnel:"); n != 1 {
+		t.Errorf("expected exactly 1 tunnel: key, got %d:\n%s", n, out)
+	}
+	// The pre-rename key is gone after the rewrite.
+	if strings.Contains(out, "public:") {
+		t.Errorf("legacy public: key must not survive a rewrite:\n%s", out)
 	}
 }
 
