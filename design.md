@@ -94,6 +94,8 @@ defaults:
   # tunnel_dir: cloudflared           # optional; where each host's cloudflared config.yml is
                                       # written (relative to that host's repo dir) — §12. Unset:
                                       # public services get no ingress entry generated for them yet.
+  # local_networks: [10.0.0.0/8]      # optional; what counts as the LOCAL horizon for a
+                                      # per-horizon auth.policy — §4.8. Grants nothing alone.
 
 services:
   docs:
@@ -104,6 +106,9 @@ services:
     # tunnel: true                    # optional; generate a cloudflared ingress entry — §12.
                                       # absent = local horizon only (pre-rename key: public)
     # auth: forward                   # optional auth mode: forward|oidc|external (or legacy true=forward) — §4.5
+    # auth:                           # per-horizon requirement (§4.8), forward mode only:
+    #   mode: forward
+    #   policy: {local: bypass, public: one_factor}
     # auth:                           # object form when groups or bypass paths are set:
     #   mode: forward
     #   groups: [admins]              # provider groups allowed access — §4.5
@@ -115,6 +120,10 @@ Notes:
   machine and never repeated in service entries.
 - A host's repo directory defaults to its name (`hosts` key). A `dir:` field exists for the
   rare case where directory ≠ name, but the convention (and the whole fleet today) is dir == name.
+- `local_networks` are the CIDRs a per-horizon `auth.policy` treats as the **local horizon**
+  (§4.8). Repo-wide because it describes the network, not any one service — a VLAN renumber is one
+  edit rather than one per service. It grants nothing on its own: which services vary their
+  requirement by horizon is per-service and off by default.
 - `deploy_host` names the **single fan-out origin** for `hemma deploy` (§6.8). Set via
   `hemma defaults set deploy-host <name>`. Two effects: deploy **refuses** to run anywhere else (before
   the preflight and before any ssh), and `doctor` audits deploy readiness only there. Both exist
@@ -606,6 +615,117 @@ source IP and ride straight through any `networks:`-scoped access-control rule. 
 `/32`s (individual hosts and the one non-host proxy per host) keeps the trust boundary equal to
 "things hemma actually knows are legitimate," not "everything that happens to share a network."
 
+### 4.8 Per-horizon auth policy
+
+Split-horizon DNS means one fqdn resolves differently depending on where you ask from (§4.1).
+Per-horizon auth policy is the same idea applied to the gate: **one fqdn, one Caddy site, but a
+different auth requirement depending on where the request came from.** A media server open in the
+living room and gated from the internet; an admin panel that wants a login at home and a second
+factor from outside.
+
+```yaml
+defaults:
+    local_networks: [10.0.0.0/8]     # what counts as "the local horizon"
+
+services:
+    jellyfin:
+        fqdn: watch.example.com
+        auth:
+            mode: forward
+            policy: {local: bypass, public: one_factor}
+    pihole:
+        fqdn: pihole.example.com
+        auth:
+            mode: forward
+            groups: [admins]
+            policy: {public: two_factor}     # local stays at the default
+```
+
+generates (`hemma.access_control.generated.yml`, §4.6):
+
+```yaml
+    - domain: 'watch.example.com'
+      networks:
+        - '10.0.0.0/8'
+      policy: 'bypass'
+    - domain: 'watch.example.com'
+      policy: 'one_factor'
+    - domain: 'pihole.example.com'
+      networks:
+        - '10.0.0.0/8'
+      policy: 'one_factor'
+      subject:
+        - 'group:admins'
+    - domain: 'pihole.example.com'
+      policy: 'two_factor'
+      subject:
+        - 'group:admins'
+```
+
+**The two axes are separate.** `local`/`public` here describe **where a request came from**;
+`tunnel: true` (§3) describes **whether the internet can reach the service at all**. A service can
+be LAN-only and still carry a public policy — it simply never fires, except for a LAN-adjacent
+source outside `local_networks` (a guest VLAN, say), which is arguably the point. Keeping these
+words apart is deliberate; see §2's naming rule.
+
+**Levels** are Authelia's own four: `bypass`, `one_factor`, `two_factor`, `deny`. An unrecognized
+value is a load error rather than a default — every wrong guess here silently widens (`bypass`) or
+narrows (`deny`) a security statement.
+
+**Unset means the default gate** (`one_factor`), which is exactly what a bare `auth: forward` has
+always generated, so the feature is purely additive: a service with no `policy` produces
+byte-identical output to before it existed. A partial map overrides one horizon and leaves the
+other at the default, rather than being an error.
+
+**Identical horizons emit ONE rule.** If both resolve to the same level the networks-scoped rule is
+omitted — the catch-all already says it, and a rule that changes nothing is noise in a file whose
+whole job is to be auditable.
+
+**Rule order within a service** (Authelia is first-match, so anything that relaxes must precede
+the gate):
+
+1. **path bypasses** (`auth.bypass_paths`, §4.5) — narrowest, and first so an exempt path stays
+   exempt from *every* origin rather than only the public one.
+2. **the local-horizon rule** — whole service, scoped by source network.
+3. **the catch-all**, carrying the public policy.
+
+**Groups and `bypass` cannot combine.** Authelia documents that the `subject` criterion *"may not
+be used for the bypass policy — the minimum required authentication level to identify the subject
+is one_factor"*: there is no authenticated identity to match a group against when nothing is being
+authenticated. So a bypass rule is emitted without a subject, and for a
+`{local: bypass}` + `groups:` service the groups restrict **only the public horizon**. If LAN users
+should also be in a group, that is `{local: one_factor}`, not bypass. Authenticating local rules do
+carry the subject (`networks` and `subject` combine fine).
+
+**Per-service and off by default**, never a global switch: a repo-wide "trust the LAN" flag would
+silently unauthenticate every admin panel the moment it landed. `local_networks` grants nothing on
+its own — it only says what "local" *means* for the services that opt in.
+
+**Depends on real client-IP resolution (§4.7).** Authelia matches `networks` against the IP it is
+told the client has, which is whatever the reverse proxy forwarded. Without `trusted_proxies`, that
+is the nearest proxy's address, which is not in `local_networks` — so no local rule ever matches
+and everything falls to the public policy. The dependency fails toward **more** auth, never less.
+
+**`local_networks` unset while a service asks for a differing local policy** is reported
+(`Plan.UnresolvedLocalPolicy`), not fatal — the same posture as `tunnel_dir`/`UnresolvedTunnels`
+(§3), and for the same reason: it says nothing about whether the service itself is valid. Every
+file still generates, the public policy still renders as the catch-all, and the only consequence is
+the local horizon being treated as strictly as the public one. Unlike the tunnel case it does **not**
+force a non-zero exit: nothing is exposed and nothing is broken, so it is a did-you-mean rather
+than a misconfiguration.
+
+**Only with mode `forward`** — it parameterises the forward-auth gate. `oidc`'s gate is the app's
+own OIDC flow (which hemma cannot vary by source IP) and `external`/`none` have no gate here at
+all, so a policy on those is a per-entry validation error (§7), like `groups` with mode `none`.
+
+*Considered and rejected (for now)*: per-horizon **groups** (`public: {policy: one_factor, groups:
+[remote-media]}`) — a different audience per horizon, not just a different strictness. Rejected as
+premature: it turns each horizon from a scalar into a mapping, needing a shorthand and a long form
+one level deeper than `auth` already has, and the motivating cases (media open locally, admin panel
+hardened remotely) all want the *same* audience at *different* strictness. Groups answer "who",
+horizons answer "how hard". It stays addable without a break, since a string level can grow into a
+mapping via the same accept-both-then-re-emit approach used elsewhere.
+
 ## 5. Manifest
 
 - **One file**, at the repo root: `hemma-manifest.yaml`, **committed to git**.
@@ -736,6 +856,7 @@ hemma defaults set auth-snippet <path>          ('-' clears)
 hemma defaults set auth-service <name>          ('-' clears)
 hemma defaults set deploy-host  <name>          ('-' clears)
 hemma defaults set tunnel-dir   <dir>           ('-' clears)
+hemma defaults set local-networks <cidr,...>    ('-' clears)
 ```
 
 - **`add host <name> <ip>`**: both positional. The IP must be a valid address and unique across
@@ -780,6 +901,13 @@ hemma defaults set tunnel-dir   <dir>           ('-' clears)
   cloudflared's config.yml is written into. `-` clears it — every host's `config.yml` becomes an
   orphan and is GC'd on the next Complete-mode reconcile, and every `tunnel: true` service's
   DNS/Caddy files are left untouched (only the tunnel ingress entry is affected).
+- **`defaults set local-networks <cidr,...>`**: sets `defaults.local_networks` (§4.8), the CIDRs a
+  per-horizon `auth.policy` treats as the local horizon. Comma-separated, deduped, order preserved;
+  each entry must parse as a bare IP or a CIDR, **validated before persisting** — this decides which
+  requests get the looser of two auth policies, so a typo is a usage error rather than something
+  that lands in a generated rule. `-` clears it, after which those services apply their public
+  policy to every request (reported, not fatal — §4.8). Syncs **Complete**: the access-control
+  artifact embeds these CIDRs for every service with a differing local policy.
 - **`remove host` / `remove domain`**: **refuse** while any service still references the target,
   and report the blockers. A host is referenced if any service names it as `host` **or** it is
   the resolver (`defaults.dns_host`); a domain is referenced if any service's fqdn matches it

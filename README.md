@@ -196,6 +196,42 @@ service is authenticated some other way entirely, use `external`. If it is genui
 
 The `AUTH` column in `hemma list` shows the mode (`forward` / `oidc` / `external` / `-`).
 
+### Different auth at home than from outside
+
+One fqdn, one Caddy site, but a different requirement depending on where the request came from —
+split-horizon DNS applied to the auth gate:
+
+```yaml
+defaults:
+    local_networks: [10.0.0.0/8]      # what "local" means
+
+services:
+    jellyfin:
+        auth:
+            mode: forward
+            policy: {local: bypass, public: one_factor}   # open at home, login from outside
+    pihole:
+        auth:
+            mode: forward
+            groups: [admins]
+            policy: {public: two_factor}                  # login at home, 2FA from outside
+```
+
+Levels are Authelia's four: `bypass`, `one_factor`, `two_factor`, `deny`. Unset means `one_factor`
+on both horizons — exactly what a bare `auth: forward` has always meant, so adding this to the
+schema changed nothing for existing services. Per-service and off by default: an admin panel stays
+gated on the LAN unless it says otherwise.
+
+Set it with `hemma update service <name> --auth-policy-local bypass --auth-policy-public one_factor`,
+or in the interactive editor.
+
+This needs the reverse proxy to forward the real client IP (`hemma update host --trusted-proxies`);
+without it every request looks like it came from the nearest proxy and falls to the public policy —
+more auth than asked for, never less. Two notes worth knowing: `bypass` and `groups` cannot combine
+(Authelia can't match a group against nobody), so for `{local: bypass}` the groups restrict only the
+public horizon; and if `local_networks` is unset while a service asks for a differing local policy,
+hemma reports it and applies the public policy everywhere.
+
 ### Local-only or also reachable from the internet? The `TUNNEL` column
 
 hemma generates the **internal** horizon (Pi-hole record + Caddy site block) *and* the **public**

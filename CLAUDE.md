@@ -109,7 +109,9 @@ because one word was doing two jobs at different altitudes.
   ("local horizon", "public horizon"). Never a field name.
 
 So: `tunnel: true` (mechanism, bool) puts a service on the **public horizon** (vocabulary),
-and `auth.policy.{local,public}` says what each horizon requires. If a new field needs a
+and `auth.policy.{local,public}` says what each horizon requires (§4.8: per-service, off by
+default, resolved against `defaults.local_networks`; unset = `one_factor` on both, so it is purely
+additive; a `bypass` rule carries no `subject` because Authelia forbids that combination). If a new field needs a
 name, name the mechanism; if new prose needs to talk about reach, say local/public.
 
 ## Host-split commands (`apply`, `verify`)
