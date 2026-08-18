@@ -54,6 +54,17 @@ declarative source of truth committed to a git repository.
   of every mutation. The mode is chosen by the mutation's shape, not by a user flag (§6.1). The
   user-facing surface for "make it match / make it live" is `doctor --fix` (repo) and `apply`
   (running daemons).
+- **Naming: mechanism for fields, horizon for horizons.** Field names describe the MECHANISM
+  (`tunnel` — is a cloudflared ingress entry generated; `tunnel_dir`; `trusted_proxies`), and a
+  bool field is answered `yes`/`no` on every user-facing surface (editor confirms, `list`'s
+  TUNNEL column, the add summary). The words **`local`** and **`public`** mean a HORIZON and only
+  that — where a request came from, or which horizon a name resolves on: they are the
+  `auth.policy` keys (§4.8) and the language of this document, never a field name. This
+  separation is deliberate and was learned twice: top-level `public_paths` moved under `auth` as
+  `bypass_paths` (July 2026) and the service field `public` became `tunnel` (August 2026), both
+  because one word was doing two jobs at different altitudes. So `tunnel: true` (mechanism, bool)
+  puts a service on the *public horizon* (vocabulary), and `auth.policy.{local,public}` says what
+  each horizon requires.
 
 ## 3. Source of truth: `services.yaml` (repo root)
 

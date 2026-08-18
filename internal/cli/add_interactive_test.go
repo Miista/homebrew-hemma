@@ -72,7 +72,7 @@ func TestSummarizeNewService(t *testing.T) {
 		"  fqdn: a.example.com",
 		"  host: appbox",
 		"  backend: a:80",
-		"  tunnel: local only",
+		"  tunnel: no",
 	}
 	if got := summarizeNewService(plain); !reflect.DeepEqual(got, want) {
 		t.Errorf("summary mismatch:\n got  %v\n want %v", got, want)

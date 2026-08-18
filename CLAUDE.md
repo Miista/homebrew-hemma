@@ -93,6 +93,25 @@ services.yaml → config → plan → render        (desired state)
   strings into the man page, so `--help` and the man page can never drift. Edit help text there.
 - Color/glyphs (`✓ ✗ ⚠`) are gated on stdout being a TTY and `NO_COLOR` unset, so piped/captured output stays plain.
 
+### Naming: mechanism for fields, horizon for horizons
+
+Two vocabularies, kept strictly apart — they drifted into each other once already
+(top-level `public_paths` → `auth.bypass_paths`, then `public` → `tunnel`), each time
+because one word was doing two jobs at different altitudes.
+
+- **Field names describe the MECHANISM.** `tunnel` (is a cloudflared ingress entry
+  generated?), `tunnel_dir`, `trusted_proxies`. A bool field asks a yes/no question, so
+  every user-facing surface answers it that way: the editor confirms are `yes`/`no`, the
+  `list` TUNNEL column is `yes`/`no`, the add-summary line is `tunnel: yes`. Do NOT label a
+  bool field's values with horizon words — that was the state that made `public` ambiguous.
+- **`local` / `public` mean a HORIZON, and only that**: where a request came from, or which
+  horizon a name resolves on. They are the `auth.policy` keys and the language of the docs
+  ("local horizon", "public horizon"). Never a field name.
+
+So: `tunnel: true` (mechanism, bool) puts a service on the **public horizon** (vocabulary),
+and `auth.policy.{local,public}` says what each horizon requires. If a new field needs a
+name, name the mechanism; if new prose needs to talk about reach, say local/public.
+
 ## Host-split commands (`apply`, `verify`)
 
 `apply` and `verify` are **host-split**: they identify which host they run on via a local-IP match and

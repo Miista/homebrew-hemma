@@ -126,7 +126,7 @@ func cmdAddInteractive(repoRoot, cfgPath, name string) int {
 			Value(&backend).Validate(nonEmpty("the backend")),
 		huh.NewConfirm().Title("tunnel").
 			Description("Reachable from the internet too? Generates a tunnel ingress entry in this host's cloudflared config.yml (needs defaults.tunnel-dir set).").
-			Affirmative("internet").Negative("local only").
+			Affirmative("yes").Negative("no").
 			Value(&tunnel),
 	}
 	if !isAuthService {
@@ -209,7 +209,7 @@ func summarizeNewService(svc config.Service) []string {
 		"  fqdn: " + svc.FQDN,
 		"  host: " + svc.Host,
 		"  backend: " + svc.Backend,
-		"  tunnel: " + map[bool]string{true: "yes", false: "local only"}[svc.Tunnel],
+		"  tunnel: " + map[bool]string{true: "yes", false: "no"}[svc.Tunnel],
 	}
 	if svc.Auth.Mode != config.AuthNone {
 		lines = append(lines, "  auth mode: "+string(svc.Auth.Mode))

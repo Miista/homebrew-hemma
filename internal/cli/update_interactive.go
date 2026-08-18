@@ -109,7 +109,7 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 		huh.NewInput().Title("backend").Value(&backend),
 		huh.NewConfirm().Title("tunnel").
 			Description("Reachable from the internet too? Generates a tunnel ingress entry in this host's cloudflared config.yml (needs defaults.tunnel-dir set).").
-			Affirmative("internet").Negative("local only").
+			Affirmative("yes").Negative("no").
 			Value(&tunnel),
 		huh.NewConfirm().Title("disabled").
 			Description("Stop generating config for this service. It stays in services.yaml; its generated files are removed.").

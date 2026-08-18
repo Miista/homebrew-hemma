@@ -167,7 +167,7 @@ func printServiceTable(cfg *config.Config, svcNames []string) {
 	}
 
 	// Header + width computation. AUTH holds a mode, "-", or "(portal)"; TUNNEL
-	// holds "yes"/"no"/"?" and is dropped entirely when disabled.
+	// holds "yes"/"no" and is dropped entirely when disabled.
 	hName, hFQDN, hHost, hBack, hAuth, hPub := "NAME", "FQDN", "HOST", "BACKEND", "AUTH", "TUNNEL"
 	wName, wFQDN, wHost, wBack, wAuth := len(hName), len(hFQDN), len(hHost), len(hBack), len(hAuth)
 	for _, r := range rows {
