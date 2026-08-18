@@ -29,6 +29,18 @@ type Service struct {
 	Mode        string   // ModeForward or ModeOIDC (external/none never reach the provider)
 	Groups      []string // provider group names allowed access; empty = any authenticated user
 	BypassPaths []string // paths exempt from the auth gate (forward mode only)
+	// LocalNetworks are the CIDRs that count as the local horizon for this
+	// service, and LocalPolicy is what those requests must satisfy; both are
+	// set only when the service's local policy DIFFERS from its public one, so
+	// a non-empty LocalNetworks means "emit a networks-scoped rule". Empty
+	// means one policy for every origin — including the case where a service
+	// asked for a differing local policy but no networks are configured: plan
+	// reports that rather than passing an empty list off as intentional.
+	LocalNetworks []string
+	LocalPolicy   string
+	// PublicPolicy is the catch-all requirement (every request not matched by
+	// the local rule). Empty falls back to the provider's default gate.
+	PublicPolicy string
 }
 
 // Advisory is one instructive advisory (design §6.4): a finding about a file

@@ -73,6 +73,8 @@ func cmdAddInteractive(repoRoot, cfgPath, name string) int {
 	host := hosts[0]
 	backend := ""
 	mode := "none"
+	policyLocal := policyDefaultChoice
+	policyPublic := policyDefaultChoice
 	var selGroups []string
 	newGroup := ""
 	tunnel := false
@@ -138,6 +140,14 @@ func cmdAddInteractive(repoRoot, cfgPath, name string) int {
 				Description(groupsDesc+" Ignored when auth mode is none.").
 				Options(groupOpts...).
 				Value(&selGroups),
+			huh.NewSelect[string]().Title("auth policy (local)").
+				Description("What a request from defaults.local_networks must satisfy. Forward mode only.").
+				Options(huh.NewOptions(policyDefaultChoice, "bypass", "one_factor", "two_factor", "deny")...).
+				Value(&policyLocal),
+			huh.NewSelect[string]().Title("auth policy (public)").
+				Description("What every other request must satisfy — the catch-all.").
+				Options(huh.NewOptions(policyDefaultChoice, "bypass", "one_factor", "two_factor", "deny")...).
+				Value(&policyPublic),
 			huh.NewText().Title("auth bypass paths").
 				Description("One path per line, served without passing the gate (e.g. /health). Forward mode only.").
 				Value(&bypass),
@@ -193,6 +203,10 @@ func cmdAddInteractive(repoRoot, cfgPath, name string) int {
 		sort.Strings(gs)
 		svc.Auth.Groups = gs
 		svc.Auth.BypassPaths = splitLines(bypass)
+		svc.Auth.Policy = config.AuthPolicy{
+			Local:  policyLevelFromChoice(policyLocal),
+			Public: policyLevelFromChoice(policyPublic),
+		}
 	}
 
 	for _, l := range summarizeNewService(svc) {
@@ -220,6 +234,10 @@ func summarizeNewService(svc config.Service) []string {
 		}
 		if len(svc.Auth.BypassPaths) > 0 {
 			lines = append(lines, "  auth bypass paths: "+strings.Join(svc.Auth.BypassPaths, ", "))
+		}
+		if !svc.Auth.Policy.IsZero() {
+			lines = append(lines, fmt.Sprintf("  auth policy: local=%s public=%s",
+				svc.Auth.Policy.ResolveLocal(), svc.Auth.Policy.ResolvePublic()))
 		}
 	}
 	return lines

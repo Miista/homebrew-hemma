@@ -558,3 +558,98 @@ func TestBuild_CloudflaredConfig_UnresolvedWithoutTunnelDirKeepsOtherFiles(t *te
 		}
 	}
 }
+
+// A differing local policy resolves against defaults.local_networks and lands
+// in the generated access-control artifact.
+func TestBuild_PerHorizonPolicy(t *testing.T) {
+	c := base()
+	c.Defaults.AuthService = "portal"
+	c.Defaults.LocalNetworks = []string{"10.0.0.0/8"}
+	c.Services["portal"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091"}
+	c.Services["media"] = config.Service{FQDN: "media.example.com", Host: "appbox", Backend: "jellyfin:8096",
+		Auth: config.Auth{Mode: config.AuthForward, Policy: config.AuthPolicy{
+			Local: config.PolicyBypass, Public: config.PolicyOneFactor}}}
+
+	p := Build(c)
+	if len(p.UnresolvedLocalPolicy) != 0 {
+		t.Fatalf("nothing should be unresolved: %v", p.UnresolvedLocalPolicy)
+	}
+	files := p.Files[authAccessKey]
+	if len(files) != 1 {
+		t.Fatalf("expected the access-control artifact, got %d files", len(files))
+	}
+	got := files[0].Content
+	for _, want := range []string{"networks:", "'10.0.0.0/8'", "policy: 'bypass'", "policy: 'one_factor'"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("artifact missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// A differing local policy with NO local_networks is reported, not fatal: the
+// service still generates everything and its public policy becomes the
+// catch-all, so the local horizon just gets the stricter treatment.
+func TestBuild_PerHorizonPolicyWithoutNetworksIsReported(t *testing.T) {
+	c := base()
+	c.Defaults.AuthService = "portal"
+	c.Services["portal"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091"}
+	c.Services["media"] = config.Service{FQDN: "media.example.com", Host: "appbox", Backend: "jellyfin:8096",
+		Auth: config.Auth{Mode: config.AuthForward, Policy: config.AuthPolicy{Local: config.PolicyBypass}}}
+
+	p := Build(c)
+	if len(p.UnresolvedLocalPolicy) != 1 || p.UnresolvedLocalPolicy[0] != "media" {
+		t.Fatalf("media should be reported unresolved, got %v", p.UnresolvedLocalPolicy)
+	}
+	// NOT skipped, and its own files are intact.
+	if reason, skipped := p.Skipped["media"]; skipped {
+		t.Errorf("media must not be skipped, got %q", reason)
+	}
+	if len(p.Files["media"]) != 2 {
+		t.Errorf("media should still generate its DNS + Caddy files, got %d", len(p.Files["media"]))
+	}
+	// The artifact carries only the catch-all — no networks rule to scope.
+	got := p.Files[authAccessKey][0].Content
+	if strings.Contains(got, "networks:") {
+		t.Errorf("no networks rule can be generated without local_networks:\n%s", got)
+	}
+	if !strings.Contains(got, "policy: 'one_factor'") {
+		t.Errorf("the public policy should still gate every request:\n%s", got)
+	}
+}
+
+// A policy on a non-forward mode is a half-formed intent: there is no
+// forward-auth gate for it to vary.
+func TestBuild_PolicyRequiresForwardMode(t *testing.T) {
+	for _, mode := range []config.AuthMode{config.AuthOIDC, config.AuthExternal, config.AuthNone} {
+		c := base()
+		c.Services["x"] = config.Service{FQDN: "x.example.com", Host: "appbox", Backend: "app:80",
+			Auth: config.Auth{Mode: mode, Policy: config.AuthPolicy{Local: config.PolicyBypass}}}
+		reason, skipped := Build(c).Skipped["x"]
+		if !skipped {
+			t.Errorf("mode %q with a policy should be skipped", mode)
+			continue
+		}
+		if !strings.Contains(reason, "policy") {
+			t.Errorf("mode %q: reason should mention the policy, got %q", mode, reason)
+		}
+	}
+}
+
+// Identical horizons need no separate rule — the catch-all already says it.
+func TestBuild_IdenticalHorizonsEmitOneRule(t *testing.T) {
+	c := base()
+	c.Defaults.AuthService = "portal"
+	c.Defaults.LocalNetworks = []string{"10.0.0.0/8"}
+	c.Services["portal"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091"}
+	c.Services["x"] = config.Service{FQDN: "x.example.com", Host: "appbox", Backend: "app:80",
+		Auth: config.Auth{Mode: config.AuthForward, Policy: config.AuthPolicy{
+			Local: config.PolicyTwoFactor, Public: config.PolicyTwoFactor}}}
+
+	got := Build(c).Files[authAccessKey][0].Content
+	if strings.Contains(got, "networks:") {
+		t.Errorf("identical horizons should emit no networks rule:\n%s", got)
+	}
+	if n := strings.Count(got, "- domain: 'x.example.com'"); n != 1 {
+		t.Errorf("expected 1 rule for x, got %d:\n%s", n, got)
+	}
+}

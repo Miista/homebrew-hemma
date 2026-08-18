@@ -17,7 +17,7 @@ type HelpTopic struct {
 var HelpTopics = []HelpTopic{
 	{"add service", `hemma add service — declare a service and generate its DNS/Caddy config
 
-Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--tunnel]
+Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel]
 
 With no flags (and stdin a terminal) an interactive editor opens instead: the
 fqdn is pre-filled with <name>.<domain> when exactly one domain is defined and
@@ -50,6 +50,16 @@ Flags:
                           the generated access-control rules (multiple groups are OR'd).
                           Requires an auth mode (forward or oidc).
       --auth              Back-compat shorthand for --auth-mode forward.
+      --auth-policy-local <p>
+      --auth-policy-public <p>
+                          Per-horizon auth requirement: bypass|one_factor|two_factor|deny.
+                          Unset means one_factor on both horizons, which is what a bare
+                          --auth-mode forward has always meant. "local" is a request whose
+                          resolved client IP is in defaults.local_networks; "public" is
+                          everything else. Forward mode only. Effective only when the
+                          reverse proxy resolves the true client IP (see 'update host
+                          --trusted-proxies') — otherwise everything is treated as public,
+                          which is the safe direction.
       --tunnel            Generate a cloudflared tunnel ingress entry for this
                           service, so the internet can reach it. Omit for local-only
                           (every service is reachable on the LAN either way).
@@ -62,7 +72,7 @@ Regenerates files immediately, then prints which hosts need 'hemma apply'.`},
 
 	{"update service", `hemma update service — change a service's fqdn, host, backend, or auth
 
-Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--tunnel]
+Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel]
 
 With no flags (and stdin a terminal) an interactive editor opens instead:
 EVERY field is pre-filled with the service's current values and editable
@@ -91,6 +101,11 @@ Flags:
                           generated access-control rules). '' clears them. Requires an
                           auth mode (forward or oidc).
       --auth[=false]      Back-compat shorthand: --auth = forward, --auth=false = none.
+      --auth-policy-local <p>
+      --auth-policy-public <p>
+                          Per-horizon auth requirement: bypass|one_factor|two_factor|deny;
+                          '' clears one back to the default (one_factor). See 'hemma help
+                          add service' for the full semantics. Forward mode only.
       --tunnel            Generate a cloudflared tunnel ingress entry (so the internet
                           can reach it); --tunnel=false opts back out. Accepts --public
                           as a pre-rename alias. Writes into this host's cloudflared config.yml
@@ -237,6 +252,31 @@ is reported as publicly unreachable. Its DNS record and Caddy site are NOT
 affected — the internal horizon works whether or not the tunnel does.
 Clearing tunnel_dir GCs every host's config.yml and reports every currently-
 public service as unreachable until it's set again.`},
+
+	{"defaults set local-networks", `hemma defaults set local-networks — define the local horizon for per-horizon auth
+
+Usage: hemma defaults set local-networks <cidr,...>   (use '-' to clear)
+
+The CIDRs that count as "the home network" when a service declares a
+per-horizon auth policy (auth.policy.local / auth.policy.public). Comma-
+separated; each entry must be a bare IP or a CIDR, validated before anything
+is written. One repo-wide value (like dns-host/tunnel-dir), because it
+describes the network rather than any one service — a VLAN renumber is one
+edit here instead of one per service.
+
+This list grants nothing on its own: WHICH services vary their requirement by
+horizon is per-service and off by default, so an admin panel stays gated on
+the LAN unless it says otherwise.
+
+While local_networks is unset, a service asking for a differing local policy
+still generates normally but applies its PUBLIC policy to every request,
+including from the LAN — more auth than asked for, never less. Those services
+are reported after a sync (it is a did-you-mean, not an error).
+
+Effective only when the reverse proxy resolves the true client IP — see
+'hemma update host --trusted-proxies'. Without that, requests arrive looking
+like the nearest proxy, which is not in this list, and everything falls to the
+public policy.`},
 
 	{"create app", `hemma create app oidc — generate OIDC client credentials for an app
 

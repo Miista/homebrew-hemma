@@ -40,6 +40,15 @@ type Plan struct {
 	// public reachability. The caller decides how loudly to report this
 	// (cli's runSync surfaces it as an advisory).
 	UnresolvedTunnels []string
+	// UnresolvedLocalPolicy lists services (sorted) whose auth.policy asks for a
+	// local horizon that differs from their public one, but which have no
+	// defaults.local_networks to resolve it against. Same posture as
+	// UnresolvedTunnels, and deliberately NOT a Skipped reason: every other file
+	// is unaffected and the public policy still renders as the catch-all, so the
+	// only consequence is that the local horizon gets the stricter treatment —
+	// MORE auth than asked for, never less. Dropping the whole service over that
+	// would be the worse trade. The caller decides how loudly to report it.
+	UnresolvedLocalPolicy []string
 }
 
 // IsDisabled reports whether a skipped service was explicitly disabled (as
@@ -256,14 +265,31 @@ func planAccessControl(c *config.Config, p *Plan) {
 		if !ok || !svc.Auth.Mode.UsesProvider() {
 			continue
 		}
+		// A differing local policy needs networks to scope it; with none
+		// configured the service keeps a single catch-all and is reported (see
+		// Plan.UnresolvedLocalPolicy).
+		var localNets []string
+		localPolicy := ""
+		if svc.Auth.Mode == config.AuthForward && svc.Auth.Policy.NeedsLocalRule() {
+			if len(c.Defaults.LocalNetworks) > 0 {
+				localNets = c.Defaults.LocalNetworks
+				localPolicy = string(svc.Auth.Policy.ResolveLocal())
+			} else {
+				p.UnresolvedLocalPolicy = append(p.UnresolvedLocalPolicy, name)
+			}
+		}
 		svcs = append(svcs, auth.Service{
-			Name:        name,
-			FQDN:        svc.FQDN,
-			Mode:        string(svc.Auth.Mode),
-			Groups:      svc.Auth.Groups,
-			BypassPaths: svc.Auth.BypassPaths,
+			Name:          name,
+			FQDN:          svc.FQDN,
+			Mode:          string(svc.Auth.Mode),
+			Groups:        svc.Auth.Groups,
+			BypassPaths:   svc.Auth.BypassPaths,
+			LocalNetworks: localNets,
+			LocalPolicy:   localPolicy,
+			PublicPolicy:  string(svc.Auth.Policy.ResolvePublic()),
 		})
 	}
+	sort.Strings(p.UnresolvedLocalPolicy)
 	relPath, content, ok := auth.Default().AccessControl(svcs)
 	if !ok {
 		return
@@ -377,6 +403,13 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 	}
 	if !svc.Auth.Mode.UsesProvider() && len(svc.Auth.BypassPaths) > 0 {
 		return nil, "auth bypass_paths set but auth mode does not use hemma's provider — set mode forward, or clear them"
+	}
+	// A per-horizon policy parameterises the forward-auth gate, so it needs one:
+	// oidc's gate is the app's own OIDC flow (which hemma cannot vary by source
+	// IP), and external/none have no gate at all — a half-formed intent rather
+	// than a silent no-op.
+	if svc.Auth.Mode != config.AuthForward && !svc.Auth.Policy.IsZero() {
+		return nil, "auth policy set but auth mode is not forward — only forward-auth has a gate to vary per horizon, so set mode forward or clear it"
 	}
 
 	dnsPath := filepath.Join(dnsM.ResolvedDir(dnsHostName), config.DefaultDnsmasqDir, name+".generated.conf")

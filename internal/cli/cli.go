@@ -330,6 +330,8 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	authGroups := fs.String("auth-groups", "", "comma-separated auth provider groups allowed access")
 	tunnel := fs.Bool("tunnel", false, "generate a cloudflared tunnel ingress entry (reachable from the internet)")
 	fs.BoolVar(tunnel, "public", false, "pre-rename alias for --tunnel")
+	policyLocal := fs.String("auth-policy-local", "", "auth requirement for local-horizon requests: bypass|one_factor|two_factor|deny")
+	policyPublic := fs.String("auth-policy-public", "", "auth requirement for public-horizon requests: bypass|one_factor|two_factor|deny")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -368,6 +370,15 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 		return 2
 	}
 
+	addLocal, ok := resolvePolicyLevel("auth-policy-local", *policyLocal)
+	if !ok {
+		return 2
+	}
+	addPublic, ok := resolvePolicyLevel("auth-policy-public", *policyPublic)
+	if !ok {
+		return 2
+	}
+
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		errf("%v", err)
@@ -375,7 +386,9 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	}
 	return persistNewService(repoRoot, cfg, name,
 		config.Service{FQDN: *fqdn, Host: *host, Backend: *backend,
-			Auth: config.Auth{Mode: mode, Groups: groups}, Tunnel: *tunnel})
+			Auth: config.Auth{Mode: mode, Groups: groups,
+				Policy: config.AuthPolicy{Local: addLocal, Public: addPublic}},
+			Tunnel: *tunnel})
 }
 
 // persistNewService is the shared tail of `add service`: both the flags form
@@ -570,6 +583,23 @@ func oidcClientWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 // --auth is a back-compat shorthand for --auth-mode forward; --auth-mode takes
 // forward|oidc|none. Passing both is allowed only if they agree. An invalid
 // --auth-mode value is a usage error (returns ok=false; caller exits 2).
+// resolvePolicyLevel validates an --auth-policy-* value BEFORE the YAML is
+// touched. An empty string is valid and means "unset" (that horizon falls back
+// to the default gate), which is how the update flags clear the field. A typo
+// is a usage error rather than something that reaches a generated
+// access-control rule, where it would be a silent security statement.
+func resolvePolicyLevel(flagName, raw string) (config.PolicyLevel, bool) {
+	if raw == "" {
+		return "", true
+	}
+	switch config.PolicyLevel(raw) {
+	case config.PolicyBypass, config.PolicyOneFactor, config.PolicyTwoFactor, config.PolicyDeny:
+		return config.PolicyLevel(raw), true
+	}
+	errf("%q is not a valid --%s — expected bypass, one_factor, two_factor, or deny.", raw, flagName)
+	return "", false
+}
+
 func resolveAuthMode(fs *flag.FlagSet, auth bool, authMode string) (config.AuthMode, bool) {
 	authSet, modeSet := false, false
 	fs.Visit(func(f *flag.Flag) {
@@ -642,6 +672,8 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	authGroups := fs.String("auth-groups", "", "comma-separated auth provider groups ('' clears)")
 	tunnel := fs.Bool("tunnel", false, "generate a cloudflared tunnel ingress entry ('--tunnel=false' opts back out)")
 	fs.BoolVar(tunnel, "public", false, "pre-rename alias for --tunnel")
+	policyLocal := fs.String("auth-policy-local", "", "auth requirement for local-horizon requests ('' clears): bypass|one_factor|two_factor|deny")
+	policyPublic := fs.String("auth-policy-public", "", "auth requirement for public-horizon requests ('' clears): bypass|one_factor|two_factor|deny")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -654,6 +686,14 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	}
 	// Validate --auth/--auth-mode up front (usage error before touching YAML).
 	newMode, ok := resolveAuthMode(fs, *authFlag, *authMode)
+	if !ok {
+		return 2
+	}
+	newLocal, ok := resolvePolicyLevel("auth-policy-local", *policyLocal)
+	if !ok {
+		return 2
+	}
+	newPublic, ok := resolvePolicyLevel("auth-policy-public", *policyPublic)
 	if !ok {
 		return 2
 	}
@@ -686,6 +726,10 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 			// --tunnel=false opts back out; omitempty then drops the key, so
 			// false and absent are the same statement on disk.
 			svc.Tunnel = *tunnel
+		case "auth-policy-local":
+			svc.Auth.Policy.Local = newLocal
+		case "auth-policy-public":
+			svc.Auth.Policy.Public = newPublic
 		}
 	})
 	// Shared tail with the interactive editor: validate-before-persist, save,
@@ -944,6 +988,20 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 		}
 		hint("Run 'hemma defaults set tunnel-dir <dir>' to fix, or 'hemma update service <name> --tunnel=false' if it was not meant to be reachable.")
 	}
+	// A service asking for a differing local policy with no local_networks
+	// configured still generates everything, including its public policy as the
+	// catch-all (Plan.UnresolvedLocalPolicy — see its doc comment). Unlike the
+	// tunnel case this does NOT force a non-zero exit: the outcome is the local
+	// horizon being treated as strictly as the public one, i.e. more auth than
+	// asked for, so nothing is exposed and nothing is broken — it is a
+	// did-you-mean, not a misconfiguration.
+	if len(p.UnresolvedLocalPolicy) > 0 {
+		fmt.Printf("%d with no local horizon (local_networks not set):\n", len(p.UnresolvedLocalPolicy))
+		for _, name := range p.UnresolvedLocalPolicy {
+			fmt.Printf("  • %s\n", name)
+		}
+		hint("Set the home network with 'hemma defaults set local-networks <cidr,...>' — until then these services apply their public policy to every request, including from the LAN.")
+	}
 	if len(errored) > 0 {
 		fmt.Printf("%d skipped:\n", len(errored))
 		for _, name := range sortedSkip(errored) {
@@ -1172,6 +1230,7 @@ Building blocks (a service references a host and a domain):
   hemma defaults set deploy-host <name>    Name the one host 'hemma deploy' may run from ('-' clears); doctor audits deploy readiness only there.
   hemma defaults set auth-snippet <path>   Set the (auth) snippet source ('-' clears). Services opt in with --auth.
   hemma defaults set auth-service <name>   Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.
+  hemma defaults set local-networks <cidr,...>  Set the CIDRs that count as the local horizon for per-horizon auth policies ('-' clears).
   hemma defaults set tunnel-dir <dir>      Set where every host's cloudflared config.yml is written ('-' clears; a tunnel: true service becomes unreachable from the internet until it's set — its DNS/Caddy config is unaffected).
 
 Credentials (print-only; the auth provider's config and users database are never written):

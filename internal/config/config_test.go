@@ -631,3 +631,131 @@ services:
 		t.Errorf("external should round-trip as 'auth: external':\n%s", b)
 	}
 }
+
+// A per-horizon auth policy round-trips through the object form, and a service
+// without one keeps emitting the terse string form.
+func TestAuthPolicy_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "services.yaml")
+	content := `hosts:
+  box: {ip: 192.0.2.1}
+domains:
+  - example.com
+defaults:
+  dns_host: box
+  local_networks: [10.0.0.0/8, 192.168.1.0/24]
+services:
+  media:
+    fqdn: media.example.com
+    host: box
+    backend: jellyfin:8096
+    auth:
+      mode: forward
+      policy: {local: bypass, public: one_factor}
+  panel:
+    fqdn: panel.example.com
+    host: box
+    backend: pihole:80
+    auth:
+      mode: forward
+      groups: [admins]
+      policy: {public: two_factor}
+  plain:
+    fqdn: plain.example.com
+    host: box
+    backend: app:80
+    auth: forward
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := c.Defaults.LocalNetworks; len(got) != 2 || got[0] != "10.0.0.0/8" {
+		t.Fatalf("local_networks = %v", got)
+	}
+	media := c.Services["media"].Auth.Policy
+	if media.Local != PolicyBypass || media.Public != PolicyOneFactor {
+		t.Errorf("media policy = %+v", media)
+	}
+	// A partial map leaves the other horizon unset, which RESOLVES to the
+	// default rather than being an error.
+	panel := c.Services["panel"].Auth.Policy
+	if panel.Local != "" {
+		t.Errorf("panel local should stay unset, got %q", panel.Local)
+	}
+	if got := panel.ResolveLocal(); got != DefaultPolicy {
+		t.Errorf("panel unset local should resolve to the default, got %q", got)
+	}
+	if panel.ResolvePublic() != PolicyTwoFactor {
+		t.Errorf("panel public = %q", panel.ResolvePublic())
+	}
+	if !c.Services["plain"].Auth.Policy.IsZero() {
+		t.Errorf("plain should carry no policy")
+	}
+
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	out := string(b)
+	if !strings.Contains(out, "local: bypass") || !strings.Contains(out, "public: two_factor") {
+		t.Errorf("policies must round-trip:\n%s", out)
+	}
+	// A service with no policy keeps the SHORT auth form — the schema stays
+	// terse for the services that don't use this.
+	if !strings.Contains(out, "auth: forward") {
+		t.Errorf("policy-less service should keep the short auth form:\n%s", out)
+	}
+}
+
+// An unknown policy value is an error, never a silent default: guessing would
+// either widen (bypass) or narrow (deny) what the operator wrote.
+func TestAuthPolicy_UnknownLevelRejected(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "services.yaml")
+	content := `hosts:
+  box: {ip: 192.0.2.1}
+domains:
+  - example.com
+defaults:
+  dns_host: box
+services:
+  x:
+    fqdn: x.example.com
+    host: box
+    backend: app:80
+    auth: {mode: forward, policy: {local: three_factor}}
+`
+	os.WriteFile(path, []byte(content), 0o644)
+	if _, err := Load(path); err == nil {
+		t.Fatal("an unknown policy level must be a parse error")
+	} else if !strings.Contains(err.Error(), "three_factor") {
+		t.Errorf("error should name the offending value, got: %v", err)
+	}
+}
+
+// NeedsLocalRule is what decides whether a networks-scoped rule is emitted at
+// all: identical horizons need no separate rule, since the catch-all already
+// says the same thing.
+func TestAuthPolicy_NeedsLocalRule(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		p    AuthPolicy
+		want bool
+	}{
+		{"both unset", AuthPolicy{}, false},
+		{"explicitly identical", AuthPolicy{Local: PolicyOneFactor, Public: PolicyOneFactor}, false},
+		{"local unset, public defaulted", AuthPolicy{Public: PolicyOneFactor}, false},
+		{"differing", AuthPolicy{Local: PolicyBypass, Public: PolicyOneFactor}, true},
+		{"local only, differs from default", AuthPolicy{Local: PolicyBypass}, true},
+		{"public only, differs from default", AuthPolicy{Public: PolicyTwoFactor}, true},
+	} {
+		if got := tc.p.NeedsLocalRule(); got != tc.want {
+			t.Errorf("%s: NeedsLocalRule() = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

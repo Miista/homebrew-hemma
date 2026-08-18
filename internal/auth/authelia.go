@@ -77,19 +77,41 @@ func (authelia) AccessControl(services []Service) (path, content string, ok bool
 		b.WriteString("  default_policy: 'deny'\n")
 		b.WriteString("  rules:\n")
 		for _, s := range forward {
-			// Bypass rules first (one per public path), then the access rule —
-			// Authelia rules are first-match, so the exemptions must precede
-			// the gate. These bypass rules are the ONLY auth.bypass_paths
-			// enforcement; Caddy renders no per-path branches (§4.5).
+			// Rules are first-match, so everything that EXEMPTS or relaxes must
+			// precede the catch-all gate. Order within a service:
+			//
+			//  1. path bypasses — narrowest (one path each), and the ONLY
+			//     auth.bypass_paths enforcement; Caddy renders no per-path
+			//     branches (§4.5).
+			//  2. the local-horizon rule — whole service, scoped by source
+			//     network (§4.8). After the path bypasses so an exempt path
+			//     stays exempt from every origin, not just the public one.
+			//  3. the catch-all, carrying the public policy.
 			for _, p := range s.BypassPaths {
 				fmt.Fprintf(&b, "    - domain: %s\n", yq(s.FQDN))
 				b.WriteString("      resources:\n")
 				fmt.Fprintf(&b, "        - %s\n", yq(pathResource(p)))
 				b.WriteString("      policy: 'bypass'\n")
 			}
+			if len(s.LocalNetworks) > 0 {
+				fmt.Fprintf(&b, "    - domain: %s\n", yq(s.FQDN))
+				b.WriteString("      networks:\n")
+				for _, n := range s.LocalNetworks {
+					fmt.Fprintf(&b, "        - %s\n", yq(n))
+				}
+				fmt.Fprintf(&b, "      policy: %s\n", yq(policyOr(s.LocalPolicy)))
+				// A bypass rule must carry no subject: Authelia has no
+				// authenticated user to match groups against when it is not
+				// asking for one.
+				if policyOr(s.LocalPolicy) != "bypass" {
+					writeSubject(&b, "      ", s.Groups)
+				}
+			}
 			fmt.Fprintf(&b, "    - domain: %s\n", yq(s.FQDN))
-			b.WriteString("      policy: 'one_factor'\n")
-			writeSubject(&b, "      ", s.Groups)
+			fmt.Fprintf(&b, "      policy: %s\n", yq(policyOr(s.PublicPolicy)))
+			if policyOr(s.PublicPolicy) != "bypass" {
+				writeSubject(&b, "      ", s.Groups)
+			}
 		}
 	}
 
@@ -111,6 +133,15 @@ func (authelia) AccessControl(services []Service) (path, content string, ok bool
 
 	dir := filepath.Dir(autheliaConfigPath)
 	return filepath.Join(dir, autheliaAccessControlFile), b.String(), true
+}
+
+// policyOr returns the policy or the default gate when unset. Kept here (not
+// in config) so the provider owns the string that lands in its own file.
+func policyOr(p string) string {
+	if p == "" {
+		return "one_factor"
+	}
+	return p
 }
 
 // writeSubject emits a rule's subject at the given indent. Omitted entirely

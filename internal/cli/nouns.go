@@ -328,11 +328,12 @@ func domainRemove(cfgPath string, args []string) int {
 type SetKey string
 
 const (
-	SetDNSHost     SetKey = "dns-host"
-	SetDeployHost  SetKey = "deploy-host"
-	SetAuthSnippet SetKey = "auth-snippet"
-	SetAuthService SetKey = "auth-service"
-	SetTunnelDir   SetKey = "tunnel-dir"
+	SetDNSHost       SetKey = "dns-host"
+	SetDeployHost    SetKey = "deploy-host"
+	SetAuthSnippet   SetKey = "auth-snippet"
+	SetAuthService   SetKey = "auth-service"
+	SetTunnelDir     SetKey = "tunnel-dir"
+	SetLocalNetworks SetKey = "local-networks"
 )
 
 // setSpec is everything dispatchDefaults, the top-level usage summary,
@@ -380,8 +381,11 @@ var setSpecs = []setSpec{
 		"Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.", cmdSetAuthService,
 		func(cfg *config.Config) string { return cfg.Defaults.AuthService }},
 	{SetTunnelDir, "hemma defaults set tunnel-dir <dir>   (use '-' to clear)",
-		"Set where every host's cloudflared config.yml is written ('-' clears; a public: true service becomes publicly unreachable until it's set — its DNS/Caddy config is unaffected).", cmdSetTunnelDir,
+		"Set where every host's cloudflared config.yml is written ('-' clears; a tunnel: true service becomes unreachable from the internet until it's set — its DNS/Caddy config is unaffected).", cmdSetTunnelDir,
 		func(cfg *config.Config) string { return cfg.Defaults.TunnelDir }},
+	{SetLocalNetworks, "hemma defaults set local-networks <cidr,...>   (use '-' to clear)",
+		"Set the CIDRs that count as the local horizon for per-horizon auth policies ('-' clears).", cmdSetLocalNetworks,
+		func(cfg *config.Config) string { return strings.Join(cfg.Defaults.LocalNetworks, ",") }},
 }
 
 // setKeyStrings returns every SetKey as a plain string, in setSpecs order —
@@ -393,6 +397,49 @@ func setKeyStrings() []string {
 		out[i] = string(s.key)
 	}
 	return out
+}
+
+// cmdSetLocalNetworks handles `set local-networks <cidr,...>` — the CIDRs a
+// per-horizon auth.policy treats as the local horizon (§4.8). Comma-separated,
+// deduped, validated before persisting: this decides which requests get the
+// LOOSER of two auth policies, so a malformed entry is a usage error rather
+// than something that silently lands in a generated access-control rule.
+//
+// Syncs Complete: the access-control artifact embeds these CIDRs for every
+// service with a differing local policy, so all of them are rewritten.
+func cmdSetLocalNetworks(cfgPath string, args []string) int {
+	if len(args) < 1 {
+		errf("Missing the <cidr,...>.")
+		hint("Usage: hemma defaults set local-networks <cidr,...>   (use '-' to clear)")
+		return 2
+	}
+	raw := args[0]
+
+	cfg, code := loadExisting(cfgPath, "set the local-networks in")
+	if cfg == nil {
+		return code
+	}
+	repoRoot := filepath.Dir(cfgPath)
+	if raw == "-" || raw == "" {
+		cfg.Defaults.LocalNetworks = nil
+		if err := cfg.Save(); err != nil {
+			errf("%v", err)
+			return 1
+		}
+		fmt.Println("Cleared local_networks — services with a per-horizon auth policy apply their public policy to every request until it's set again.")
+		return runSync(repoRoot, cfg, syncpkg.Complete)
+	}
+	nets, ok := parseTrustedProxies(raw) // same ip/cidr validation and dedupe
+	if !ok {
+		return 2
+	}
+	cfg.Defaults.LocalNetworks = nets
+	if err := cfg.Save(); err != nil {
+		errf("%v", err)
+		return 1
+	}
+	fmt.Printf("Set local_networks to %s.\n", strings.Join(nets, ", "))
+	return runSync(repoRoot, cfg, syncpkg.Complete)
 }
 
 // cmdSetDNSHost handles `set dns-host <name>` — sets defaults.dns_host, the

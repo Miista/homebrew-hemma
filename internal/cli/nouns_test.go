@@ -576,3 +576,74 @@ func TestHostAdd_WithSSH(t *testing.T) {
 		t.Errorf("ssh not stored, got %q", got)
 	}
 }
+
+// defaults set local-networks validates, dedupes, and clears.
+func TestSetLocalNetworks(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+
+	if code := Run([]string{"-C", dir, "defaults", "set", "local-networks", "10.0.0.0/8, 192.168.1.0/24,10.0.0.0/8"}); code != 0 {
+		t.Fatalf("set local-networks exit %d", code)
+	}
+	got := load(t, dir).Defaults.LocalNetworks
+	if len(got) != 2 || got[0] != "10.0.0.0/8" || got[1] != "192.168.1.0/24" {
+		t.Fatalf("local_networks = %v (want deduped, order preserved)", got)
+	}
+
+	// A malformed CIDR is a usage error and must not persist.
+	if code := Run([]string{"-C", dir, "defaults", "set", "local-networks", "10.0.0.0/99"}); code != 2 {
+		t.Errorf("bad cidr should exit 2, got %d", code)
+	}
+	if n := len(load(t, dir).Defaults.LocalNetworks); n != 2 {
+		t.Errorf("failed set must not persist, have %d entries", n)
+	}
+
+	if code := Run([]string{"-C", dir, "defaults", "set", "local-networks", "-"}); code != 0 {
+		t.Fatalf("clear exit %d", code)
+	}
+	if got := load(t, dir).Defaults.LocalNetworks; len(got) != 0 {
+		t.Errorf("'-' should clear, got %v", got)
+	}
+}
+
+// --auth-policy-local/-public round-trip through add and update, and an invalid
+// level is refused before the YAML is touched.
+func TestServiceAuthPolicyFlags(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir)
+
+	if code := Run([]string{"-C", dir, "add", "service", "media",
+		"--fqdn", "media.example.com", "--host", "appbox", "--backend", "jellyfin:8096",
+		"--auth-mode", "forward", "--auth-policy-local", "bypass", "--auth-policy-public", "one_factor"}); code != 0 {
+		t.Fatalf("add with policy flags exit %d", code)
+	}
+	p := load(t, dir).Services["media"].Auth.Policy
+	if p.Local != config.PolicyBypass || p.Public != config.PolicyOneFactor {
+		t.Fatalf("policy = %+v", p)
+	}
+
+	// Update one horizon only; the other is untouched.
+	if code := Run([]string{"-C", dir, "update", "service", "media", "--auth-policy-public", "two_factor"}); code != 0 {
+		t.Fatalf("update policy exit %d", code)
+	}
+	p = load(t, dir).Services["media"].Auth.Policy
+	if p.Local != config.PolicyBypass || p.Public != config.PolicyTwoFactor {
+		t.Fatalf("after partial update, policy = %+v", p)
+	}
+
+	// '' clears one back to the default.
+	if code := Run([]string{"-C", dir, "update", "service", "media", "--auth-policy-local", ""}); code != 0 {
+		t.Fatalf("clear local exit %d", code)
+	}
+	if got := load(t, dir).Services["media"].Auth.Policy.Local; got != "" {
+		t.Errorf("'' should clear the local policy, got %q", got)
+	}
+
+	// An invalid level is a usage error, and nothing changes.
+	if code := Run([]string{"-C", dir, "update", "service", "media", "--auth-policy-public", "three_factor"}); code != 2 {
+		t.Errorf("invalid level should exit 2, got %d", code)
+	}
+	if got := load(t, dir).Services["media"].Auth.Policy.Public; got != config.PolicyTwoFactor {
+		t.Errorf("failed update must not persist, got %q", got)
+	}
+}

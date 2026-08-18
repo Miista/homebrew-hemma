@@ -225,3 +225,115 @@ func TestAutheliaApplyCommands(t *testing.T) {
 		t.Errorf("reload = %v, want %v", reload, wantR)
 	}
 }
+
+// A differing local policy emits a networks-scoped rule BEFORE the catch-all
+// (Authelia is first-match), and the catch-all carries the public policy.
+func TestAccessControl_PerHorizonPolicy(t *testing.T) {
+	_, content, ok := authelia{}.AccessControl([]Service{{
+		Name: "media", FQDN: "media.example.com", Mode: ModeForward,
+		LocalNetworks: []string{"10.0.0.0/8", "192.168.1.0/24"},
+		LocalPolicy:   "bypass",
+		PublicPolicy:  "one_factor",
+	}})
+	if !ok {
+		t.Fatal("expected content")
+	}
+	want := `access_control:
+  default_policy: 'deny'
+  rules:
+    - domain: 'media.example.com'
+      networks:
+        - '10.0.0.0/8'
+        - '192.168.1.0/24'
+      policy: 'bypass'
+    - domain: 'media.example.com'
+      policy: 'one_factor'
+`
+	if !strings.Contains(content, want) {
+		t.Errorf("rules mismatch:\ngot:\n%s\nwant to contain:\n%s", content, want)
+	}
+}
+
+// A bypass rule must carry NO subject: Authelia documents that subject "may
+// not be used for the bypass policy" (identifying a subject needs at least
+// one_factor), so emitting both would be invalid config. Groups therefore
+// apply only to the horizon that actually authenticates.
+func TestAccessControl_BypassRuleOmitsSubject(t *testing.T) {
+	_, content, _ := authelia{}.AccessControl([]Service{{
+		Name: "media", FQDN: "media.example.com", Mode: ModeForward,
+		Groups:        []string{"media-users"},
+		LocalNetworks: []string{"10.0.0.0/8"},
+		LocalPolicy:   "bypass",
+		PublicPolicy:  "one_factor",
+	}})
+	local := content[strings.Index(content, "networks:"):strings.LastIndex(content, "- domain:")]
+	if strings.Contains(local, "subject:") {
+		t.Errorf("bypass rule must not carry a subject:\n%s", content)
+	}
+	// ...but the authenticating catch-all still restricts by group.
+	tail := content[strings.LastIndex(content, "- domain:"):]
+	if !strings.Contains(tail, "group:media-users") {
+		t.Errorf("public rule should still carry the subject:\n%s", content)
+	}
+}
+
+// A local policy that authenticates DOES carry the subject — networks and
+// subject combine fine when the policy is not bypass.
+func TestAccessControl_AuthenticatingLocalRuleKeepsSubject(t *testing.T) {
+	_, content, _ := authelia{}.AccessControl([]Service{{
+		Name: "panel", FQDN: "panel.example.com", Mode: ModeForward,
+		Groups:        []string{"admins"},
+		LocalNetworks: []string{"10.0.0.0/8"},
+		LocalPolicy:   "one_factor",
+		PublicPolicy:  "two_factor",
+	}})
+	if n := strings.Count(content, "group:admins"); n != 2 {
+		t.Errorf("both rules should carry the subject, got %d:\n%s", n, content)
+	}
+	if !strings.Contains(content, "policy: 'one_factor'") || !strings.Contains(content, "policy: 'two_factor'") {
+		t.Errorf("both policies should appear:\n%s", content)
+	}
+}
+
+// With no local networks resolved, only the catch-all is emitted — and it
+// carries the public policy, so the local horizon gets the stricter treatment.
+func TestAccessControl_NoLocalNetworksMeansSingleRule(t *testing.T) {
+	_, content, _ := authelia{}.AccessControl([]Service{{
+		Name: "media", FQDN: "media.example.com", Mode: ModeForward,
+		PublicPolicy: "one_factor",
+	}})
+	if strings.Contains(content, "networks:") {
+		t.Errorf("no networks rule expected:\n%s", content)
+	}
+	if n := strings.Count(content, "- domain: 'media.example.com'"); n != 1 {
+		t.Errorf("expected exactly 1 rule, got %d:\n%s", n, content)
+	}
+}
+
+// Path bypasses precede the local-horizon rule, so an exempt path stays exempt
+// from every origin rather than only the public one.
+func TestAccessControl_PathBypassesPrecedeLocalRule(t *testing.T) {
+	_, content, _ := authelia{}.AccessControl([]Service{{
+		Name: "gatus", FQDN: "status.example.com", Mode: ModeForward,
+		BypassPaths:   []string{"/health"},
+		LocalNetworks: []string{"10.0.0.0/8"},
+		LocalPolicy:   "bypass",
+		PublicPolicy:  "one_factor",
+	}})
+	iPath := strings.Index(content, "resources:")
+	iNet := strings.Index(content, "networks:")
+	if iPath == -1 || iNet == -1 || iPath > iNet {
+		t.Errorf("path bypass must come before the networks rule:\n%s", content)
+	}
+}
+
+// An unset PublicPolicy falls back to the provider's default gate, so existing
+// services (which pass no policy at all) generate byte-identically.
+func TestAccessControl_UnsetPolicyIsDefaultGate(t *testing.T) {
+	_, content, _ := authelia{}.AccessControl([]Service{{
+		Name: "x", FQDN: "x.example.com", Mode: ModeForward,
+	}})
+	if !strings.Contains(content, "policy: 'one_factor'") {
+		t.Errorf("unset policy should render the default gate:\n%s", content)
+	}
+}

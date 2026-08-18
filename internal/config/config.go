@@ -98,13 +98,136 @@ type Auth struct {
 	// with the unrelated `public` field. The name mirrors the provider's own
 	// vocabulary: these render as Authelia `policy: 'bypass'` rules.
 	BypassPaths []string
+	// Policy is the per-horizon auth requirement (§4.8): what a request must
+	// satisfy depending on whether its resolved client IP is in
+	// defaults.local_networks or not. Unset means one requirement for everyone
+	// (one_factor), which is what `auth: forward` alone has always meant — so
+	// this is purely additive.
+	//
+	// The cases it exists for: a media server open in the living room but gated
+	// from outside ({local: bypass, public: one_factor}), and an admin panel
+	// that wants a login at home and a second factor from outside
+	// ({local: one_factor, public: two_factor}). Per-service and unset by
+	// default on purpose — a repo-wide "trust the LAN" switch would silently
+	// unauthenticate every admin panel the moment it landed.
+	//
+	// Only meaningful with mode forward: it parameterises the forward-auth gate,
+	// and oidc/external/none have no gate here to vary.
+	//
+	// Depends on the reverse proxy resolving the TRUE client IP (§4.7). Without
+	// that, the resolved IP is the nearest proxy's, which is not in
+	// local_networks, so every request falls to the public policy — it fails
+	// toward MORE auth, never less.
+	Policy AuthPolicy
+}
+
+// AuthPolicy is the per-horizon auth requirement. An empty level means "not
+// set": that horizon falls back to DefaultPolicy, so a partial map
+// (`policy: {public: two_factor}`) overrides one horizon and leaves the other
+// at the default rather than being an error.
+type AuthPolicy struct {
+	// Local applies when the resolved client IP is in defaults.local_networks.
+	Local PolicyLevel
+	// Public applies to every other request — the catch-all rule.
+	Public PolicyLevel
+}
+
+// IsZero lets omitempty drop `policy:` when neither horizon is set.
+func (p AuthPolicy) IsZero() bool { return p.Local == "" && p.Public == "" }
+
+// PolicyLevel is one Authelia access-control policy value.
+type PolicyLevel string
+
+const (
+	PolicyBypass    PolicyLevel = "bypass"
+	PolicyOneFactor PolicyLevel = "one_factor"
+	PolicyTwoFactor PolicyLevel = "two_factor"
+	PolicyDeny      PolicyLevel = "deny"
+)
+
+// DefaultPolicy is what an unset horizon gets — what `auth: forward` on its own
+// has always generated.
+const DefaultPolicy = PolicyOneFactor
+
+// ResolveLocal / ResolvePublic return the effective level per horizon.
+func (p AuthPolicy) ResolveLocal() PolicyLevel  { return orDefault(p.Local) }
+func (p AuthPolicy) ResolvePublic() PolicyLevel { return orDefault(p.Public) }
+
+func orDefault(l PolicyLevel) PolicyLevel {
+	if l == "" {
+		return DefaultPolicy
+	}
+	return l
+}
+
+// NeedsLocalRule reports whether the local horizon differs from the public one
+// and therefore needs its own networks-scoped rule. Identical levels would
+// generate a rule that changes nothing, so it is omitted — the catch-all
+// already says the same thing.
+func (p AuthPolicy) NeedsLocalRule() bool { return p.ResolveLocal() != p.ResolvePublic() }
+
+// parsePolicyLevel maps a policy string to a PolicyLevel. An unrecognized value
+// is an error rather than a default: every wrong guess here is a security
+// statement, and silently widening (bypass) or narrowing (deny) what the
+// operator wrote is worse than refusing the entry.
+func parsePolicyLevel(s string) (PolicyLevel, error) {
+	switch PolicyLevel(s) {
+	case PolicyBypass:
+		return PolicyBypass, nil
+	case PolicyOneFactor:
+		return PolicyOneFactor, nil
+	case PolicyTwoFactor:
+		return PolicyTwoFactor, nil
+	case PolicyDeny:
+		return PolicyDeny, nil
+	default:
+		return "", fmt.Errorf("unknown auth policy %q — expected bypass, one_factor, two_factor, or deny", s)
+	}
+}
+
+// policyWire is the YAML form of AuthPolicy.
+type policyWire struct {
+	Local  string `yaml:"local,omitempty"`
+	Public string `yaml:"public,omitempty"`
+}
+
+// UnmarshalYAML decodes the policy map, validating both levels.
+func (p *AuthPolicy) UnmarshalYAML(value *yaml.Node) error {
+	var w policyWire
+	if err := value.Decode(&w); err != nil {
+		return fmt.Errorf("auth policy: %w", err)
+	}
+	for _, f := range []struct {
+		horizon string
+		raw     string
+		dst     *PolicyLevel
+	}{
+		{"local", w.Local, &p.Local},
+		{"public", w.Public, &p.Public},
+	} {
+		if f.raw == "" {
+			continue
+		}
+		lvl, err := parsePolicyLevel(f.raw)
+		if err != nil {
+			return fmt.Errorf("auth policy %s: %w", f.horizon, err)
+		}
+		*f.dst = lvl
+	}
+	return nil
+}
+
+// MarshalYAML emits only the horizons that are set.
+func (p AuthPolicy) MarshalYAML() (any, error) {
+	return policyWire{Local: string(p.Local), Public: string(p.Public)}, nil
 }
 
 // authWire is the mapping (long) YAML form of Auth.
 type authWire struct {
-	Mode        string   `yaml:"mode"`
-	Groups      []string `yaml:"groups,omitempty"`
-	BypassPaths []string `yaml:"bypass_paths,omitempty"`
+	Mode        string     `yaml:"mode"`
+	Groups      []string   `yaml:"groups,omitempty"`
+	BypassPaths []string   `yaml:"bypass_paths,omitempty"`
+	Policy      AuthPolicy `yaml:"policy,omitempty"`
 }
 
 // UnmarshalYAML accepts three forms, oldest first:
@@ -135,7 +258,7 @@ func (a *Auth) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("auth object form requires a mode (forward, oidc, external, or none)")
 		}
 		mode, err := parseAuthMode(w.Mode)
-		a.Mode, a.Groups, a.BypassPaths = mode, w.Groups, w.BypassPaths
+		a.Mode, a.Groups, a.BypassPaths, a.Policy = mode, w.Groups, w.BypassPaths, w.Policy
 		return err
 	}
 	var s string
@@ -151,16 +274,16 @@ func (a *Auth) UnmarshalYAML(value *yaml.Node) error {
 // nor bypass paths are set, and the mapping form only when one of them carries
 // data — the YAML stays as terse as before this field grew structure.
 func (a Auth) MarshalYAML() (any, error) {
-	if len(a.Groups) == 0 && len(a.BypassPaths) == 0 {
+	if len(a.Groups) == 0 && len(a.BypassPaths) == 0 && a.Policy.IsZero() {
 		return string(a.Mode), nil
 	}
-	return authWire{Mode: string(a.Mode), Groups: a.Groups, BypassPaths: a.BypassPaths}, nil
+	return authWire{Mode: string(a.Mode), Groups: a.Groups, BypassPaths: a.BypassPaths, Policy: a.Policy}, nil
 }
 
 // IsZero lets yaml's omitempty drop `auth:` entirely for unprotected services
 // (mode none, no groups, no bypass paths), matching the pre-struct behavior.
 func (a Auth) IsZero() bool {
-	return a.Mode == AuthNone && len(a.Groups) == 0 && len(a.BypassPaths) == 0
+	return a.Mode == AuthNone && len(a.Groups) == 0 && len(a.BypassPaths) == 0 && a.Policy.IsZero()
 }
 
 // Host is one host in the homelab, owning a directory in the repo. The
@@ -251,6 +374,19 @@ type Defaults struct {
 	// dns_host and auth_service: one repo-wide role, named by host, set via
 	// `hemma defaults set deploy-host <name>`.
 	DeployHost string `yaml:"deploy_host,omitempty"`
+	// LocalNetworks are the CIDRs that count as the LOCAL horizon when a service
+	// declares a per-horizon auth.policy (§4.8) — the home network, in resolved
+	// client-IP terms. Repo-wide because it describes the network, not any one
+	// service: a VLAN renumber is one edit here rather than N across services.
+	// WHICH services vary their policy by horizon is per-service, so this list
+	// grants nothing on its own.
+	//
+	// Unused when no service declares a differing local policy. Declared but
+	// EMPTY while a service does is reported (plan.UnresolvedLocalPolicy), not
+	// fatal: every other file is unaffected and the service's public policy
+	// still renders as its catch-all, so the only consequence is the local
+	// horizon getting the stricter treatment — the safe direction.
+	LocalNetworks []string `yaml:"local_networks,omitempty"`
 }
 
 // DefaultTunnelDir is the conventional cloudflared config directory name —

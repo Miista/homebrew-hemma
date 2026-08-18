@@ -68,6 +68,8 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 	tunnel := svc.Tunnel
 	disabled := svc.Disabled
 	bypass := strings.Join(svc.Auth.BypassPaths, "\n")
+	policyLocal := policyChoice(svc.Auth.Policy.Local)
+	policyPublic := policyChoice(svc.Auth.Policy.Public)
 
 	hosts := sortedKeysOf(cfg.Hosts)
 	if _, ok := cfg.Hosts[host]; !ok && host != "" {
@@ -125,6 +127,14 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 				Description(groupsDesc+" Ignored when auth mode is none.").
 				Options(groupOpts...).
 				Value(&selGroups),
+			huh.NewSelect[string]().Title("auth policy (local)").
+				Description("What a request from defaults.local_networks must satisfy. Forward mode only.").
+				Options(huh.NewOptions("(default: one_factor)", "bypass", "one_factor", "two_factor", "deny")...).
+				Value(&policyLocal),
+			huh.NewSelect[string]().Title("auth policy (public)").
+				Description("What every other request must satisfy — the catch-all.").
+				Options(huh.NewOptions("(default: one_factor)", "bypass", "one_factor", "two_factor", "deny")...).
+				Value(&policyPublic),
 			huh.NewText().Title("auth bypass paths").
 				Description("One path per line, served without passing the gate (e.g. /health). Forward mode only.").
 				Value(&bypass),
@@ -167,6 +177,9 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 			// mutation layer would accept (groups require an auth gate).
 			updated.Auth.Mode = config.AuthNone
 			updated.Auth.Groups = nil
+			// A policy parameterises the forward-auth gate; with no gate the
+			// plan would refuse the entry, so selecting none clears it too.
+			updated.Auth.Policy = config.AuthPolicy{}
 		} else {
 			updated.Auth.Mode = config.AuthMode(mode)
 			var gs []string
@@ -181,6 +194,10 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 			sort.Strings(gs)
 			updated.Auth.Groups = gs
 			updated.Auth.BypassPaths = splitLines(bypass)
+			updated.Auth.Policy = config.AuthPolicy{
+				Local:  policyLevelFromChoice(policyLocal),
+				Public: policyLevelFromChoice(policyPublic),
+			}
 		}
 	}
 
@@ -331,6 +348,8 @@ func summarizeServiceChanges(oldSvc, newSvc config.Service) []string {
 	add("host", oldSvc.Host, newSvc.Host)
 	add("backend", oldSvc.Backend, newSvc.Backend)
 	add("tunnel", displayTunnel(oldSvc.Tunnel), displayTunnel(newSvc.Tunnel))
+	add("auth policy (local)", string(oldSvc.Auth.Policy.Local), string(newSvc.Auth.Policy.Local))
+	add("auth policy (public)", string(oldSvc.Auth.Policy.Public), string(newSvc.Auth.Policy.Public))
 	add("disabled", displayBool(oldSvc.Disabled), displayBool(newSvc.Disabled))
 	add("auth mode", displayMode(oldSvc.Auth.Mode), displayMode(newSvc.Auth.Mode))
 	add("auth groups", displayGroups(oldSvc.Auth.Groups), displayGroups(newSvc.Auth.Groups))
@@ -350,4 +369,26 @@ func splitLines(s string) []string {
 		}
 	}
 	return out
+}
+
+// policyDefaultChoice is the editor option meaning "leave unset" — an unset
+// horizon falls back to config.DefaultPolicy, which is not the same statement
+// as pinning it to one_factor explicitly (the pin survives a future change of
+// the default).
+const policyDefaultChoice = "(default: one_factor)"
+
+// policyChoice renders a stored level as its editor option.
+func policyChoice(l config.PolicyLevel) string {
+	if l == "" {
+		return policyDefaultChoice
+	}
+	return string(l)
+}
+
+// policyLevelFromChoice is policyChoice's inverse.
+func policyLevelFromChoice(choice string) config.PolicyLevel {
+	if choice == policyDefaultChoice {
+		return ""
+	}
+	return config.PolicyLevel(choice)
 }
