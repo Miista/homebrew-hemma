@@ -26,8 +26,13 @@ func cmdList(cfgPath string, args []string) int {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
 	all := fs.Bool("all", false, "show services on every host, not just this one")
 	fs.BoolVar(all, "a", false, "alias for --all")
+	porcelain := fs.Bool("porcelain", false, "stable tab-separated service listing for scripts (implies --all)")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+
+	if *porcelain {
+		return cmdListPorcelain(cfg)
 	}
 
 	// Which host are we on? If we can't tell (IP matches no host), fall back to
@@ -192,6 +197,22 @@ func printServiceTable(cfg *config.Config, svcNames []string) {
 		fmt.Println("  (AUTH: forward = imports the (auth) snippet; oidc = Authelia, app does OIDC itself; external = authenticated outside Authelia (app login / token / edge); (portal) = this service IS the auth provider; change with 'hemma update service <name> --auth-mode <mode>')")
 	}
 	fmt.Println("  (TUNNEL: yes = a cloudflared tunnel ingress entry is generated for the FQDN, so the internet can reach it; no = local horizon only)")
+}
+
+// cmdListPorcelain prints one tab-separated line per service, in a stable
+// field order intended for scripts: name, fqdn, host, backend. Always shows
+// every service on every host (the --all filter has no meaning for a script
+// consumer, which typically wants the whole inventory regardless of which
+// host it runs on). No headers, no color, no advisories — designed to be
+// awk/cut-friendly and diff-stable across hemma versions within this field
+// set. New fields, if ever needed, are appended at the end, never inserted,
+// so existing field-position consumers don't break.
+func cmdListPorcelain(cfg *config.Config) int {
+	for _, name := range sortedKeysOf(cfg.Services) {
+		svc := cfg.Services[name]
+		fmt.Printf("%s\t%s\t%s\t%s\n", name, svc.FQDN, svc.Host, svc.Backend)
+	}
+	return 0
 }
 
 func sortedKeysOf[V any](m map[string]V) []string {

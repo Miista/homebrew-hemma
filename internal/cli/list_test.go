@@ -109,6 +109,27 @@ func TestList_TunnelColumn(t *testing.T) {
 	}
 }
 
+// --porcelain prints one tab-separated 'name<TAB>fqdn<TAB>host<TAB>backend'
+// line per service, suppressing every other section (hosts, domains, auth,
+// advisories) — intended for scripts, not human reading.
+func TestList_Porcelain(t *testing.T) {
+	dir := listSetup(t, "")
+	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--porcelain"}) })
+
+	if strings.Contains(out, "== Hosts") || strings.Contains(out, "== Services") {
+		t.Fatalf("porcelain output should have no section headers, got:\n%s", out)
+	}
+
+	wantDocs := "docs\tdocs.example.com\tappbox\tpaperless:8000"
+	wantBlog := "blog\tblog.example.com\tappbox\tghost:2368"
+	if !strings.Contains(out, wantDocs) {
+		t.Errorf("missing docs line %q in:\n%s", wantDocs, out)
+	}
+	if !strings.Contains(out, wantBlog) {
+		t.Errorf("missing blog line %q in:\n%s", wantBlog, out)
+	}
+}
+
 // The AUTH column shows the mode (forward) for an auth service and - for a
 // non-auth one, and the hint appears because at least one service uses auth.
 func TestList_AuthColumn(t *testing.T) {
