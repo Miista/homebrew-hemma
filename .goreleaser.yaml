@@ -8,6 +8,11 @@ builds:
     binary: hemma
     goos: [linux, darwin]
     goarch: [amd64, arm64]
+    # No CGO dependency anywhere in this tool (pure YAML/file generation) —
+    # static binaries let hemma run inside minimal containers (e.g. musl/
+    # Alpine-based sidecars) without a matching libc.
+    env:
+      - CGO_ENABLED=0
     flags: [-trimpath]
     ldflags:
       - -s -w -X hemma/internal/cli.Version={{.Version}}
