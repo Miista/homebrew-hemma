@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -109,24 +110,32 @@ func TestList_TunnelColumn(t *testing.T) {
 	}
 }
 
-// --porcelain prints one tab-separated 'name<TAB>fqdn<TAB>host<TAB>backend'
-// line per service, suppressing every other section (hosts, domains, auth,
+// --json prints every service as a JSON array of {name, fqdn, host, backend}
+// objects, suppressing every other section (hosts, domains, auth,
 // advisories) — intended for scripts, not human reading.
-func TestList_Porcelain(t *testing.T) {
+func TestList_JSON(t *testing.T) {
 	dir := listSetup(t, "")
-	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--porcelain"}) })
+	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--json"}) })
 
-	if strings.Contains(out, "== Hosts") || strings.Contains(out, "== Services") {
-		t.Fatalf("porcelain output should have no section headers, got:\n%s", out)
+	var got []struct {
+		Name, FQDN, Host, Backend string
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, out)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 services, got %d: %+v", len(got), got)
 	}
 
-	wantDocs := "docs\tdocs.example.com\tappbox\tpaperless:8000"
-	wantBlog := "blog\tblog.example.com\tappbox\tghost:2368"
-	if !strings.Contains(out, wantDocs) {
-		t.Errorf("missing docs line %q in:\n%s", wantDocs, out)
+	byName := map[string]struct{ FQDN, Host, Backend string }{}
+	for _, s := range got {
+		byName[s.Name] = struct{ FQDN, Host, Backend string }{s.FQDN, s.Host, s.Backend}
 	}
-	if !strings.Contains(out, wantBlog) {
-		t.Errorf("missing blog line %q in:\n%s", wantBlog, out)
+	if docs := byName["docs"]; docs.FQDN != "docs.example.com" || docs.Host != "appbox" || docs.Backend != "paperless:8000" {
+		t.Errorf("docs entry wrong: %+v", docs)
+	}
+	if blog := byName["blog"]; blog.FQDN != "blog.example.com" || blog.Host != "appbox" || blog.Backend != "ghost:2368" {
+		t.Errorf("blog entry wrong: %+v", blog)
 	}
 }
 

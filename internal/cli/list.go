@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -26,13 +28,13 @@ func cmdList(cfgPath string, args []string) int {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
 	all := fs.Bool("all", false, "show services on every host, not just this one")
 	fs.BoolVar(all, "a", false, "alias for --all")
-	porcelain := fs.Bool("porcelain", false, "stable tab-separated service listing for scripts (implies --all)")
+	jsonOut := fs.Bool("json", false, "stable JSON service listing for scripts (implies --all)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
-	if *porcelain {
-		return cmdListPorcelain(cfg)
+	if *jsonOut {
+		return cmdListJSON(cfg)
 	}
 
 	// Which host are we on? If we can't tell (IP matches no host), fall back to
@@ -199,18 +201,38 @@ func printServiceTable(cfg *config.Config, svcNames []string) {
 	fmt.Println("  (TUNNEL: yes = a cloudflared tunnel ingress entry is generated for the FQDN, so the internet can reach it; no = local horizon only)")
 }
 
-// cmdListPorcelain prints one tab-separated line per service, in a stable
-// field order intended for scripts: name, fqdn, host, backend. Always shows
-// every service on every host (the --all filter has no meaning for a script
-// consumer, which typically wants the whole inventory regardless of which
-// host it runs on). No headers, no color, no advisories — designed to be
-// awk/cut-friendly and diff-stable across hemma versions within this field
-// set. New fields, if ever needed, are appended at the end, never inserted,
-// so existing field-position consumers don't break.
-func cmdListPorcelain(cfg *config.Config) int {
-	for _, name := range sortedKeysOf(cfg.Services) {
+// jsonService is the stable shape emitted by --json: field names are the
+// contract, not position or count, so new fields can be added later without
+// breaking existing consumers (unlike a positional format). Always shows
+// every service on every host — the --all filter is a human-table concept,
+// a script consumer wants the whole inventory regardless of which host it
+// runs on.
+type jsonService struct {
+	Name    string `json:"name"`
+	FQDN    string `json:"fqdn"`
+	Host    string `json:"host"`
+	Backend string `json:"backend"`
+}
+
+// cmdListJSON prints every service as a JSON array, one object per service,
+// sorted by name. No headers, no color, no advisories — just the array.
+func cmdListJSON(cfg *config.Config) int {
+	names := sortedKeysOf(cfg.Services)
+	out := make([]jsonService, 0, len(names))
+	for _, name := range names {
 		svc := cfg.Services[name]
-		fmt.Printf("%s\t%s\t%s\t%s\n", name, svc.FQDN, svc.Host, svc.Backend)
+		out = append(out, jsonService{
+			Name:    name,
+			FQDN:    svc.FQDN,
+			Host:    svc.Host,
+			Backend: svc.Backend,
+		})
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: encoding JSON: %v\n", err)
+		return 1
 	}
 	return 0
 }
