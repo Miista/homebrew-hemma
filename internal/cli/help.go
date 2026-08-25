@@ -17,7 +17,7 @@ type HelpTopic struct {
 var HelpTopics = []HelpTopic{
 	{"add service", `hemma add service — declare a service and generate its DNS/Caddy config
 
-Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel]
+Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel]
 
 With no flags (and stdin a terminal) an interactive editor opens instead: the
 fqdn is pre-filled with <name>.<domain> when exactly one domain is defined and
@@ -49,6 +49,11 @@ Flags:
       --auth-groups <gs>  Comma-separated auth provider group names allowed access; flows into
                           the generated access-control rules (multiple groups are OR'd).
                           Requires an auth mode (forward or oidc).
+      --bypass-paths <p>  Comma-separated request paths exempted from the auth gate (e.g. a
+                          Subsonic-API path that a native client can't complete a browser
+                          login for). Requires an auth mode that uses hemma's provider
+                          (forward or oidc); renders as Authelia 'policy: bypass' rules with
+                          no subject, since Authelia forbids pairing bypass with one.
       --auth              Back-compat shorthand for --auth-mode forward.
       --auth-policy-local <p>
       --auth-policy-public <p>
@@ -72,7 +77,7 @@ Regenerates files immediately, then prints which hosts need 'hemma apply'.`},
 
 	{"update service", `hemma update service — change a service's fqdn, host, backend, or auth
 
-Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel]
+Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel]
 
 With no flags (and stdin a terminal) an interactive editor opens instead:
 EVERY field is pre-filled with the service's current values and editable
@@ -100,6 +105,10 @@ Flags:
       --auth-groups <gs>  Set the comma-separated auth provider groups (OR'd in the
                           generated access-control rules). '' clears them. Requires an
                           auth mode (forward or oidc).
+      --bypass-paths <p>  Set the comma-separated request paths exempted from the auth
+                          gate. '' clears them. Requires an auth mode that uses hemma's
+                          provider (forward or oidc). See 'hemma help add service' for
+                          why (native API clients that can't complete a browser login).
       --auth[=false]      Back-compat shorthand: --auth = forward, --auth=false = none.
       --auth-policy-local <p>
       --auth-policy-public <p>

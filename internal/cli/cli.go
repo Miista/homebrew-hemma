@@ -329,6 +329,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	authFlag := fs.Bool("auth", false, "shorthand for --auth-mode forward")
 	authMode := fs.String("auth-mode", "", "auth mode: forward|oidc|external|none")
 	authGroups := fs.String("auth-groups", "", "comma-separated auth provider groups allowed access")
+	bypassPaths := fs.String("bypass-paths", "", "comma-separated request paths exempted from the auth gate (forward mode only)")
 	tunnel := fs.Bool("tunnel", false, "generate a cloudflared tunnel ingress entry (reachable from the internet)")
 	fs.BoolVar(tunnel, "public", false, "pre-rename alias for --tunnel")
 	policyLocal := fs.String("auth-policy-local", "", "auth requirement for local-horizon requests: bypass|one_factor|two_factor|deny")
@@ -348,6 +349,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 		return 2
 	}
 	groups := splitGroups(*authGroups)
+	paths := splitGroups(*bypassPaths)
 	// Groups only make sense with an auth gate — refuse before persisting.
 	if len(groups) > 0 && !mode.UsesProvider() {
 		errf("--auth-groups requires a provider-backed auth mode — pass --auth-mode forward or --auth-mode oidc (external is authenticated outside hemma, so groups have nothing to apply to).")
@@ -387,7 +389,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	}
 	return persistNewService(repoRoot, cfg, name,
 		config.Service{FQDN: *fqdn, Host: *host, Backend: *backend,
-			Auth: config.Auth{Mode: mode, Groups: groups,
+			Auth: config.Auth{Mode: mode, Groups: groups, BypassPaths: paths,
 				Policy: config.AuthPolicy{Local: addLocal, Public: addPublic}},
 			Tunnel: *tunnel})
 }
@@ -671,6 +673,7 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	authFlag := fs.Bool("auth", false, "shorthand for --auth-mode forward (--auth=false clears)")
 	authMode := fs.String("auth-mode", "", "auth mode: forward|oidc|external|none")
 	authGroups := fs.String("auth-groups", "", "comma-separated auth provider groups ('' clears)")
+	bypassPaths := fs.String("bypass-paths", "", "comma-separated request paths exempted from the auth gate ('' clears; forward mode only)")
 	tunnel := fs.Bool("tunnel", false, "generate a cloudflared tunnel ingress entry ('--tunnel=false' opts back out)")
 	fs.BoolVar(tunnel, "public", false, "pre-rename alias for --tunnel")
 	policyLocal := fs.String("auth-policy-local", "", "auth requirement for local-horizon requests ('' clears): bypass|one_factor|two_factor|deny")
@@ -723,6 +726,9 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 		case "auth-groups":
 			// Empty string clears the groups.
 			svc.Auth.Groups = splitGroups(*authGroups)
+		case "bypass-paths":
+			// Empty string clears the bypass paths.
+			svc.Auth.BypassPaths = splitGroups(*bypassPaths)
 		case "tunnel", "public":
 			// --tunnel=false opts back out; omitempty then drops the key, so
 			// false and absent are the same statement on disk.
