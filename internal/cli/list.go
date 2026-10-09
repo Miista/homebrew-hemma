@@ -29,6 +29,7 @@ func cmdList(cfgPath string, args []string) int {
 	all := fs.Bool("all", false, "show services on every host, not just this one")
 	fs.BoolVar(all, "a", false, "alias for --all")
 	jsonOut := fs.Bool("json", false, "stable JSON service listing for scripts (implies --all)")
+	policy := fs.Bool("policy", false, "add LOCAL and PUBLIC columns: the per-horizon auth policy (design §4.8)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -102,7 +103,7 @@ func cmdList(cfgPath string, args []string) int {
 	} else {
 		fmt.Printf("\n%s== Services (%d) ==%s\n", boldOn, len(svcNames), boldOff)
 	}
-	printServiceTable(cfg, svcNames)
+	printServiceTable(cfg, svcNames, *policy)
 	if filtered && len(svcNames) < len(cfg.Services) {
 		fmt.Printf("  (%d on other hosts hidden — use --all to show)\n", len(cfg.Services)-len(svcNames))
 	}
@@ -130,12 +131,15 @@ func cmdList(cfgPath string, args []string) int {
 // computed from the data (including headers) so it stays aligned regardless
 // of name/fqdn lengths. Disabled services are marked in a trailing note
 // column. When nothing is selected, prints a placeholder.
-func printServiceTable(cfg *config.Config, svcNames []string) {
+//
+// With policy set, LOCAL and PUBLIC columns (the per-horizon auth policy,
+// design §4.8) sit between AUTH and TUNNEL.
+func printServiceTable(cfg *config.Config, svcNames []string, policy bool) {
 	if len(svcNames) == 0 {
 		fmt.Println("  (none)")
 		return
 	}
-	type row struct{ name, fqdn, host, backend, auth, tunnel, note string }
+	type row struct{ name, fqdn, host, backend, auth, local, public, tunnel, note string }
 	rows := make([]row, 0, len(svcNames))
 	anyAuth := false
 	for _, name := range svcNames {
@@ -170,26 +174,38 @@ func printServiceTable(cfg *config.Config, svcNames []string) {
 		if svc.Tunnel {
 			tunnel = "yes"
 		}
-		rows = append(rows, row{name, svc.FQDN, svc.Host, svc.Backend, auth, tunnel, note})
+		local, public := horizonPolicies(svc)
+		rows = append(rows, row{name, svc.FQDN, svc.Host, svc.Backend, auth, local, public, tunnel, note})
 	}
 
 	// Header + width computation. AUTH holds a mode, "-", or "(portal)"; TUNNEL
 	// holds "yes"/"no" and is dropped entirely when disabled.
 	hName, hFQDN, hHost, hBack, hAuth, hPub := "NAME", "FQDN", "HOST", "BACKEND", "AUTH", "TUNNEL"
+	hLocal, hPublic := "LOCAL", "PUBLIC"
 	wName, wFQDN, wHost, wBack, wAuth := len(hName), len(hFQDN), len(hHost), len(hBack), len(hAuth)
+	wLocal, wPublic := len(hLocal), len(hPublic)
 	for _, r := range rows {
 		wName = max(wName, len(r.name))
 		wFQDN = max(wFQDN, len(r.fqdn))
 		wHost = max(wHost, len(r.host))
 		wBack = max(wBack, len(r.backend))
 		wAuth = max(wAuth, len(r.auth))
+		wLocal = max(wLocal, len(r.local))
+		wPublic = max(wPublic, len(r.public))
 	}
 
-	fmt.Printf("  %s%-*s  %-*s  %-*s  %-*s  %-*s  %s%s\n",
-		boldOn, wName, hName, wFQDN, hFQDN, wHost, hHost, wBack, hBack, wAuth, hAuth, hPub, boldOff)
+	head := fmt.Sprintf("%-*s  %-*s  %-*s  %-*s  %-*s  ", wName, hName, wFQDN, hFQDN, wHost, hHost, wBack, hBack, wAuth, hAuth)
+	if policy {
+		head += fmt.Sprintf("%-*s  %-*s  ", wLocal, hLocal, wPublic, hPublic)
+	}
+	fmt.Printf("  %s%s%s%s\n", boldOn, head, hPub, boldOff)
 	for _, r := range rows {
-		line := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s  %-*s  %s",
-			wName, r.name, wFQDN, r.fqdn, wHost, r.host, wBack, r.backend, wAuth, r.auth, r.tunnel)
+		line := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s  %-*s  ",
+			wName, r.name, wFQDN, r.fqdn, wHost, r.host, wBack, r.backend, wAuth, r.auth)
+		if policy {
+			line += fmt.Sprintf("%-*s  %-*s  ", wLocal, r.local, wPublic, r.public)
+		}
+		line += r.tunnel
 		if r.note != "" {
 			line += "  " + r.note
 		}
@@ -198,7 +214,21 @@ func printServiceTable(cfg *config.Config, svcNames []string) {
 	if anyAuth {
 		fmt.Println("  (AUTH: forward = imports the (auth) snippet; oidc = Authelia, app does OIDC itself; external = authenticated outside Authelia (app login / token / edge); (portal) = this service IS the auth provider; change with 'hemma update service <name> --auth-mode <mode>')")
 	}
+	if policy {
+		fmt.Println("  (LOCAL/PUBLIC: the auth.policy each horizon requires — bypass, one_factor, two_factor or deny; unset = one_factor; - = no policy, since only 'forward' mode carries one. PUBLIC is shown even when TUNNEL is no: the policy is declared, it just never fires from the internet)")
+	}
 	fmt.Println("  (TUNNEL: yes = a cloudflared tunnel ingress entry is generated for the FQDN, so the internet can reach it; no = local horizon only)")
+}
+
+// horizonPolicies returns a service's effective auth policy per horizon, or
+// "-" for both when its mode carries none: only `forward` takes a policy
+// (design §4.8). The public level is reported even for a tunnel-less service —
+// the two axes are separate, so a declared public policy is shown, not hidden.
+func horizonPolicies(svc config.Service) (local, public string) {
+	if svc.Auth.Mode != config.AuthForward {
+		return "-", "-"
+	}
+	return string(svc.Auth.Policy.ResolveLocal()), string(svc.Auth.Policy.ResolvePublic())
 }
 
 // jsonService is the stable shape emitted by --json: field names are the
@@ -212,6 +242,13 @@ type jsonService struct {
 	FQDN    string `json:"fqdn"`
 	Host    string `json:"host"`
 	Backend string `json:"backend"`
+	// AuthMode is the config.AuthMode value ("none" when ungated). The two
+	// policy fields are the effective per-horizon levels and are omitted
+	// unless the mode is `forward`, the only one that carries a policy.
+	AuthMode     string `json:"auth_mode"`
+	PolicyLocal  string `json:"policy_local,omitempty"`
+	PolicyPublic string `json:"policy_public,omitempty"`
+	Tunnel       bool   `json:"tunnel"`
 }
 
 // cmdListJSON prints every service as a JSON array, one object per service,
@@ -221,12 +258,21 @@ func cmdListJSON(cfg *config.Config) int {
 	out := make([]jsonService, 0, len(names))
 	for _, name := range names {
 		svc := cfg.Services[name]
-		out = append(out, jsonService{
-			Name:    name,
-			FQDN:    svc.FQDN,
-			Host:    svc.Host,
-			Backend: svc.Backend,
-		})
+		js := jsonService{
+			Name:     name,
+			FQDN:     svc.FQDN,
+			Host:     svc.Host,
+			Backend:  svc.Backend,
+			AuthMode: string(svc.Auth.Mode),
+			Tunnel:   svc.Tunnel,
+		}
+		if svc.Auth.Mode == config.AuthNone {
+			js.AuthMode = "none" // AuthNone is "" internally; scripts get the documented word
+		}
+		if svc.Auth.Mode == config.AuthForward {
+			js.PolicyLocal, js.PolicyPublic = horizonPolicies(svc)
+		}
+		out = append(out, js)
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")

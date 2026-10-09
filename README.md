@@ -195,6 +195,9 @@ Rule of thumb: *is Authelia in the picture?* If yes but the app speaks OIDC, use
 service is authenticated some other way entirely, use `external`. If it is genuinely open, `none`.
 
 The `AUTH` column in `hemma list` shows the mode (`forward` / `oidc` / `external` / `-`).
+`hemma list --policy` adds `LOCAL` and `PUBLIC` columns with the effective per-horizon
+`auth.policy` (unset = `one_factor`; `-` for modes that carry no policy — only `forward` does).
+`--json` carries the same values as `auth_mode`, `policy_local`, `policy_public` and `tunnel`.
 
 ### Different auth at home than from outside
 

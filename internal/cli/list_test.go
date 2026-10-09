@@ -317,3 +317,93 @@ func TestList_AuthServiceKeepsExplicitMode(t *testing.T) {
 		t.Errorf("declared mode must survive alongside the marker, got %q", line)
 	}
 }
+
+// listHorizonSetup extends listSetup: docs gets {local: bypass, public:
+// two_factor}, a third service is oidc (mode without a policy), and blog stays
+// ungated. Nothing here is on the tunnel, so it also pins that PUBLIC is shown
+// for a tunnel-less service.
+func listHorizonSetup(t *testing.T) string {
+	t.Helper()
+	dir := listSetup(t, "snip.caddy")
+	if code := Run([]string{"-C", dir, "update", "service", "docs",
+		"--auth-policy-local", "bypass", "--auth-policy-public", "two_factor"}); code != 0 {
+		t.Fatalf("set policies exit %d", code)
+	}
+	if code := Run([]string{"-C", dir, "add", "service", "app",
+		"--fqdn", "app.example.com", "--host", "appbox", "--backend", "app:3000", "--auth-mode", "oidc"}); code != 0 {
+		t.Fatalf("add oidc service exit %d", code)
+	}
+	return dir
+}
+
+// Without --policy the table has no LOCAL/PUBLIC columns; with it, forward
+// services show their effective levels and every other mode shows "-".
+func TestList_PolicyColumns(t *testing.T) {
+	dir := listHorizonSetup(t)
+
+	plain := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all"}) })
+	if strings.Contains(plain, "PUBLIC") || strings.Contains(plain, "LOCAL") {
+		t.Errorf("horizon columns must be opt-in, got:\n%s", plain)
+	}
+
+	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all", "--policy"}) })
+	if !containsField(out, "LOCAL") || !containsField(out, "PUBLIC") {
+		t.Fatalf("expected LOCAL and PUBLIC headers, got:\n%s", out)
+	}
+	docs := serviceLine(out, "docs.example.com")
+	if !containsField(docs, "bypass") || !containsField(docs, "two_factor") {
+		t.Errorf("docs row should show bypass + two_factor, got %q", docs)
+	}
+	if blog := serviceLine(out, "blog.example.com"); strings.Contains(blog, "one_factor") || strings.Contains(blog, "bypass") {
+		t.Errorf("ungated row must carry no policy, got %q", blog)
+	}
+	if app := serviceLine(out, "app.example.com"); strings.Contains(app, "one_factor") {
+		t.Errorf("oidc carries no policy, got %q", app)
+	}
+}
+
+// An unset horizon resolves to the default (one_factor), not "-".
+func TestList_PolicyDefaultsToOneFactor(t *testing.T) {
+	dir := listSetup(t, "snip.caddy")
+	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--all", "--policy"}) })
+	docs := strings.Fields(serviceLine(out, "docs.example.com"))
+	n := 0
+	for _, f := range docs {
+		if f == "one_factor" {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Errorf("bare forward service should show one_factor twice, got %q", docs)
+	}
+}
+
+// --json always carries auth_mode and tunnel; the policy fields appear only
+// for forward mode.
+func TestList_JSONPolicy(t *testing.T) {
+	dir := listHorizonSetup(t)
+	out := captureStdout(t, func() { Run([]string{"-C", dir, "list", "--json"}) })
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("not valid JSON: %v\n%s", err, out)
+	}
+	by := map[string]map[string]any{}
+	for _, s := range got {
+		by[s["name"].(string)] = s
+	}
+	docs := by["docs"]
+	if docs["auth_mode"] != "forward" || docs["policy_local"] != "bypass" || docs["policy_public"] != "two_factor" || docs["tunnel"] != false {
+		t.Errorf("docs JSON wrong: %v", docs)
+	}
+	if by["blog"]["auth_mode"] != "none" {
+		t.Errorf("ungated service should report auth_mode none, got %v", by["blog"]["auth_mode"])
+	}
+	for _, name := range []string{"blog", "app"} {
+		if _, ok := by[name]["policy_local"]; ok {
+			t.Errorf("%s has no policy; policy_local must be omitted: %v", name, by[name])
+		}
+		if _, ok := by[name]["auth_mode"]; !ok {
+			t.Errorf("%s must still carry auth_mode: %v", name, by[name])
+		}
+	}
+}

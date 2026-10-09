@@ -316,7 +316,7 @@ so hemma never writes it. Assign groups by editing the pasted entry's
 
 	{"list", `hemma list — overview: hosts, domains, services, and auth groups
 
-Usage: hemma list [--all]
+Usage: hemma list [--all] [--policy] [--json]
 
 By default the services list is filtered to those running on THIS host
 (matched by local IP).
@@ -339,7 +339,17 @@ missing or unreadable, a services-only view is shown with a note. Usernames
 only; never password hashes or emails.
 
 Flags:
-  -a, --all   Show services on every host, not just this one.`},
+  -a, --all      Show services on every host, not just this one.
+      --policy   Add LOCAL and PUBLIC columns: the auth.policy each horizon
+                 requires (bypass, one_factor, two_factor, deny; unset =
+                 one_factor). '-' when the auth mode carries no policy —
+                 only 'forward' does. PUBLIC is shown even when TUNNEL is
+                 'no': the policy is declared, it just never fires from the
+                 internet.
+      --json     Print a JSON array of {name, fqdn, host, backend, auth_mode,
+                 policy_local, policy_public, tunnel} objects (every service,
+                 regardless of host) for scripts; suppresses everything else.
+                 The policy fields are omitted unless auth_mode is 'forward'.`},
 
 	{"verify", `hemma verify — check live DNS resolution per service
 
