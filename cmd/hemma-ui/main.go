@@ -10,9 +10,9 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/subtle"
 	"embed"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"log"
 	"net/http"
@@ -21,6 +21,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/miista/authy"
 
 	"hemma/internal/cli"
 	"hemma/internal/cli/kernel"
@@ -38,13 +40,43 @@ type server struct {
 	mu      sync.Mutex // one mutating hemma invocation at a time
 }
 
+// newGate builds the authy gate from HEMMA_UI_* (OIDC when HEMMA_UI_OIDC_* is
+// set, otherwise a local account the first visitor creates). This process can
+// drive the Docker socket, so unlike a normal authy app it must never run
+// ungated: FromEnv returns a nil gate only when HEMMA_UI_AUTH_DISABLED is set,
+// and that is refused.
+func newGate(ctx context.Context, opts ...authy.Option) (*authy.Gate, error) {
+	opts = append([]authy.Option{authy.WithDataDir(env("HEMMA_UI_DATA", "/data/auth"))}, opts...)
+	gate, err := authy.FromEnv(ctx, "hemma-ui", opts...)
+	if err != nil {
+		return nil, err
+	}
+	if gate == nil {
+		return nil, errors.New("HEMMA_UI_AUTH_DISABLED is set — refusing to start: hemma-ui controls the Docker socket and must always sit behind a login")
+	}
+	return gate, nil
+}
+
 func main() {
-	pw := os.Getenv("HEMMA_UI_PASSWORD")
-	if pw == "" {
-		log.Fatal("HEMMA_UI_PASSWORD must be set — refusing to start without a login")
+	gate, err := newGate(context.Background())
+	if err != nil {
+		log.Fatal(err)
 	}
 	kernel.DisableColor() // output is captured for a browser, never a terminal
 	s := &server{repo: env("HEMMA_REPO", "/repo"), version: "hemma " + cli.Version}
+	handler, err := s.routes(gate)
+	if err != nil {
+		log.Fatal(err)
+	}
+	addr := env("HEMMA_UI_ADDR", ":8080")
+	log.Printf("hemma-ui listening on %s (repo %s)", addr, s.repo)
+	log.Fatal(http.ListenAndServe(addr, handler))
+}
+
+// routes is the whole HTTP surface. The authy gate is the outermost layer:
+// nothing below it (not even the page or the static files) is reachable
+// without a session.
+func (s *server) routes(gate *authy.Gate) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := static.ReadFile("static/index.html")
@@ -53,7 +85,7 @@ func main() {
 	})
 	assets, err := fs.Sub(static, "static")
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(assets)))
 	mux.HandleFunc("GET /api/state", s.state)
@@ -65,9 +97,7 @@ func main() {
 	mux.HandleFunc("POST /api/commit", s.handleCommit)
 	mux.HandleFunc("POST /api/push", s.handlePush)
 	mux.HandleFunc("POST /api/run", s.runCommand)
-	addr := env("HEMMA_UI_ADDR", ":8080")
-	log.Printf("hemma-ui listening on %s (repo %s)", addr, s.repo)
-	log.Fatal(http.ListenAndServe(addr, guard(pw, mux)))
+	return gate.Wrap(guard(mux)), nil
 }
 
 func env(k, def string) string {
@@ -77,17 +107,12 @@ func env(k, def string) string {
 	return def
 }
 
-// guard enforces HTTP basic auth (username "admin") and, for mutating
-// requests, a same-origin check so a page on another site cannot drive it.
-// Responses are never cached: command output can include config and file paths.
-func guard(pw string, next http.Handler) http.Handler {
+// guard sits behind the authy gate. For mutating requests it adds a same-origin
+// check (defence in depth next to the SameSite session cookie) and a body size
+// cap. Responses are never cached: command output can include config and file
+// paths.
+func guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, p, ok := r.BasicAuth()
-		if !ok || subtle.ConstantTimeCompare([]byte(p), []byte(pw)) != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="hemma"`)
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
 		if r.Method != http.MethodGet {
 			if o := r.Header.Get("Origin"); o != "" && !strings.HasSuffix(o, "://"+r.Host) {
 				http.Error(w, "cross-origin request refused", http.StatusForbidden)

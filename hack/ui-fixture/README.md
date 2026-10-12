@@ -21,9 +21,9 @@ address rather than all interfaces:
 #   Colima:          the VM's address        (the ADDRESS column of `colima list`; needs
 #                    `network.address: true` in colima.yaml) — NOT the Mac's own IP
 export FIXTURE_BIND=<that address>
-export FIXTURE_PASSWORD=$(openssl rand -base64 18 | tr -d '/+=')   # keep it out of history/screenshots
 docker compose -f compose.yml up -d --build
-# then browse to http://$FIXTURE_BIND:18080 — plain HTTP, so use only on a trusted network
+# then browse to http://$FIXTURE_BIND:18080 AT ONCE and create the local account (the first visitor
+# creates it, and the container has the Docker socket) — plain HTTP, so use only on a trusted network
 ```
 
 Once bound to a non-loopback address, the loopback URL stops working; use the same address on the Mac.

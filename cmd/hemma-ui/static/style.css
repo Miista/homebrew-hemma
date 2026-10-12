@@ -113,6 +113,7 @@ nav .count { margin-left: 6px; font-size: 11px; font-weight: 600; padding: 0 6px
 #deploy { flex: none; margin-left: auto; padding: 9px 20px; }
 #summary { margin: 16px 0 0; }
 footer { margin: 32px 0 8px; text-align: center; }
+footer a { color: inherit; text-decoration: underline; }   /* the Sign out link takes the footer's own (AA-checked) colour, not the browser's link blue */
 
 /* ---------- panels: tables sit in a rounded card, rows hover ---------- */
 .panel { margin: 16px 0; border: 1px solid var(--border); border-radius: 18px; overflow: hidden;

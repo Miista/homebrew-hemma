@@ -164,8 +164,15 @@ A deliberately small web UI for one host (image: `Dockerfile.ui`; compose + synt
 - **Not exposed on purpose:** credential minting (`create app/user`), and terminal-only `help`/`completion`/
   `version`/`defaults` listings. The file browser only ever shows the mounted repo (no `..`, no symlinks, no
   dot-folders).
-- **Security posture:** one shared password (`HEMMA_UI_PASSWORD`, required), plain HTTP — put it behind TLS.
-  The container mounts the Docker socket (root-equivalent on the host), so keep it LAN-only.
+- **Security posture:** sign-in is **authy** (`github.com/miista/authy`), the outermost layer — nothing,
+  not even the page or `/static/`, is reachable without a session. Configure `HEMMA_UI_OIDC_*` (all four
+  together; the IdP decides who may sign in) or, with none set, the first visitor creates a local account —
+  so create it yourself right after starting. `HEMMA_UI_AUTH_DISABLED` is refused at startup (`newGate`):
+  this process must never run ungated. Session state lives in `HEMMA_UI_DATA` (default `/data/auth`, a
+  volume). Mutating requests also get a same-origin check. Still plain HTTP — put it behind TLS. The
+  container mounts the Docker socket (root-equivalent on the host), so keep it LAN-only. Caveat: authy
+  has not had an independent security review yet (its own README says so). `auth_test.go` pins that every
+  route is refused without a session.
 - **Phones are the primary screen:** keep fields at 16px (iOS zoom), tables become cards under 640px, and
   nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
 - **Look and feel:** the same design language as reaparr/albumreq (Geist, violet accent, glow, glass bars, the
