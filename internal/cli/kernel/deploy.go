@@ -222,12 +222,16 @@ func headArgv(t deployTarget, localRepo string) []string {
 // stand in a fake rather than re-executing the test binary.
 var selfExecutable = os.Executable
 
-func applyArgv(t deployTarget, localRepo string) []string {
+func applyArgv(env *Env, t deployTarget, localRepo string) []string {
 	if t.Local {
 		// Re-invoke this same binary (hemma may not be on PATH in a dev build).
-		exe, err := selfExecutable()
-		if err != nil {
-			exe = "hemma"
+		// A front end that is not the hemma binary names one in Env.Self.
+		exe := env.Self
+		if exe == "" {
+			var err error
+			if exe, err = selfExecutable(); err != nil {
+				exe = "hemma"
+			}
 		}
 		return []string{exe, "-C", localRepo, "apply"}
 	}
@@ -371,7 +375,7 @@ func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo strin
 	failed := 0
 	for _, t := range targets {
 		fmt.Fprintf(env.Out, "\n%s== %s ==%s\n", boldOn, t.Name, boldOff)
-		out, err := r.run(t, applyArgv(t, localRepo))
+		out, err := r.run(t, applyArgv(env, t, localRepo))
 		printIndented(env, out)
 		if err != nil {
 			fmt.Fprintln(env.Out, "  "+cross+" apply FAILED")

@@ -26,6 +26,20 @@ type Env struct {
 	// (docker, caddy, dig, ssh, git, curl, bash): cancelling it kills them.
 	// nil means no bound.
 	Ctx context.Context
+
+	// Self is the path of a hemma binary that `deploy` re-invokes for this
+	// host's own apply. Empty means "the running executable" — right for the
+	// CLI, wrong for a front end that is a different program.
+	Self string
+}
+
+// DisableColor makes the status glyphs plain text for the rest of the process.
+// Glyph colour is decided once at start-up from the process's own terminal; a
+// front end that captures output (the web UI) calls this so a terminal it
+// happens to run in never leaks escape codes into captured text.
+func DisableColor() {
+	tick, cross, warn = "✓", "✗", "⚠"
+	boldOn, boldOff, dimOn, dimOff = "", "", "", ""
 }
 
 // command builds an external command that honours the Env's context.

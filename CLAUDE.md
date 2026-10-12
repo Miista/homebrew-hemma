@@ -69,8 +69,10 @@ services.yaml → config → plan → render        (desired state)
   on first load.)
 - **`internal/cli`** — the front end: `Run`, the global `-C` flag, help, version, completion and `UsageText`;
   everything else is routed to the kernel via `kernel.Route`. A thin `main.go` just calls `cli.Run`.
-- **`internal/cli/kernel`** — the implementation of every command (flags, work, printing, exit codes). It still
-  prints; it is CLI-internal and deliberately not shared with `hemma-ui`. add/update/remove mutate the YAML then
+- **`internal/cli/kernel`** — the implementation of every command (flags, work, printing, exit codes), shared by
+  the CLI and `hemma-ui`. Commands still print, but into the `kernel.Env` they are given (`Out`/`Err` writers,
+  `Ctx` bounding every external command, `NoTerminal`, `Self`) — never straight to `os.Stdout`/`os.Stderr`, and
+  external tools start via `env.command` so they honour `Ctx`. add/update/remove mutate the YAML then
   call the shared sync engine — they contain **no file-writing logic of their own**.
 
 **Snapshot tests** (`internal/cli/snapshot_test.go`, goldens in `internal/cli/testdata/snapshot/golden/`) run every
@@ -142,9 +144,12 @@ A deliberately small web UI for one host (image: `Dockerfile.ui`; compose + synt
 `docker-compose.ui.yml`, `hack/ui-fixture/`). **Single host only for now** — multi-host (ssh targets,
 `deploy-host`) is intentionally not exposed. It is NOT a second implementation of hemma:
 
-- **Every change goes through the `hemma` binary** (`commands.go` is an allowlist of typed commands, run as an
-  argv, never a shell), so validation and the single-writer invariant are exactly the CLI's. The UI never writes
-  `services.yaml` or generated files itself.
+- **Every change goes through the kernel** (`commands.go` is an allowlist of typed commands, built as an argv,
+  never a shell, and run in-process via `kernel.Route` with a capturing `kernel.Env`), so validation and the
+  single-writer invariant are exactly the CLI's — it is literally the same code. The UI never writes
+  `services.yaml` or generated files itself. `Env.NoTerminal` keeps the interactive editors from ever prompting,
+  and the request's deadline is `Env.Ctx`, which kills hung external commands. The one remaining dependency on
+  the `hemma` binary: `deploy` re-invokes it for this host's own apply (`Env.Self` = `HEMMA_BIN`).
 - **Typed fields** (`Ref` in `commands.go`, validators in `refs.go`): a host is picked from hosts, a CIDR list is
   validated as CIDRs, a file is picked from the repo tree. The browser offers only valid choices *and* the
   server re-checks every value — the browser is a convenience, not the control.
