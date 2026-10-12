@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>hemma</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1 class="brand">
+    <!-- "hemma" is Swedish for "at home": the tile carries a house -->
+    <span class="brand-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/><path d="M10 19.5v-5h4v5"/></svg></span>
+    <span>hemma</span>
+  </h1>
+  <nav id="tabs" aria-label="Pages"></nav>
+  <!-- Deploying is its own step, separate from saving: always here, flush right, on every page. -->
+  <button id="deploy" class="primary" type="button">Deploy</button>
+</header>
+<p class="meta" id="summary"></p>
+<section id="view"></section>
+<div id="savebar" class="save-bar" hidden></div>
+<footer id="foot" class="meta"></footer>
+<div id="toast" class="toast" role="status" hidden></div>
+
+<dialog id="rdlg" tabindex="-1" autofocus>
+  <h2 id="rtitle"></h2>
+  <pre id="rout"></pre>
+  <div class="row"><button type="button" id="rclose">Close</button></div>
+</dialog>
+
+<dialog id="dlg" tabindex="-1" autofocus>
+  <form method="dialog" id="form">
+    <h2 id="dtitle"></h2>
+    <p class="meta" id="dhelp"></p>
+    <div id="fields"></div>
+    <p class="err" id="derr"></p>
+    <div class="row">
+      <button type="button" id="cancel">Cancel</button>
+      <button type="button" id="dclear" hidden>Clear</button>
+      <button class="primary" id="go">Run</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="cdlg" tabindex="-1" autofocus>
+  <form method="dialog" id="cform">
+    <h2>Save changes</h2>
+    <p class="meta">Saving records these changes with your message. Deploying them is a separate step.</p>
+    <div id="cdiff" class="cdiff"></div>
+    <details><summary class="meta">All changed files</summary><pre id="cfiles"></pre></details>
+    <label>Change message *<textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
+    <p class="err" id="cerr"></p>
+    <div class="row"><button type="button" id="ccancel">Cancel</button><button class="primary" id="cgo">Save</button></div>
+  </form>
+</dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+let changes = { git: false, files: [] };
+let state = { services: [], hosts: [], domains: [], settings: [] };
+let cmds = {};
+let tab = "Services";
+const TABS = ["Services", "Issues", "Settings"];   // Settings (hosts, domains, defaults) comes last
+// Menu icons: the same outline style as albumreq's bottom menu (shown above the label on a phone, hidden on a wide screen).
+const ICON = (inner) => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+const ICONS = {
+  Services: ICON('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path>'),
+  Issues: ICON('<path d="M12 3.5L2.5 20h19L12 3.5z"></path><path d="M12 10v4M12 17h.01"></path>'),
+  Settings: ICON('<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>'),
+};
+// A badge says where the unsaved changes are: services on Services, hosts/domains/defaults on Settings.
+function tabBadge(t) {
+  const es = pending ? pending.entities : [];
+  if (t === "Services") return es.filter(e => e.kind === "Service").length;
+  if (t === "Settings") return es.filter(e => e.kind !== "Service").length;
+  return 0;
+}
+
+async function post(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const text = await r.text();
+  try { return { ...JSON.parse(text), status: r.status }; } catch { return { ok: false, status: r.status, output: `HTTP ${r.status}: ${text}` }; }
+}
+/* ---------- feedback ----------
+   No shared output panel. A change is confirmed with a short message; the save bar
+   (with Deploy) is what the page then points you at. Raw command output appears only where it IS
+   the result (list, verify, doctor, …) or behind "Details" when something needs a closer look. */
+let toastTimer;
+// `action` turns the message into an offer: { label, fn } adds a button for it, plus "Not now", and the
+// message stays a little longer so there is time to decide (it never blocks: you can ignore it).
+function toast(msg, kind, details, action) {
+  const t = $("#toast"); t.className = "toast " + (kind || "");
+  t.replaceChildren(el("span", msg));
+  if (details) t.append(btn("Details", () => { t.hidden = true; showResult(details.title, details.text); }));
+  if (action) {
+    t.append(btn(action.label, () => { t.hidden = true; action.fn(); }, "primary"), btn("Not now", () => { t.hidden = true; }));
+  }
+  if (kind === "err") t.append(btn("Dismiss", () => { t.hidden = true; }));
+  t.hidden = false; clearTimeout(toastTimer);
+  if (kind !== "err") toastTimer = setTimeout(() => { t.hidden = true; }, action ? 15000 : 5000);
+}
+// Browsers focus the first field of a modal dialog by default (and a phone then pops its keyboard).
+// Focus the dialog itself instead: nothing is pre-selected, Tab and Escape still work.
+function openModal(d) { d.showModal(); d.focus({ preventScroll: true }); }
+function showResult(title, text) { $("#rtitle").textContent = title; $("#rout").textContent = text; openModal($("#rdlg")); }
+$("#rclose").onclick = () => $("#rdlg").close();
+// toastResult: one line for a finished action; warnings and failures keep the output behind Details.
+function toastResult(title, res, done) {
+  const text = res.output || res.error || "";
+  if (!res.ok) return toast(`${title} failed`, "err", { title, text });
+  if (/⚠/.test(text)) return toast(`${done || title}, with warnings`, "warn", { title, text });
+  toast(done || title, "ok");
+}
+// Commands whose output IS the result open it in a dialog; everything else just confirms.
+function notify(key, res) {
+  const c = cmds[key];
+  if (c && (c.readonly || key === "doctor")) return showResult(c.title, (res.ok ? "" : "Finished with problems:\n\n") + (res.output || res.error || ""));
+  toastResult(c ? c.title : key, res, c ? `${c.title}: done` : "Done");
+}
+function el(tag, text, props) { const e = document.createElement(tag); if (text != null) e.textContent = text; return Object.assign(e, props || {}); }
+function btn(label, fn, cls) { const b = el("button", label, { onclick: fn }); if (cls) b.className = cls; return b; }
+
+// run executes an allowlisted command directly (no form), then refreshes.
+async function run(key, values, confirmMsg) {
+  if (confirmMsg && !confirm(confirmMsg)) return;
+  const res = await post("/api/run", { command: key, values });
+  if (!cmds[key].readonly) await load();
+  notify(key, res);
+}
+
+/* ---------- typed values ----------
+   A field is never "a string": it is a host, a service, a CIDR list… Known sets are pickers,
+   lists are row-per-entry editors with an add box, free text is checked against its shape. The server re-checks everything. */
+const RX = {
+  name: /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+  backend: /^[A-Za-z0-9._-]+:[0-9]+$/,
+  dnsname: /^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/,
+  path: /^\/[^\s,]*$/,
+  relpath: /^[A-Za-z0-9._][A-Za-z0-9._\/-]*$/,
+};
+const ipv4 = s => { const p = s.split("."); return p.length === 4 && p.every(x => /^\d{1,3}$/.test(x) && +x <= 255); };
+const isIP = s => ipv4(s) || (s.includes(":") && /^[0-9a-fA-F:.]+$/.test(s));
+const isCIDR = s => { const [a, n, ...r] = s.split("/"); return !r.length && n !== undefined && /^\d{1,3}$/.test(n) && isIP(a) && +n <= (ipv4(a) ? 32 : 128); };
+const CHECK = {  // each returns true or an error message
+  svcname: v => RX.name.test(v) || "use letters, digits, '.', '_' and '-' only",
+  name: v => RX.name.test(v) || "use letters, digits, '.', '_' and '-' only",
+  backend: v => (RX.backend.test(v) && +v.split(":").pop() >= 1 && +v.split(":").pop() <= 65535) || "use name:port, e.g. web:8080",
+  dnsname: v => RX.dnsname.test(v) || "not a valid domain name",
+  ip: v => isIP(v) || "not an IP address",
+  cidr: v => isCIDR(v) || "not a CIDR range, e.g. 192.168.1.0/24",
+  ipcidr: v => isIP(v) || isCIDR(v) || "not an IP address or CIDR range",
+  path: v => RX.path.test(v) || "must start with '/'",
+  relpath: v => (RX.relpath.test(v) && !v.includes("..")) || "must be a path inside the repo",
+};
+const HINT = { ip: "192.168.1.10", backend: "name:port", dnsname: "example.com", cidr: "192.168.1.0/24", ipcidr: "IP or CIDR", path: "/path", name: "name", relpath: "folder/file" };
+const names = list => list.map(x => x.name);
+
+// A picker over a known set. `blank` adds a leading empty choice (optional fields).
+function picker(options, current, blank) {
+  // A required choice with nothing chosen yet: with one option it is simply that one; with several,
+  // make the user pick rather than leaving the control looking empty.
+  if (!blank && !current && options.length > 1 && !options.includes("")) blank = "Choose…";
+  const sel = el("select");
+  if (!options.length && !blank) sel.append(new Option("(none defined yet)", ""));
+  if (blank) sel.append(new Option(blank, ""));
+  options.forEach(o => sel.append(typeof o === "string" ? new Option(o === "" ? "(none)" : o, o) : new Option(o[1], o[0])));
+  sel.value = current ?? "";
+  if (sel.selectedIndex < 0 || (current && sel.value !== current) || (!current && !blank && sel.value === "" && options.length)) sel.selectedIndex = 0;
+  return sel;
+}
+
+// A list of validated values: one entry per row with a Remove button, and an add box below.
+function listEditor(initial, check, placeholder, onchange) {
+  let items = (initial || []).filter(Boolean);
+  const wrap = el("div"), rows = el("ul", null, { className: "items" }), adder = el("div", null, { className: "adder" });
+  const inp = el("input", null, { type: "text", placeholder: placeholder || "", autocomplete: "off", autocapitalize: "off" });
+  const msg = el("div", null, { className: "err small" });
+  const draw = () => rows.replaceChildren(...(items.length ? items.map((v, i) => {
+    const li = el("li", null, { className: "item" });
+    li.append(el("span", v), el("button", "Remove", { type: "button", className: "danger", onclick: () => { items.splice(i, 1); draw(); onchange && onchange(); } }));
+    return li;
+  }) : [el("li", "None yet", { className: "muted" })]));
+  const commit = () => {   // returns false if the box holds an invalid value
+    const v = inp.value.trim(); if (!v) return true;
+    const r = check(v);
+    if (r !== true) { msg.textContent = `"${v}": ${r}`; return false; }
+    if (!items.includes(v)) items.push(v);
+    inp.value = ""; msg.textContent = ""; draw(); onchange && onchange(); return true;
+  };
+  inp.onkeydown = e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commit(); } };
+  adder.append(inp, el("button", "Add", { type: "button", onclick: commit }));
+  draw(); wrap.append(rows, adder, msg);
+  return { node: wrap, flush: commit, get: () => items.join(",") };
+}
+
+// The repo, as mounted into the container, as an expandable tree. Folders load when opened and
+// open themselves along the path of the current selection; click a file to choose it.
+// Hemma's own generated files are shown but can't be chosen.
+function fileTree(selected, onpick) {
+  let sel = selected || "";
+  const node = el("div"), picked = el("div", null, { className: "picked" }), tree = el("div", null, { className: "tree" });
+  const showPicked = () => { picked.textContent = sel ? sel : "No file chosen"; picked.classList.toggle("muted", !sel); };
+  async function fill(ul, dir) {
+    const r = await fetch("/api/browse?path=" + encodeURIComponent(dir));
+    const data = await r.json();
+    if (data.error) { ul.replaceChildren(el("li", data.error, { className: "note err" })); return; }
+    if (!data.entries.length) { ul.replaceChildren(el("li", "Empty", { className: "note muted" })); return; }
+    ul.replaceChildren();
+    for (const e of data.entries) {
+      const li = el("li");
+      if (e.dir) {
+        const sub = el("ul"); sub.hidden = true;
+        const b = el("button", "▸ " + e.name, { type: "button", className: "dir" });
+        let loaded = false;
+        const toggle = async () => {
+          sub.hidden = !sub.hidden; b.textContent = (sub.hidden ? "▸ " : "▾ ") + e.name;
+          if (!sub.hidden && !loaded) { loaded = true; await fill(sub, e.path); }
+        };
+        b.onclick = toggle; li.append(b, sub);
+        if (sel.startsWith(e.path + "/")) await toggle();   // open along the current selection
+      } else {
+        const b = el("button", e.name + (e.generated ? "  (generated by hemma)" : ""), { type: "button" });
+        if (e.generated) { b.className = "gen"; b.disabled = true; }
+        if (e.path === sel) b.classList.add("sel");
+        b.onclick = () => { sel = e.path; tree.querySelectorAll("button.sel").forEach(x => x.classList.remove("sel")); b.classList.add("sel"); showPicked(); onpick && onpick(sel); };
+        li.append(b);
+      }
+      ul.append(li);
+    }
+  }
+  const root = el("ul"); tree.append(root); showPicked(); node.append(picked, tree); fill(root, "");
+  return { node, get: () => sel };
+}
+
+// A service address is "<name>.<domain>": pick the domain, type the name.
+function fqdnControl(current, required) {
+  const doms = state.domains;
+  const dom = doms.filter(d => current === d || current?.endsWith("." + d)).sort((a, b) => b.length - a.length)[0] || doms[0] || "";
+  const sub = current && dom && current !== dom ? current.slice(0, -(dom.length + 1)) : "";
+  const wrap = el("div", null, { className: "fqdn" });
+  const inp = el("input", null, { type: "text", value: sub, placeholder: "name", autocomplete: "off", autocapitalize: "off" });
+  const sel = picker(doms, dom);
+  wrap.append(inp, el("span", "."), sel);
+  return { node: wrap, get: () => { const s = inp.value.trim(); return s ? `${s}.${sel.value}` : sel.value; },
+           check: () => (required && !sel.value) ? "define a domain first (Domains tab)" : (inp.value && !RX.dnsname.test(`${inp.value.trim()}.${sel.value || "x.io"}`) ? "the name has characters that are not allowed" : "") };
+}
+
+// One control for one field; returns {node, get(), check()} where check() is "" or an error.
+function control(fd, prefill, locked) {
+  const v = prefill[fd.name];
+  const need = r => (fd.required && !r) ? `${fd.label} is required` : "";
+  // An on/off field is a switch. The checkbox stays underneath (a real, focusable control); the track and knob are CSS.
+  if (fd.kind === "bool") {
+    const i = el("input", null, { type: "checkbox", checked: !!v });
+    const sw = el("span", null, { className: "switch" }); sw.append(i, el("span", null, { className: "track" }));
+    return { inline: true, node: sw, get: () => i.checked, check: () => "" };
+  }
+  if (fd.kind === "int") { const i = el("input", null, { type: "number", min: 0, max: 1000, value: v ?? "" });
+    return { node: i, get: () => i.value === "" ? "" : Number(i.value), check: () => "" }; }
+  if (fd.kind === "list") {
+    const cl = listEditor(String(v || "").split(",").filter(Boolean), CHECK[fd.ref] || (() => true), HINT[fd.ref]);
+    return { node: cl.node, get: () => cl.get(), check: () => cl.flush() ? "" : "fix or clear the value in the box" };
+  }
+  if (fd.ref === "fqdn") { const c = fqdnControl(v, fd.required); return { node: c.node, get: c.get, check: c.check }; }
+  const pickSet = { host: () => names(state.hosts), service: () => names(state.services), domain: () => state.domains,
+                    "service-fqdn": () => state.services.map(s => s.fqdn) }[fd.ref];
+  if (fd.options || pickSet) {
+    // An optional choice that already has a value must not offer "(none)": a service can't lose its host.
+    const blank = (fd.required || v) ? null : (fd.ref === "service-fqdn" ? "(all services)" : "(none)");
+    const sel = picker(fd.options || pickSet(), v, fd.options?.includes("") ? null : blank);
+    if (locked) sel.disabled = true;
+    return { node: sel, get: () => sel.value, check: () => need(sel.value) };
+  }
+  const inp = el("input", null, { type: "text", value: v ?? "", autocomplete: "off", autocapitalize: "off", placeholder: HINT[fd.ref] || "" });
+  if (locked) inp.readOnly = true;
+  return { node: inp, get: () => inp.value.trim(),
+           check: () => { const s = inp.value.trim(); if (!s) return need(s); const r = (CHECK[fd.ref] || (() => true))(s); return r === true ? "" : `${fd.label}: ${r}`; } };
+}
+
+function dialogLabel(c) { return c.key.startsWith("add ") ? "Add" : c.key.startsWith("update ") ? "Save" : c.key.startsWith("rename ") ? "Rename" : "Run"; }
+
+// openCmd renders a form from the command's schema; prefill pre-populates it.
+function openCmd(key, prefill = {}) {
+  const c = cmds[key];
+  $("#dtitle").textContent = c.title; $("#dhelp").textContent = c.help || ""; $("#derr").textContent = "";
+  // The Defaults editor leaves Save disabled until something changes: reset the shared buttons.
+  $("#dclear").hidden = true; $("#go").textContent = dialogLabel(c); $("#go").disabled = false;
+  const box = $("#fields"); box.replaceChildren();
+  const ctl = [];
+  for (const fd of c.fields) {
+    const k = control(fd, prefill, prefill.__lock === fd.name);
+    const title = fd.label + (fd.required ? " *" : "");
+    // A list holds buttons, so it must not live inside a <label> (tapping the title would press one).
+    const lab = fd.kind === "list" ? el("div", null, { className: "fld" }) : el("label", k.inline ? "" : title);
+    if (fd.kind === "list") lab.append(el("div", title, { className: "fl" }), k.node);
+    else if (k.inline) { lab.className = "switchrow"; lab.append(el("span", fd.label), k.node); }   // label on the left, the switch on the right
+    else lab.append(k.node);
+    box.append(lab); ctl.push({ fd, k });
+  }
+  $("#go").onclick = async e => {
+    e.preventDefault();
+    const errs = ctl.map(({ k }) => k.check()).filter(Boolean);
+    if (errs.length) { $("#derr").textContent = errs[0]; return; }
+    const values = {};
+    for (const { fd, k } of ctl) {
+      const v = k.get();
+      if (fd.kind === "bool" || fd.kind === "int" && v !== "") values[fd.name] = v;
+      else if (fd.kind !== "int" && (v !== "" || c.update)) values[fd.name] = v;
+    }
+    if (c.confirm && !confirm(c.confirm)) return;
+    $("#go").disabled = true;
+    try {
+      const res = await post("/api/run", { command: key, values });
+      // A rejected request (HTTP 400) is a problem with what was entered: say so in the form. But a
+      // diagnostic that ran and found problems (verify, doctor) has produced its RESULT: show that.
+      const diagnostic = c.readonly || key === "doctor";
+      if (!res.ok && !(diagnostic && res.status === 200)) { $("#derr").textContent = res.output; return; }
+      if (!c.readonly) await load();   // refresh behind the dialog first, so no stale value flashes
+      $("#dlg").close(); notify(key, res);
+    } finally { $("#go").disabled = false; }
+  };
+  openModal($("#dlg"));
+}
+$("#cancel").onclick = () => $("#dlg").close();
+
+// openSetting edits ONE repo-wide default with an editor that matches what it is.
+async function openSetting(s) {
+  $("#dtitle").textContent = s.label; $("#dhelp").textContent = s.help; $("#derr").textContent = "";
+  const box = $("#fields"); box.replaceChildren();
+  const save = $("#go"); save.textContent = "Save"; save.disabled = true;
+  const changed = () => { save.disabled = ctl.get() === (s.value || ""); };
+  let ctl;
+  if (s.kind === "cidrs") {
+    const cl = listEditor((s.value || "").split(",").filter(Boolean), CHECK.cidr, HINT.cidr, changed);
+    ctl = { node: cl.node, get: () => cl.get(), check: () => cl.flush() ? "" : "fix or clear the value in the box" };
+  } else if (s.kind === "host" || s.kind === "service") {
+    // Unset shows a placeholder, not the first item — which would read as if it were the current value.
+    const sel = picker(s.kind === "host" ? names(state.hosts) : names(state.services), s.value, s.value ? null : `Choose a ${s.kind}…`);
+    sel.onchange = changed; ctl = { node: sel, get: () => sel.value, check: () => sel.value ? "" : `Choose a ${s.kind}` };
+  } else if (s.kind === "file") {
+    // Browse the repo as mounted into the container and click the file — no typing a path.
+    const ft = fileTree(s.value, changed);
+    ctl = { node: ft.node, get: () => ft.get(), check: () => ft.get() ? "" : "Choose a file" };
+  } else {
+    const i = el("input", null, { type: "text", value: s.value || "", placeholder: HINT.relpath, autocomplete: "off", autocapitalize: "off" });
+    i.oninput = changed; ctl = { node: i, get: () => i.value.trim(), check: () => { const r = CHECK.relpath(i.value.trim()); return r === true ? "" : r; } };
+  }
+  const heading = s.kind === "cidrs" ? "Ranges" : s.kind === "file" ? "Choose a file from the repo" : s.kind === "relpath" ? "Folder name (inside each host's directory)" : s.label;
+  // Lists and the file tree contain buttons: inside a <label>, tapping the heading would press the first one.
+  const multi = s.kind === "cidrs" || s.kind === "file";
+  const lab = el(multi ? "div" : "label", multi ? null : heading, multi ? { className: "fld" } : {});
+  if (multi) lab.append(el("div", heading, { className: "fl" }));
+  lab.append(ctl.node); box.append(lab);
+  const apply = async value => {
+    const res = await post("/api/run", { command: "defaults set", values: { key: s.key, value } });
+    if (!res.ok) { $("#derr").textContent = res.output; return; }
+    await load();
+    $("#dlg").close(); toastResult(s.label, res, `${s.label} updated`);
+  };
+  save.onclick = e => { e.preventDefault(); const err = ctl.check(); if (err) { $("#derr").textContent = err; return; } apply(ctl.get()); };
+  const clear = $("#dclear");
+  clear.hidden = !(s.clearable && s.value);
+  clear.onclick = () => { if (confirm(`Clear ${s.label}?`)) apply("-"); };
+  openModal($("#dlg"));
+}
+
+function table(headers, rows) {
+  const t = el("table", null, { className: "stack" }), h = el("tr"); headers.forEach(x => h.append(el("th", x)));
+  t.append(el("thead")); t.firstChild.append(h);
+  // data-label feeds the card layout on narrow screens (each cell shows its column name)
+  rows.forEach(r => [...r.children].forEach((td, i) => { td.dataset.label = headers[i] || ""; }));
+  const b = el("tbody"); rows.forEach(r => b.append(r)); t.append(b);
+  const panel = el("div", null, { className: "panel" }); panel.append(t); return panel;   // the table sits in a rounded card
+}
+function row(cells, actions, off) {
+  const tr = el("tr"); if (off) tr.className = "off";
+  cells.forEach(c => { const td = el("td"); if (c instanceof Node) td.append(c); else td.textContent = c; tr.append(td); });
+  const a = el("td"); (actions || []).forEach(x => a.append(x)); tr.append(a); return tr;
+}
+const cards = list => { const d = el("div"); d.className = "cards"; list.forEach(x => d.append(x)); return d; };
+
+const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, () => {
+  if (!cmds[key].fields.length) return run(key, {}, cmds[key].confirm);   // nothing to ask: just run it
+  openCmd(key, prefill);
+}, "");
+
+async function pushNow() {
+  const res = await post("/api/push", {}); toastResult("Push", res, "Pushed to origin"); await load(); return res.ok;
+}
+
+// Two steps, kept apart:
+//   1. SAVE   — the save bar (only while there are unsaved changes): Discard / Save, with a message.
+//   2. DEPLOY — the header button, on every page: makes what is SAVED live. Nothing is inferred about what
+//               is live, so it also works on a freshly set-up machine with nothing to save.
+// Deploy pulls from origin, then applies (with no origin there is nothing to pull: it just applies). It can
+// only ever send what is saved: hemma applies the files in the repo and refuses a repo with unsaved changes,
+// so while changes are waiting Deploy is off. It offers to push unpushed saves first.
+let deploying = false;
+let pending = null;   // /api/diff summary of the unsaved changes (null when there are none)
+function renderDeploy() {
+  const b = $("#deploy"), dirty = changes.git && changes.files.length > 0;
+  b.textContent = deploying ? (changes.has_remote ? "Deploying…" : "Applying…") : "Deploy";
+  b.disabled = deploying || dirty;
+  b.title = dirty ? "Save or discard your changes first" : "Pull from origin and make it live on this machine";
+}
+$("#deploy").onclick = () => deploy();
+async function deploy() {
+  if (deploying) return;
+  if (changes.git && changes.files.length) return toast("Save or discard your unsaved changes before deploying", "warn");
+  const key = changes.has_remote ? "deploy" : "apply";
+  if (changes.has_remote && changes.ahead > 0 &&
+      !(confirm(`${changes.ahead} saved change(s) are not on origin yet — push them first?`) && await pushNow())) return;
+  if (!confirm(cmds[key].confirm)) return;
+  deploying = true; renderDeploy();
+  try {
+    const res = await post("/api/run", { command: key, values: {} });
+    toastResult(cmds[key].title, res, key === "deploy" ? "Deployed" : "Applied");   // failures stay on screen, with Details
+  } finally { deploying = false; await load(); }
+}
+
+// discard puts hemma's own output back to the last save; files hemma doesn't manage are left alone.
+async function discard() {
+  if (!confirm("Discard your unsaved changes? services.yaml and the generated files go back to how they were when last saved. Files hemma doesn't manage are left alone.")) return;
+  const res = await post("/api/discard", {});
+  toastResult("Discard", res, "Changes discarded"); await load();
+}
+
+// renderDiff: what changed in what hemma manages, current (left) against changed (right).
+// Hemma's generated files are only counted; any other file is listed by name — never interpreted.
+const FILE_STATUS = { M: "modified", MM: "modified", A: "new", "??": "new", D: "deleted", R: "renamed" };
+function renderDiff(d) {
+  const root = el("div");
+  for (const e of d.entities) {
+    const card = el("div", null, { className: "dcard" }), head = el("div", null, { className: "dhead" });
+    head.append(el("span", e.status, { className: "badge " + e.status }), el("strong", `${e.kind} · ${e.name}`));
+    card.append(head);
+    const rows = e.fields.filter(f => e.status === "changed" || (e.status === "added" ? f.after !== "—" : f.before !== "—"));
+    if (rows.length) {
+      const t = el("table", null, { className: "dtab" });
+      const hr = el("tr"); ["", "Current", "Changed"].forEach(h => hr.append(el("th", h)));
+      const th = el("thead"); th.append(hr); t.append(th);
+      const tb = el("tbody");
+      for (const f of rows) {
+        const tr = el("tr");
+        tr.append(el("td", f.field),
+          el("td", f.before, { className: f.before === "—" ? "nil" : "del" }),
+          el("td", f.after, { className: f.after === "—" ? "nil" : "add" }));
+        tb.append(tr);
+      }
+      t.append(tb); card.append(t);
+    }
+    root.append(card);
+  }
+  if (d.reformatted) root.append(el("p", "services.yaml was rewritten by hemma, but no value in it changed — only its formatting. You can commit it or discard it.", { className: "meta" }));
+  if (d.generated.length) {
+    const det = el("details", null, { className: "dsec" });
+    det.append(el("summary", `${d.generated.length} generated ${d.generated.length === 1 ? "file" : "files"} updated automatically`));
+    const ul = el("ul", null, { className: "dfiles" }); d.generated.forEach(p => ul.append(el("li", p))); det.append(ul); root.append(det);
+  }
+  if (d.other.length) {
+    root.append(el("div", "Other files changed (not managed by hemma — listed only)", { className: "dsec" }));
+    const ul = el("ul", null, { className: "dfiles" });
+    d.other.forEach(f => { const li = el("li"); li.append(el("code", f.path), ` — ${FILE_STATUS[f.status] || f.status}`); ul.append(li); });
+    root.append(ul);
+  }
+  if (!root.children.length) root.append(el("p", "No changes.", { className: "meta" }));
+  return root;
+}
+
+// openCommit (the Save panel): review what changed, write the change message, save. Saving only records
+// the changes; deploying them is the separate Deploy button.
+function openCommit() {
+  $("#cdiff").replaceChildren(el("p", "Loading changes…", { className: "meta" }));
+  fetch("/api/diff").then(r => r.json()).then(d => $("#cdiff").replaceChildren(d.error ? el("p", d.error, { className: "err" }) : renderDiff(d)))
+    .catch(() => $("#cdiff").replaceChildren(el("p", "Could not load the changes.", { className: "err" })));
+  $("#cfiles").textContent = changes.files.map(f => `${f.status.padEnd(2)} ${f.path}`).join("\n");
+  $("#cmsg").value = ""; $("#cerr").textContent = "";
+  $("#cgo").onclick = async e => {
+    e.preventDefault();
+    if (!$("#cform").reportValidity()) return;
+    $("#cgo").disabled = true;
+    try {
+      const res = await post("/api/commit", { message: $("#cmsg").value, push: false });
+      if (!res.ok) { $("#cerr").textContent = res.output; return; }
+      await load();
+      // Saving never deploys by itself — but it is the natural moment to offer: Deploy now, or later from the bar.
+      $("#cdlg").close(); toast("Saved", "ok", null, { label: "Deploy now", fn: deploy });
+    } finally { $("#cgo").disabled = false; }
+  };
+  openModal($("#cdlg"));
+}
+$("#ccancel").onclick = () => $("#cdlg").close();
+
+// The save bar (Reaparr's pattern): at the bottom of every page, but ONLY while there are unsaved changes,
+// with Discard and Save. Deploying is the separate header button.
+function describePending() {
+  const p = pending, n = changes.files.length;
+  const files = k => `${k} ${k === 1 ? "file" : "files"} changed`;
+  if (!p) return `${n} unsaved ${n === 1 ? "change" : "changes"}`;
+  const e = p.entities.length;
+  if (e) return `${e} unsaved ${e === 1 ? "change" : "changes"}`;
+  if (p.reformatted) return "services.yaml was reformatted";
+  if (p.generated.length) { const k = p.generated.length; return `${k} generated ${k === 1 ? "file" : "files"} changed`; }
+  if (p.other.length) return `${p.other.length} other ${p.other.length === 1 ? "file" : "files"} changed`;
+  return files(n);   // never a "0 … changed"
+}
+function renderBar() {
+  const bar = $("#savebar"), dirty = changes.git && changes.files.length > 0;
+  bar.hidden = !dirty; document.body.classList.toggle("with-bar", dirty);   // nothing to save → no bar at all
+  document.documentElement.style.setProperty("--bar-extra", "0px");
+  if (!dirty) return;
+  bar.className = "save-bar dirty";
+  const mine = !pending || pending.entities.length || pending.generated.length || pending.reformatted;   // anything hemma can revert?
+  const discardBtn = btn("Discard", discard, "danger"); discardBtn.disabled = !mine;
+  const m = el("div", null, { className: "msg" });
+  m.append(el("span", null, { className: "dot" }), el("strong", describePending()));
+  const a = el("div", null, { className: "acts" });
+  a.append(discardBtn, btn("Save", openCommit, "primary"));
+  bar.replaceChildren(m, a);
+  // the floating "add" button (phones) rides above the bar: tell it how tall the bar is, plus a gap
+  document.documentElement.style.setProperty("--bar-extra", bar.offsetHeight + 8 + "px");
+}
+
+const VIEWS = {
+  Services() {
+    const rows = state.services.map(s => row(
+      [s.name, s.fqdn, s.host, s.backend, s["auth-mode"] || "none", s.tunnel ? "yes" : "no"],
+      [btn("Edit", () => openCmd("update service", { ...s, __lock: "name" })),
+       btn(s.disabled ? "Enable" : "Disable", () => run(s.disabled ? "enable service" : "disable service", { name: s.name })),
+       btn("Rename", () => openCmd("rename service", { old: s.name, __lock: "old" })),
+       btn("Remove", () => run("remove service", { name: s.name }, cmds["remove service"].confirm), "danger")], s.disabled));
+    // The same button everywhere: inline at the top on a wide screen, a floating button at the bottom right on a phone.
+    const add = cmdBtn("add service"); add.classList.add("fab");
+    const bar = cards([add]); bar.classList.add("fabwrap");
+    return [bar, table(["Name", "Address", "Host", "Backend", "Auth", "Internet", ""], rows)];
+  },
+  Hosts() {
+    const rows = state.hosts.map(h => row([h.name, h.ip, h["trusted-proxies"] || "—"],
+      [btn("Edit", () => openCmd("update host", { ...h, __lock: "name" })),
+       btn("Remove", () => run("remove host", { name: h.name }, cmds["remove host"].confirm), "danger")]));
+    return [cards([cmdBtn("add host")]), table(["Name", "IP", "Extra trusted proxies", ""], rows)];
+  },
+  Domains() {
+    const rows = state.domains.map(d => row([d], [btn("Remove", () => run("remove domain", { name: d }, cmds["remove domain"].confirm), "danger")]));
+    return [cards([cmdBtn("add domain")]), table(["Domain", ""], rows)];
+  },
+  Defaults() {
+    const rows = state.settings.map(s => {
+      const label = el("span"); label.append(el("strong", s.label), el("span", s.help, { className: "help" }));
+      const val = s.value ? el("span", s.value.split(",").join("  ·  ")) : el("span", "Not set", { className: "muted" });
+      return row([label, val], [btn("Edit", () => openSetting(s))]);
+    });
+    return [table(["Setting", "Value", ""], rows)];
+  },
+  // General settings: the three things that describe the setup itself, one section each.
+  Settings() {
+    const sec = (id, title, nodes) => { const s = el("section", null, { id: `sec-${id}`, className: "sec" }); s.append(el("h2", title), ...nodes); return s; };
+    return [sec("hosts", "Hosts", VIEWS.Hosts()), sec("domains", "Domains", VIEWS.Domains()), sec("defaults", "Defaults", VIEWS.Defaults())];
+  },
+  Issues() { return [cards(["list", "verify", "measure", "doctor"].map(k => cmdBtn(k))),
+    el("p", "Checks on the setup. To make saved changes live, use the Deploy button at the top.", { className: "meta" })]; },
+};
+
+function render() {
+  const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  $("#summary").textContent = `${pl(state.services.length, "service", "services")} · ${pl(state.hosts.length, "host", "hosts")} · ${state.domains.join(", ")}`;
+  const nav = $("#tabs"); nav.replaceChildren();
+  TABS.forEach(t => {
+    const b = el("button", null, { type: "button", className: t === tab ? "on" : "", onclick: () => { tab = t; render(); } });
+    if (t === tab) b.setAttribute("aria-current", "page");
+    const ic = el("span", null, { className: "tab-icon" }); ic.innerHTML = ICONS[t];   // static markup defined above
+    b.append(ic, el("span", t, { className: "tab-label" }));
+    const n = tabBadge(t);
+    if (n) { const c = el("span", String(n), { className: "count" }); c.setAttribute("aria-label", `${n} unsaved`); b.append(c); }
+    nav.append(b);
+  });
+  $("#view").replaceChildren(...VIEWS[tab]());
+  $("#view").classList.toggle("has-fab", tab === "Services");
+  $("#foot").textContent = state.version || "";
+  renderDeploy();
+  renderBar();
+}
+async function load() {
+  const r = await fetch("/api/state"); const s = await r.json();
+  if (s.error) { toast("Could not load services.yaml", "err", { title: "Could not load", text: s.error }); return; }
+  state = s;
+  changes = await (await fetch("/api/changes")).json();
+  pending = null;
+  if (changes.files.length) { const d = await (await fetch("/api/diff")).json().catch(() => null); if (d && !d.error) pending = d; }
+  render();
+}
+(async () => {
+  const list = await (await fetch("/api/commands")).json();
+  list.forEach(c => cmds[c.key] = c);
+  render(); load();
+})();
+</script>
+</body>
+</html>
