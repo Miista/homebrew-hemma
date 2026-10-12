@@ -21,7 +21,6 @@ type field struct {
 	Kind     string   `json:"kind"` // pos | str | bool | int | select
 	Options  []string `json:"options,omitempty"`
 	Required bool     `json:"required,omitempty"`
-	Multi    bool     `json:"multi,omitempty"` // pos only: whitespace/comma-separated list → several positionals
 	Help     string   `json:"help,omitempty"`
 }
 
@@ -76,8 +75,8 @@ var commands = []command{
 	{Words: []string{"enable", "service"}, Group: "Services", Title: "Enable service", Fields: []field{pos("name", "Name", true)}},
 	{Words: []string{"rename", "service"}, Group: "Services", Title: "Rename service", Fields: []field{pos("old", "Current name", true), pos("new", "New name", true)}},
 
-	{Words: []string{"add", "host"}, Group: "Hosts", Title: "Add host", Fields: []field{pos("name", "Name", true), pos("ip", "IP", true), str("ssh", "SSH destination"), str("trusted-proxies", "Extra trusted proxies (comma-separated)")}},
-	{Words: []string{"update", "host"}, Group: "Hosts", Title: "Update host", Update: true, Fields: []field{pos("name", "Name", true), str("ip", "IP"), str("ssh", "SSH destination ('-' resets)"), str("trusted-proxies", "Extra trusted proxies (comma-separated)")}},
+	{Words: []string{"add", "host"}, Group: "Hosts", Title: "Add host", Fields: []field{pos("name", "Name", true), pos("ip", "IP", true), str("trusted-proxies", "Extra trusted proxies (comma-separated)")}},
+	{Words: []string{"update", "host"}, Group: "Hosts", Title: "Update host", Update: true, Fields: []field{pos("name", "Name", true), str("ip", "IP"), str("trusted-proxies", "Extra trusted proxies (comma-separated)")}},
 	{Words: []string{"remove", "host"}, Group: "Hosts", Title: "Remove host", Fields: []field{pos("name", "Name", true)}, Confirm: "Remove this host?"},
 
 	{Words: []string{"add", "domain"}, Group: "Domains", Title: "Add domain", Fields: []field{pos("name", "Domain", true)}},
@@ -85,7 +84,7 @@ var commands = []command{
 
 	{Words: []string{"defaults"}, Group: "Defaults", Title: "Show defaults", ReadOnly: true},
 	{Words: []string{"defaults", "set"}, Group: "Defaults", Title: "Set default", Fields: []field{
-		{Name: "key", Label: "Setting", Kind: "pos", Required: true, Options: []string{"dns-host", "deploy-host", "auth-snippet", "auth-service", "local-networks", "tunnel-dir"}},
+		{Name: "key", Label: "Setting", Kind: "pos", Required: true, Options: []string{"dns-host", "auth-snippet", "auth-service", "local-networks", "tunnel-dir"}},
 		{Name: "value", Label: "Value ('-' clears)", Kind: "pos", Required: true}}},
 
 	{Words: []string{"create", "app", "oidc"}, Group: "Credentials", Title: "Create OIDC app credentials", Fields: []field{pos("app_name", "App name", true), pos("callback_path", "Callback path", false)},
@@ -93,9 +92,6 @@ var commands = []command{
 
 	{Words: []string{"apply"}, Group: "Operate", Title: "Apply to this host", Timeout: 5 * time.Minute, Fields: nil,
 		Confirm: "Apply now? This restarts pihole, reloads caddy and restarts the auth provider on this host."},
-	{Words: []string{"deploy"}, Group: "Operate", Title: "Deploy to all hosts (ssh)", FlagsFirst: true, Timeout: 10 * time.Minute,
-		Fields:  []field{{Name: "hosts", Label: "Hosts (blank = all)", Kind: "pos", Multi: true}},
-		Confirm: "Deploy? This git-pulls and applies on every target host over ssh."},
 
 	{Words: []string{"list"}, Group: "Diagnose", Title: "List overview", ReadOnly: true, FlagsFirst: true,
 		Fields: []field{flag("all", "All hosts"), flag("policy", "Show policy columns")}},
@@ -163,17 +159,11 @@ func (c *command) build(vals map[string]any) ([]string, error) {
 			if s == "" {
 				continue
 			}
-			parts := []string{s}
-			if f.Multi {
-				parts = strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' })
+			// '-' alone is the documented "clear" value of `defaults set`.
+			if !posRe.MatchString(s) && !(s == "-" && c.Key == "defaults set") {
+				return nil, fmt.Errorf("%s: invalid value", f.Label)
 			}
-			for _, p := range parts {
-				// '-' alone is the documented "clear" value of `defaults set`.
-				if !posRe.MatchString(p) && !(p == "-" && c.Key == "defaults set") {
-					return nil, fmt.Errorf("%s: invalid value", f.Label)
-				}
-				positionals = append(positionals, p)
-			}
+			positionals = append(positionals, s)
 		case "bool":
 			if !present {
 				continue

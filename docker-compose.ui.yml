@@ -1,4 +1,5 @@
-# hemma-ui — single-host web UI. Run on the host that runs pihole/caddy.
+# hemma-ui — SINGLE-HOST web UI (multi-host/deploy is deliberately not supported yet).
+# Run on the host that runs pihole/caddy.
 # Set HEMMA_UI_PASSWORD in the environment (or an .env file); the UI refuses to start without it.
 # Put it behind your Caddy (TLS) and keep it LAN-only: the Docker socket mount below
 # gives this container root-equivalent control of the host.
@@ -14,9 +15,4 @@ services:
       HEMMA_UI_GIT_EMAIL: ${HEMMA_UI_GIT_EMAIL:-hemma-ui@localhost}
     volumes:
       - ${HEMMA_REPO_DIR:?set HEMMA_REPO_DIR}:/repo
-      - /var/run/docker.sock:/var/run/docker.sock
-      # Multi-host only, opt-in: `hemma deploy` needs ssh keys. Mounting private keys
-      # into this container widens the blast radius — use a dedicated, deploy-only key.
-      # - ./deploy_key:/root/.ssh/id_ed25519:ro
-      # - ./known_hosts:/root/.ssh/known_hosts:ro
-    restart: unless-stopped
+      - /var/run/docker.sock:/var/run/docker.sock    restart: unless-stopped

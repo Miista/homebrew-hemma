@@ -13,16 +13,14 @@ func TestBuild(t *testing.T) {
 		want []string
 		err  string
 	}{
-		{"add host", map[string]any{"name": "pi", "ip": "192.0.2.1", "ssh": "u@pi"},
-			[]string{"add", "host", "pi", "192.0.2.1", "--ssh=u@pi"}, ""},
+		{"add host", map[string]any{"name": "pi", "ip": "192.0.2.1", "trusted-proxies": "192.0.2.9"},
+			[]string{"add", "host", "pi", "192.0.2.1", "--trusted-proxies=192.0.2.9"}, ""},
 		// empty optional flags are dropped on add, kept (clearing) on update
-		{"add host", map[string]any{"name": "pi", "ip": "192.0.2.1", "ssh": ""}, []string{"add", "host", "pi", "192.0.2.1"}, ""},
-		{"update host", map[string]any{"name": "pi", "ip": "192.0.2.2", "ssh": ""},
-			[]string{"update", "host", "pi", "--ip=192.0.2.2", "--ssh="}, ""},
+		{"add host", map[string]any{"name": "pi", "ip": "192.0.2.1", "trusted-proxies": ""}, []string{"add", "host", "pi", "192.0.2.1"}, ""},
+		{"update host", map[string]any{"name": "pi", "ip": "192.0.2.2", "trusted-proxies": ""},
+			[]string{"update", "host", "pi", "--ip=192.0.2.2", "--trusted-proxies="}, ""},
 		// flags-first commands
 		{"verify", map[string]any{"all": true, "fqdn": "a.example.com"}, []string{"verify", "--all=true", "a.example.com"}, ""},
-		{"deploy", map[string]any{"hosts": "pi, optiplex"}, []string{"deploy", "pi", "optiplex"}, ""},
-		{"deploy", map[string]any{}, []string{"deploy"}, ""},
 		{"defaults set", map[string]any{"key": "tunnel-dir", "value": "-"}, []string{"defaults", "set", "tunnel-dir", "-"}, ""},
 		{"measure", map[string]any{"target": "https://a.example.com", "runs": float64(3)}, []string{"measure", "--runs=3", "https://a.example.com"}, ""},
 		// rejections
@@ -33,8 +31,7 @@ func TestBuild(t *testing.T) {
 		{"add domain", map[string]any{"name": "-"}, nil, "invalid"},
 		{"measure", map[string]any{"target": "t", "runs": float64(99999)}, nil, "0-1000"},
 		{"add service", map[string]any{"name": "s", "fqdn": "a", "host": "h", "backend": "b", "auth-mode": "root"}, nil, "not an allowed"},
-		{"add host", map[string]any{"name": "pi", "ip": "1.2.3.4", "ssh": "x\n--evil"}, nil, "invalid"},
-	}
+		{"add host", map[string]any{"name": "pi", "ip": "1.2.3.4", "trusted-proxies": "x\n--evil"}, nil, "invalid"}}
 	for _, c := range cases {
 		cmd := lookup(c.key)
 		if cmd == nil {
@@ -49,6 +46,27 @@ func TestBuild(t *testing.T) {
 		}
 		if err != nil || !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s %v: got %v, %v; want %v", c.key, c.vals, got, err, c.want)
+		}
+	}
+}
+
+// The UI is single-host for now: nothing that reaches other hosts is exposed.
+func TestSingleHostOnly(t *testing.T) {
+	if lookup("deploy") != nil {
+		t.Error("deploy must not be in the single-host registry")
+	}
+	for _, c := range commands {
+		for _, f := range c.Fields {
+			if f.Name == "ssh" {
+				t.Errorf("%s exposes ssh", c.Key)
+			}
+			if c.Key == "defaults set" {
+				for _, o := range f.Options {
+					if o == "deploy-host" {
+						t.Error("deploy-host must not be settable")
+					}
+				}
+			}
 		}
 	}
 }

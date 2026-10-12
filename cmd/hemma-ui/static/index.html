@@ -51,7 +51,6 @@
     <p class="meta">These changes are in the repo but not committed. They go live only after you commit them with a message.</p>
     <pre id="cfiles"></pre>
     <label>Change message *<textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
-    <label id="cpushl"><input type="checkbox" id="cpush"> Push to the remote after committing (needed for deploy)</label>
     <p class="err" id="cerr"></p>
     <div class="row"><button type="button" id="ccancel">Cancel</button><button class="primary" id="cgo">Commit</button></div>
   </form>
@@ -154,9 +153,9 @@ function row(cells, actions, off) {
   const a = el("td"); (actions || []).forEach(x => a.append(x)); tr.append(a); return tr;
 }
 const cards = list => { const d = el("div"); d.className = "cards"; list.forEach(x => d.append(x)); return d; };
-// apply/deploy make changes live, so uncommitted changes must be committed
+// apply makes changes live, so uncommitted changes must be committed
 // (with a message) first; the server enforces the same rule.
-const GATED = ["apply", "deploy"];
+const GATED = ["apply"];
 const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, () => {
   if (GATED.includes(key) && changes.files.length) openCommit(key); else openCmd(key, prefill);
 }, "");
@@ -164,14 +163,13 @@ const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, () => {
 function openCommit(then) {
   $("#cfiles").textContent = changes.files.map(f => `${f.status.padEnd(2)} ${f.path}`).join("\n");
   $("#cmsg").value = ""; $("#cerr").textContent = "";
-  $("#cpush").checked = false; $("#cpushl").hidden = !changes.has_remote;
   $("#cgo").textContent = then ? "Commit and continue" : "Commit";
   $("#cgo").onclick = async e => {
     e.preventDefault();
     if (!$("#cform").reportValidity()) return;
     $("#cgo").disabled = true;
     try {
-      const res = await post("/api/commit", { message: $("#cmsg").value, push: $("#cpush").checked });
+      const res = await post("/api/commit", { message: $("#cmsg").value });
       if (!res.ok) { $("#cerr").textContent = res.output; return; }
       $("#cdlg").close(); show(res); await load();
       if (then) openCmd(then);
@@ -185,7 +183,7 @@ function renderBanner() {
   const b = $("#banner"), n = changes.files.length;
   b.hidden = !(changes.git && n);
   if (b.hidden) return;
-  b.replaceChildren(el("span", `${n} uncommitted ${n === 1 ? "change" : "changes"} — apply and deploy are locked until you commit them.`),
+  b.replaceChildren(el("span", `${n} uncommitted ${n === 1 ? "change" : "changes"} — apply is locked until you commit them.`),
     btn("Review and commit", () => openCommit(null), "primary"));
 }
 
@@ -200,10 +198,10 @@ const VIEWS = {
     return [cards([cmdBtn("add service")]), table(["Name", "FQDN", "Host", "Backend", "Auth", "Internet", ""], rows)];
   },
   Hosts() {
-    const rows = state.hosts.map(h => row([h.name, h.ip, h.ssh || "—", h["trusted-proxies"] || "—"],
+    const rows = state.hosts.map(h => row([h.name, h.ip, h["trusted-proxies"] || "—"],
       [btn("Edit", () => openCmd("update host", { ...h, __lock: "name" })),
        btn("Remove", () => run("remove host", { name: h.name }, cmds["remove host"].confirm))]));
-    return [cards([cmdBtn("add host")]), table(["Name", "IP", "SSH", "Extra trusted proxies", ""], rows)];
+    return [cards([cmdBtn("add host")]), table(["Name", "IP", "Extra trusted proxies", ""], rows)];
   },
   Domains() {
     const rows = state.domains.map(d => row([d], [btn("Remove", () => run("remove domain", { name: d }, cmds["remove domain"].confirm))]));
@@ -215,8 +213,8 @@ const VIEWS = {
   },
   Credentials() { return [cards([cmdBtn("create app oidc"), btn("Create user", openCreateUser)]),
     el("p", "Print-only: the auth provider's config and users database are never written. Paste the output in yourself.", { className: "meta" })]; },
-  Operate() { return [cards([cmdBtn("apply"), cmdBtn("deploy")]),
-    el("p", "Apply makes the config live on this host. Deploy fans out over ssh to the other hosts and needs ssh set up in the container.", { className: "meta" })]; },
+  Operate() { return [cards([cmdBtn("apply")]),
+    el("p", "Apply makes the committed config live on this host: it validates, then restarts pihole, reloads caddy and restarts the auth provider.", { className: "meta" })]; },
   Diagnose() { return [cards(["list", "verify", "measure", "doctor"].map(k => cmdBtn(k)))]; },
   About() { return [cards(["version", "help", "completion", "defaults"].map(k => cmdBtn(k)))]; },
 };
