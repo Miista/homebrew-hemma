@@ -1,12 +1,14 @@
 // hemma-ui is a single-host web UI for hemma: view, edit, diagnose and apply.
 // It never writes generated files or services.yaml itself — every command is
-// run through the hemma binary from an allowlist (commands.go), so validation
-// and the single-writer invariant (design §6) stay exactly as on the CLI.
+// run from an allowlist (commands.go) through the same kernel the CLI uses
+// (internal/cli/kernel, called in-process), so validation and the
+// single-writer invariant (design §6) stay exactly as on the CLI.
 // Credential minting (create app/user) is deliberately not exposed: its output
 // is secret material to paste elsewhere, which a browser can't act on.
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"embed"
@@ -15,12 +17,13 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 
+	"hemma/internal/cli"
+	"hemma/internal/cli/kernel"
 	"hemma/internal/config"
 )
 
@@ -30,9 +33,10 @@ import (
 var static embed.FS
 
 type server struct {
-	repo, bin string
-	version   string     // `hemma version`, shown in the page footer
-	mu        sync.Mutex // one mutating hemma invocation at a time
+	repo    string
+	self    string     // a hemma binary, which `deploy` re-invokes for this host's own apply
+	version string     // "hemma <version>", shown in the page footer
+	mu      sync.Mutex // one mutating hemma invocation at a time
 }
 
 func main() {
@@ -40,10 +44,8 @@ func main() {
 	if pw == "" {
 		log.Fatal("HEMMA_UI_PASSWORD must be set — refusing to start without a login")
 	}
-	s := &server{repo: env("HEMMA_REPO", "/repo"), bin: env("HEMMA_BIN", "hemma")}
-	if out, err := exec.Command(s.bin, "version").Output(); err == nil {
-		s.version = strings.TrimSpace(string(out))
-	}
+	kernel.DisableColor() // output is captured for a browser, never a terminal
+	s := &server{repo: env("HEMMA_REPO", "/repo"), self: env("HEMMA_BIN", "hemma"), version: "hemma " + cli.Version}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := static.ReadFile("static/index.html")
@@ -188,12 +190,55 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), c.Timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, s.bin, append([]string{"-C", s.repo}, argv...)...)
-	cmd.Env = append(os.Environ(), "NO_COLOR=1")
-	out, err := cmd.CombinedOutput()
+	code, out := s.runKernel(ctx, argv)
+	ok := code == 0
+	if ctx.Err() != nil {
+		ok = false
+		out += "\n(timed out)\n"
+	}
 	// Log the command key only: arguments and output can carry secrets.
-	log.Printf("run %q -> err=%v", c.Key, err)
-	writeJSON(w, 200, map[string]any{"ok": err == nil, "output": string(out)})
+	log.Printf("run %q -> exit=%d", c.Key, code)
+	writeJSON(w, 200, map[string]any{"ok": ok, "output": out})
+}
+
+// runKernel runs one command (argv as built from the allowlist: command word
+// first) in-process through the same kernel the CLI uses, capturing everything
+// it prints. stdout and stderr share one buffer so the output reads in order,
+// as it did when the hemma binary's combined output was captured.
+func (s *server) runKernel(ctx context.Context, argv []string) (code int, output string) {
+	var buf syncBuf
+	kenv := &kernel.Env{Out: &buf, Err: &buf, Ctx: ctx, NoTerminal: true, Self: s.self}
+	defer func() {
+		// A bug in a command must not take the whole UI down with it.
+		if p := recover(); p != nil {
+			log.Printf("kernel panic running %q: %v", argv[0], p)
+			code, output = 70, buf.String()+"\ninternal error\n"
+		}
+	}()
+	code, known := kernel.Route(kenv, s.repo, filepath.Join(s.repo, "services.yaml"), argv[0], argv[1:])
+	if !known {
+		return 2, "unknown command\n"
+	}
+	return code, buf.String()
+}
+
+// syncBuf is a mutex-guarded buffer: a command's external processes may write
+// to it from more than one goroutine.
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
