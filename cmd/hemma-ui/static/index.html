@@ -23,12 +23,15 @@
   .err { color: #c33; } .meta { opacity: .7; font-size: .85rem; }
   .row { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
   .cards { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0; }
+  .banner { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .6rem .9rem; margin: 1rem 0; border: 1px solid #d90; border-radius: 6px; background: #fa02; }
+  textarea { width: 100%; box-sizing: border-box; padding: .35rem; font: inherit; }
 </style>
 </head>
 <body>
 <h1>hemma</h1>
 <p class="meta" id="summary"></p>
 <nav id="tabs"></nav>
+<div id="banner" class="banner" hidden></div>
 <section id="view"></section>
 <pre id="out" hidden></pre>
 
@@ -42,8 +45,21 @@
   </form>
 </dialog>
 
+<dialog id="cdlg">
+  <form method="dialog" id="cform">
+    <h2>Commit changes</h2>
+    <p class="meta">These changes are in the repo but not committed. They go live only after you commit them with a message.</p>
+    <pre id="cfiles"></pre>
+    <label>Change message *<textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
+    <label id="cpushl"><input type="checkbox" id="cpush"> Push to the remote after committing (needed for deploy)</label>
+    <p class="err" id="cerr"></p>
+    <div class="row"><button type="button" id="ccancel">Cancel</button><button class="primary" id="cgo">Commit</button></div>
+  </form>
+</dialog>
+
 <script>
 const $ = s => document.querySelector(s);
+let changes = { git: false, files: [] };
 let state = { services: [], hosts: [], domains: [], defaults: {} };
 let cmds = {};
 let tab = "Services";
@@ -138,7 +154,40 @@ function row(cells, actions, off) {
   const a = el("td"); (actions || []).forEach(x => a.append(x)); tr.append(a); return tr;
 }
 const cards = list => { const d = el("div"); d.className = "cards"; list.forEach(x => d.append(x)); return d; };
-const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, () => openCmd(key, prefill), "");
+// apply/deploy make changes live, so uncommitted changes must be committed
+// (with a message) first; the server enforces the same rule.
+const GATED = ["apply", "deploy"];
+const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, () => {
+  if (GATED.includes(key) && changes.files.length) openCommit(key); else openCmd(key, prefill);
+}, "");
+
+function openCommit(then) {
+  $("#cfiles").textContent = changes.files.map(f => `${f.status.padEnd(2)} ${f.path}`).join("\n");
+  $("#cmsg").value = ""; $("#cerr").textContent = "";
+  $("#cpush").checked = false; $("#cpushl").hidden = !changes.has_remote;
+  $("#cgo").textContent = then ? "Commit and continue" : "Commit";
+  $("#cgo").onclick = async e => {
+    e.preventDefault();
+    if (!$("#cform").reportValidity()) return;
+    $("#cgo").disabled = true;
+    try {
+      const res = await post("/api/commit", { message: $("#cmsg").value, push: $("#cpush").checked });
+      if (!res.ok) { $("#cerr").textContent = res.output; return; }
+      $("#cdlg").close(); show(res); await load();
+      if (then) openCmd(then);
+    } finally { $("#cgo").disabled = false; }
+  };
+  $("#cdlg").showModal();
+}
+$("#ccancel").onclick = () => $("#cdlg").close();
+
+function renderBanner() {
+  const b = $("#banner"), n = changes.files.length;
+  b.hidden = !(changes.git && n);
+  if (b.hidden) return;
+  b.replaceChildren(el("span", `${n} uncommitted ${n === 1 ? "change" : "changes"} — apply and deploy are locked until you commit them.`),
+    btn("Review and commit", () => openCommit(null), "primary"));
+}
 
 const VIEWS = {
   Services() {
@@ -181,7 +230,9 @@ function render() {
 async function load() {
   const r = await fetch("/api/state"); const s = await r.json();
   if (s.error) { show({ ok: false, output: s.error }); return; }
-  state = s; render();
+  state = s;
+  changes = await (await fetch("/api/changes")).json();
+  render(); renderBanner();
 }
 (async () => {
   const list = await (await fetch("/api/commands")).json();

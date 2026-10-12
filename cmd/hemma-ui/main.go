@@ -46,6 +46,8 @@ func main() {
 	})
 	mux.HandleFunc("GET /api/state", s.state)
 	mux.HandleFunc("GET /api/commands", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, commands) })
+	mux.HandleFunc("GET /api/changes", s.handleChanges)
+	mux.HandleFunc("POST /api/commit", s.handleCommit)
 	mux.HandleFunc("POST /api/run", s.runCommand)
 	mux.HandleFunc("POST /api/create-user", s.createUser)
 	addr := env("HEMMA_UI_ADDR", ":8080")
@@ -150,6 +152,13 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 	if !c.ReadOnly {
 		s.mu.Lock()
 		defer s.mu.Unlock()
+	}
+	if gated(c) {
+		if ch := s.changes(); len(ch.Files) > 0 {
+			writeJSON(w, 409, map[string]any{"ok": false, "dirty": true,
+				"output": "Refused: there are uncommitted changes. Commit them with a change message first."})
+			return
+		}
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), c.Timeout)
 	defer cancel()
