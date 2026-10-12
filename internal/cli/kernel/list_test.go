@@ -1,4 +1,4 @@
-package cli
+package kernel
 
 import (
 	"encoding/json"
@@ -203,32 +203,6 @@ func TestList_OIDCColumn(t *testing.T) {
 	}
 	if strings.Contains(string(b), "import auth") {
 		t.Errorf("oidc site must not import auth:\n%s", b)
-	}
-}
-
-// The completion command prints a script for bash/zsh and rejects others.
-func TestRun_Completion(t *testing.T) {
-	bash := captureStdout(t, func() {
-		if code := Run([]string{"completion", "bash"}); code != 0 {
-			t.Fatalf("completion bash exit %d", code)
-		}
-	})
-	if !strings.Contains(bash, "complete -F _hemma hemma") {
-		t.Errorf("bash script missing complete registration:\n%s", bash)
-	}
-	zsh := captureStdout(t, func() {
-		if code := Run([]string{"completion", "zsh"}); code != 0 {
-			t.Fatalf("completion zsh exit %d", code)
-		}
-	})
-	if !strings.Contains(zsh, "#compdef hemma") {
-		t.Errorf("zsh script missing #compdef header:\n%s", zsh)
-	}
-	if code := Run([]string{"completion", "fish"}); code != 2 {
-		t.Errorf("unsupported shell should exit 2, got %d", code)
-	}
-	if code := Run([]string{"completion"}); code != 2 {
-		t.Errorf("missing shell arg should exit 2, got %d", code)
 	}
 }
 

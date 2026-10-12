@@ -16,6 +16,7 @@ These advisories require manual edits (see their fix: lines) — 'hemma doctor -
 --- stderr ---
 --- external commands ---
 git -C <repo> check-ignore --stdin
+ssh-keygen -F 192.0.2.20
 --- files ---
 + core/authelia/data/config/hemma.access_control.generated.yml cdc8708c21a5
 + core/caddy/data/hemma.auth.generated.caddy 171ae1603e0e

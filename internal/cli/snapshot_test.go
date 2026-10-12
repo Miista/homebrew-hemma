@@ -30,6 +30,7 @@ import (
 	"strings"
 	"testing"
 
+	"hemma/internal/cli/kernel"
 	"hemma/internal/config"
 )
 
@@ -448,7 +449,11 @@ func materialize(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mkdirs(t, dir, "core", "edge")
+	for _, host := range []string{"core", "edge"} {
+		if err := os.MkdirAll(filepath.Join(dir, host), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // applySetup runs one setup step: a plain command line, or an "@"-directive
@@ -457,7 +462,9 @@ func applySetup(t *testing.T, dir, step string) {
 	t.Helper()
 	switch {
 	case strings.HasPrefix(step, "@mkdir "):
-		mkdirs(t, dir, strings.TrimPrefix(step, "@mkdir "))
+		if err := os.MkdirAll(filepath.Join(dir, strings.TrimPrefix(step, "@mkdir ")), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	case strings.HasPrefix(step, "@rm "):
 		os.Remove(filepath.Join(dir, strings.TrimPrefix(step, "@rm ")))
 	case strings.HasPrefix(step, "@write "):
@@ -519,12 +526,10 @@ func TestSnapshots(t *testing.T) {
 			t.Setenv("PATH", bin)
 			t.Setenv("FAKE_LOG", logPath)
 			t.Setenv("FAKE_MODE", c.tools)
-			origLocal, origSelf := localHost, selfExecutable
-			defer func() { localHost, selfExecutable = origLocal, origSelf }()
-			selfExecutable = func() (string, error) { return filepath.Join(bin, "hemma"), nil }
+			defer kernel.SetSelfExecutable(func() (string, error) { return filepath.Join(bin, "hemma"), nil })()
 			if c.role != "" {
 				role := c.role
-				localHost = func(*config.Config) string { return role }
+				defer kernel.SetLocalHost(func(*config.Config) string { return role })()
 			}
 
 			argv := tokens(c.args)

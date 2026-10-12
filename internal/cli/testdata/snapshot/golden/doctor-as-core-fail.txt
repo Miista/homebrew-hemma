@@ -1,11 +1,15 @@
 $ hemma doctor
 # setup: doctor --fix
 # machine: host="core" tools="fail"
-exit: 0
+exit: 1
 --- stdout ---
 ✓ No generated files are gitignored.
 ✓ Generated files are in sync with services.yaml.
-✓ Deploy readiness: 1 remote host in known_hosts.
+⚠ edge: no known_hosts entry for its deploy destination (ops@192.0.2.20)
+  'hemma deploy' uses 'ssh -o BatchMode=yes' and will fail host-key verification.
+  fix: connect once interactively to accept and record the host key —
+       ssh ops@192.0.2.20
+       (verify the fingerprint before accepting.)
 
 ⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
 
@@ -17,4 +21,6 @@ These advisories require manual edits (see their fix: lines) — 'hemma doctor -
 --- stderr ---
 --- external commands ---
 git -C <repo> check-ignore --stdin
+ssh-keygen -F 192.0.2.20
+ssh-keygen -F 192.0.2.20
 --- files ---
