@@ -18,8 +18,8 @@ esac
 
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
-work="$here/.work"
-HOST_IP=172.28.0.10   # the hemma-ui container's fixed IP (see compose.yml)
+work="${FIXTURE_WORK:-$here/.work}"            # override to build a second, isolated copy
+HOST_IP="${FIXTURE_HOST_IP:-172.28.0.10}"       # the hemma-ui container's fixed IP (see compose.yml)
 
 rm -rf "$work"
 mkdir -p "$work"
@@ -64,6 +64,11 @@ cat > pi/caddy/data/Caddyfile <<'EOF'
 	}
 }
 import hemma.generated.caddy
+EOF
+
+# A hand-written file for the UI's auth-snippet file picker to find (hemma's own outputs can't be picked).
+cat > pi/caddy/data/auth.caddy <<'EOF'
+# Fixture auth snippet (hand-written). A real one would hold the forward_auth directive.
 EOF
 
 mkdir -p pi/cloudflared

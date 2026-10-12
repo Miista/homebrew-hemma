@@ -28,6 +28,7 @@ var static embed.FS
 
 type server struct {
 	repo, bin string
+	version   string     // `hemma version`, shown in the page footer
 	mu        sync.Mutex // one mutating hemma invocation at a time
 }
 
@@ -37,6 +38,9 @@ func main() {
 		log.Fatal("HEMMA_UI_PASSWORD must be set — refusing to start without a login")
 	}
 	s := &server{repo: env("HEMMA_REPO", "/repo"), bin: env("HEMMA_BIN", "hemma")}
+	if out, err := exec.Command(s.bin, "version").Output(); err == nil {
+		s.version = strings.TrimSpace(string(out))
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := static.ReadFile("static/index.html")
@@ -45,7 +49,10 @@ func main() {
 	})
 	mux.HandleFunc("GET /api/state", s.state)
 	mux.HandleFunc("GET /api/commands", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, commands) })
+	mux.HandleFunc("GET /api/browse", s.handleBrowse)
 	mux.HandleFunc("GET /api/changes", s.handleChanges)
+	mux.HandleFunc("GET /api/diff", s.handleDiff)
+	mux.HandleFunc("POST /api/discard", s.handleDiscard)
 	mux.HandleFunc("POST /api/commit", s.handleCommit)
 	mux.HandleFunc("POST /api/push", s.handlePush)
 	mux.HandleFunc("POST /api/run", s.runCommand)
@@ -118,13 +125,18 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 			"trusted-proxies": strings.Join(h.TrustedProxies, ",")})
 	}
 	d := cfg.Defaults
+	values := map[string]string{
+		"dns-host": d.DNSHost, "auth-snippet": d.AuthSnippet,
+		"auth-service": d.AuthService, "local-networks": strings.Join(d.LocalNetworks, ","),
+		"tunnel-dir": d.TunnelDir,
+	}
+	settings := []map[string]any{}
+	for _, ds := range defaultSettings {
+		settings = append(settings, map[string]any{"key": ds.Key, "label": ds.Label, "help": ds.Help,
+			"kind": ds.Kind, "clearable": ds.Clearable, "value": values[ds.Key]})
+	}
 	writeJSON(w, 200, map[string]any{
-		"services": svcs, "hosts": hosts, "domains": cfg.DomainNames(),
-		"defaults": map[string]string{
-			"dns-host": d.DNSHost, "auth-snippet": d.AuthSnippet,
-			"auth-service": d.AuthService, "local-networks": strings.Join(d.LocalNetworks, ","),
-			"tunnel-dir": d.TunnelDir,
-		},
+		"services": svcs, "hosts": hosts, "domains": cfg.DomainNames(), "settings": settings, "version": s.version,
 	})
 }
 
@@ -144,6 +156,9 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	argv, err := c.build(in.Values)
+	if err == nil {
+		err = s.checkState(c, in.Values)
+	}
 	if err != nil {
 		writeJSON(w, 400, map[string]any{"ok": false, "output": err.Error()})
 		return

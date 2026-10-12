@@ -18,7 +18,8 @@ import (
 type field struct {
 	Name     string   `json:"name"`
 	Label    string   `json:"label"`
-	Kind     string   `json:"kind"` // pos | str | bool | int | select
+	Kind     string   `json:"kind"`          // pos | str | list | bool | int | select
+	Ref      string   `json:"ref,omitempty"` // what the value IS (host, service, cidr…): drives the picker + validation, see refs.go
 	Options  []string `json:"options,omitempty"`
 	Required bool     `json:"required,omitempty"`
 	Help     string   `json:"help,omitempty"`
@@ -47,41 +48,48 @@ var (
 func pos(name, label string, req bool) field {
 	return field{Name: name, Label: label, Kind: "pos", Required: req}
 }
-func str(name, label string) field  { return field{Name: name, Label: label, Kind: "str"} }
+func ref(f field, r string) field   { f.Ref = r; return f }
 func flag(name, label string) field { return field{Name: name, Label: label, Kind: "bool"} }
+func list(name, label, r string) field {
+	return field{Name: name, Label: label, Kind: "list", Ref: r}
+}
 
 func serviceFields(add bool) []field {
-	f := []field{
-		pos("name", "Name", true),
-		{Name: "fqdn", Label: "FQDN", Kind: "str", Required: add},
-		{Name: "host", Label: "Host", Kind: "str", Required: add},
-		{Name: "backend", Label: "Backend (name:port)", Kind: "str", Required: add},
+	nameRef := "service" // updating: must already exist
+	if add {
+		nameRef = "svcname"
+	}
+	return []field{
+		ref(pos("name", "Name", true), nameRef),
+		{Name: "fqdn", Label: "Address", Kind: "str", Ref: "fqdn", Required: add},
+		{Name: "host", Label: "Host", Kind: "str", Ref: "host", Required: add},
+		{Name: "backend", Label: "Backend (name:port)", Kind: "str", Ref: "backend", Required: add},
 		{Name: "auth-mode", Label: "Auth mode", Kind: "select", Options: authModes},
-		str("auth-groups", "Auth groups (comma-separated)"),
-		str("bypass-paths", "Bypass paths (comma-separated, forward mode)"),
+		list("auth-groups", "Auth groups", "name"),
+		list("bypass-paths", "Bypass paths (forward mode)", "path"),
 		{Name: "auth-policy-local", Label: "Policy: local horizon", Kind: "select", Options: levels},
 		{Name: "auth-policy-public", Label: "Policy: public horizon", Kind: "select", Options: levels},
 		flag("tunnel", "Reachable from the internet (tunnel)"),
 	}
-	return f
 }
 
 var commands = []command{
 	{Words: []string{"add", "service"}, Group: "Services", Title: "Add service", Fields: serviceFields(true), Timeout: 2 * time.Minute},
 	{Words: []string{"update", "service"}, Group: "Services", Title: "Update service", Fields: serviceFields(false), Update: true, Timeout: 2 * time.Minute},
-	{Words: []string{"remove", "service"}, Group: "Services", Title: "Remove service", Fields: []field{pos("name", "Name", true)}, Confirm: "Remove this service and its generated files?"},
-	{Words: []string{"disable", "service"}, Group: "Services", Title: "Disable service", Fields: []field{pos("name", "Name", true)}},
-	{Words: []string{"enable", "service"}, Group: "Services", Title: "Enable service", Fields: []field{pos("name", "Name", true)}},
-	{Words: []string{"rename", "service"}, Group: "Services", Title: "Rename service", Fields: []field{pos("old", "Current name", true), pos("new", "New name", true)}},
+	{Words: []string{"remove", "service"}, Group: "Services", Title: "Remove service", Fields: []field{ref(pos("name", "Name", true), "service")}, Confirm: "Remove this service and its generated files?"},
+	{Words: []string{"disable", "service"}, Group: "Services", Title: "Disable service", Fields: []field{ref(pos("name", "Name", true), "service")}},
+	{Words: []string{"enable", "service"}, Group: "Services", Title: "Enable service", Fields: []field{ref(pos("name", "Name", true), "service")}},
+	{Words: []string{"rename", "service"}, Group: "Services", Title: "Rename service", Fields: []field{ref(pos("old", "Current name", true), "service"), ref(pos("new", "New name", true), "svcname")}},
 
-	{Words: []string{"add", "host"}, Group: "Hosts", Title: "Add host", Fields: []field{pos("name", "Name", true), pos("ip", "IP", true), str("trusted-proxies", "Extra trusted proxies (comma-separated)")}},
-	{Words: []string{"update", "host"}, Group: "Hosts", Title: "Update host", Update: true, Fields: []field{pos("name", "Name", true), str("ip", "IP"), str("trusted-proxies", "Extra trusted proxies (comma-separated)")}},
-	{Words: []string{"remove", "host"}, Group: "Hosts", Title: "Remove host", Fields: []field{pos("name", "Name", true)}, Confirm: "Remove this host?"},
+	{Words: []string{"add", "host"}, Group: "Hosts", Title: "Add host", Help: "A host's name is its directory in the repo, which must already exist.",
+		Fields: []field{ref(pos("name", "Name", true), "svcname"), ref(pos("ip", "IP address", true), "ip"), list("trusted-proxies", "Extra trusted proxies", "ipcidr")}},
+	{Words: []string{"update", "host"}, Group: "Hosts", Title: "Update host", Update: true,
+		Fields: []field{ref(pos("name", "Name", true), "host"), {Name: "ip", Label: "IP address", Kind: "str", Ref: "ip"}, list("trusted-proxies", "Extra trusted proxies", "ipcidr")}},
+	{Words: []string{"remove", "host"}, Group: "Hosts", Title: "Remove host", Fields: []field{ref(pos("name", "Name", true), "host")}, Confirm: "Remove this host?"},
 
-	{Words: []string{"add", "domain"}, Group: "Domains", Title: "Add domain", Fields: []field{pos("name", "Domain", true)}},
-	{Words: []string{"remove", "domain"}, Group: "Domains", Title: "Remove domain", Fields: []field{pos("name", "Domain", true)}, Confirm: "Remove this domain?"},
+	{Words: []string{"add", "domain"}, Group: "Domains", Title: "Add domain", Fields: []field{ref(pos("name", "Domain", true), "dnsname")}},
+	{Words: []string{"remove", "domain"}, Group: "Domains", Title: "Remove domain", Fields: []field{ref(pos("name", "Domain", true), "domain")}, Confirm: "Remove this domain?"},
 
-	{Words: []string{"defaults"}, Group: "Defaults", Title: "Show defaults", ReadOnly: true},
 	{Words: []string{"defaults", "set"}, Group: "Defaults", Title: "Set default", Fields: []field{
 		{Name: "key", Label: "Setting", Kind: "pos", Required: true, Options: []string{"dns-host", "auth-snippet", "auth-service", "local-networks", "tunnel-dir"}},
 		{Name: "value", Label: "Value ('-' clears)", Kind: "pos", Required: true}}},
@@ -97,16 +105,15 @@ var commands = []command{
 	{Words: []string{"list"}, Group: "Diagnose", Title: "List overview", ReadOnly: true, FlagsFirst: true,
 		Fields: []field{flag("all", "All hosts"), flag("policy", "Show policy columns")}},
 	{Words: []string{"verify"}, Group: "Diagnose", Title: "Verify live DNS/Caddy", ReadOnly: true, FlagsFirst: true, Timeout: 3 * time.Minute,
-		Fields: []field{flag("all", "All services"), pos("fqdn", "FQDN (optional)", false)}},
+		Fields: []field{flag("all", "All services"), ref(pos("fqdn", "Service (optional)", false), "service-fqdn")}},
 	{Words: []string{"measure"}, Group: "Diagnose", Title: "Measure request timing", ReadOnly: true, FlagsFirst: true, Timeout: 3 * time.Minute,
 		Fields: []field{flag("compare", "A/B split-horizon vs public"), {Name: "runs", Label: "Timed runs", Kind: "int"}, {Name: "warmup", Label: "Warm-up runs", Kind: "int"}, pos("target", "Service, hostname or URL", true)}},
 	{Words: []string{"doctor"}, Group: "Diagnose", Title: "Doctor (audit)", FlagsFirst: true, Timeout: 2 * time.Minute,
 		Fields: []field{{Name: "fix", Label: "Apply fixes (writes files and .gitignore)", Kind: "bool"}}},
 
-	{Words: []string{"version"}, Group: "About", Title: "Version", ReadOnly: true},
-	{Words: []string{"help"}, Group: "About", Title: "Help", ReadOnly: true, Fields: []field{pos("command", "Command (optional)", false)}},
-	{Words: []string{"completion"}, Group: "About", Title: "Shell completion script", ReadOnly: true,
-		Fields: []field{{Name: "shell", Label: "Shell", Kind: "pos", Required: true, Options: []string{"bash", "zsh"}}}},
+	// Not exposed on purpose: credential minting (create app/user), and the terminal-only
+	// help, completion, version and `defaults` listing (the Defaults tab shows the same data;
+	// the version is shown in the page footer).
 }
 
 func init() {
@@ -155,6 +162,18 @@ func (c *command) build(vals map[string]any) ([]string, error) {
 		if f.Options != nil && present && !contains(f.Options, s) {
 			return nil, fmt.Errorf("%s: %q is not an allowed value", f.Label, s)
 		}
+		// Typed values: shape-check here; "must exist in services.yaml" is checkState's job.
+		if f.Ref != "" && !statefulRefs[f.Ref] && s != "" {
+			items := []string{s}
+			if f.Kind == "list" {
+				items = strings.Split(s, ",")
+			}
+			for _, it := range items {
+				if err := validateRef(f.Ref, strings.TrimSpace(it)); err != nil {
+					return nil, fmt.Errorf("%s: %v", f.Label, err)
+				}
+			}
+		}
 		switch f.Kind {
 		case "pos":
 			if s == "" {
@@ -181,7 +200,7 @@ func (c *command) build(vals map[string]any) ([]string, error) {
 				return nil, fmt.Errorf("%s: expected a number 0-1000", f.Label)
 			}
 			flags = append(flags, "--"+f.Name+"="+s)
-		default: // str, select
+		default: // str, list, select
 			if !present || (s == "" && !c.Update) {
 				continue
 			}

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>hemma</title>
 <style>
   :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
@@ -17,40 +17,145 @@
   button.primary { font-weight: 600; }
   td button { margin-right: .3rem; }
   dialog { min-width: min(520px, 92vw); }
-  label { display: block; margin: .6rem 0 .2rem; font-size: .85rem; }
+  label, .fld { display: block; margin: .6rem 0 .2rem; } label, .fl { font-size: .85rem; } .fl { margin-bottom: .2rem; }
   input:not([type=checkbox]), select { width: 100%; padding: .35rem; box-sizing: border-box; }
   pre { background: #8882; padding: .8rem; overflow: auto; max-height: 26rem; white-space: pre-wrap; }
-  .err { color: #c33; } .meta { opacity: .7; font-size: .85rem; }
+  .err { color: #c33; } .meta { opacity: .7; font-size: .85rem; } .muted { opacity: .55; }
   .row { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
   .cards { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0; }
-  .banner { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .6rem .9rem; margin: 1rem 0; border: 1px solid #d90; border-radius: 6px; background: #fa02; }
-  [hidden] { display: none !important; } /* class display rules (.banner) must not defeat `hidden` */
+  /* Save bar — the same pattern as Reaparr: a rounded, translucent panel pinned to the bottom edge.
+     It says what is pending and carries the buttons to act on it; it is absent when nothing is. */
+  .save-bar { position: sticky; bottom: 20px; z-index: 5; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+              padding: 12px 12px 12px 18px; margin-top: 1rem; border-radius: 14px; border: 1px solid #8886;
+              background: color-mix(in srgb, Canvas 88%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+              box-shadow: 0 20px 50px -10px #0007; }
+  .save-bar.dirty, .save-bar.pending { border-color: #c98a0088; } .save-bar.saved { border-color: #1f8a3b88; } .save-bar.failed { border-color: #c3333388; }
+  .save-bar .msg { flex: 1; min-width: 160px; display: flex; align-items: center; gap: 8px; font-size: .9rem; color: var(--bar, inherit); }
+  .save-bar .msg .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+  .save-bar.dirty .msg, .save-bar.pending .msg, .save-bar.busy .msg { --bar: #c98a00; }
+  .save-bar.saved .msg { --bar: #1f8a3b; } .save-bar.failed .msg { --bar: #c33; }
+  .save-bar.busy .dot { animation: pulse 1s ease-in-out infinite; } @keyframes pulse { 50% { opacity: .25; } }
+  .save-bar .acts { display: flex; gap: 8px; }
+  .save-bar button { border-radius: 8px; padding: .5rem .9rem; }
+  .save-bar button.primary, dialog button.primary { background: #3b5bdb; border-color: #3b5bdb; color: #fff; border-radius: 8px; }
+  dialog button { border-radius: 8px; }
+  .save-bar button:disabled { opacity: .45; cursor: default; }
+  .with-bar { padding-bottom: 72px; }
+  @media (max-width: 640px) {
+    .save-bar { bottom: calc(8px + env(safe-area-inset-bottom)); flex-wrap: nowrap; gap: 8px; padding: 8px 8px 8px 12px; border-radius: 12px; margin-top: .6rem; }
+    .save-bar .msg { min-width: 0; font-size: .85rem; line-height: 1.25; } .save-bar button { padding: .4rem .65rem; font-size: .9rem; white-space: nowrap; }
+    .save-bar .acts { gap: 6px; flex: none; }
+    .with-bar { padding-bottom: 56px; }
+  }
+  .toast { position: fixed; left: 50%; top: 1rem; transform: translateX(-50%); z-index: 20; max-width: min(92vw, 34rem); display: flex; align-items: center; gap: .8rem;
+           padding: .6rem 1rem; border-radius: 8px; background: #222; color: #fff; box-shadow: 0 4px 16px #0005; }
+  .toast.err { background: #8d1c1c; } .toast.warn { background: #7a5200; }
+  .toast button { padding: .15rem .6rem; }
+  [hidden] { display: none !important; } /* class display rules (.save-bar) must not defeat `hidden` */
   textarea { width: 100%; box-sizing: border-box; padding: .35rem; font: inherit; }
+  .fqdn { display: flex; gap: .4rem; align-items: center; } .fqdn input { flex: 1 1 40%; } .fqdn select { flex: 1 1 55%; }
+  .items { list-style: none; margin: 0 0 .5rem; padding: 0; border: 1px solid #8884; border-radius: 6px; }
+  .items li { display: flex; justify-content: space-between; align-items: center; gap: .6rem; padding: .35rem .6rem; border-bottom: 1px solid #8883; }
+  .items li:last-child { border-bottom: 0; }
+  .items li.item span { font-family: ui-monospace, Menlo, monospace; font-size: .9rem; overflow-wrap: anywhere; }
+  .items li button { padding: .1rem .55rem; flex: none; }
+  .adder { display: flex; gap: .4rem; } .adder input { flex: 1; }
+  .tree { max-height: 45vh; overflow: auto; border: 1px solid #8884; border-radius: 6px; padding: .25rem 0; }
+  .tree ul { list-style: none; margin: 0; padding-left: 1.1rem; } .tree > ul { padding-left: .4rem; }
+  .tree button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: .3rem .5rem; border-radius: 4px; font: inherit; }
+  .tree button.dir { font-weight: 600; } .tree button.sel { background: #36c3; font-weight: 600; }
+  .tree button.gen { opacity: .45; cursor: not-allowed; } .tree .note { padding: .3rem .5rem; }
+  footer { margin: 2rem 0 .5rem; text-align: center; }
+  /* ---- phone pass: space is tight, so every pixel and every tap has to count ---- */
+  @media (max-width: 640px) {
+    body { margin: .75rem auto; padding: 0 .75rem env(safe-area-inset-bottom); }
+    h1 { font-size: 1.4rem; margin: .2rem 0; } #summary { margin: .1rem 0 .4rem; }
+    /* five tabs in ONE row, scrolling sideways if a narrow phone can't fit them */
+    nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: .5rem 0; gap: 0; }
+    nav::-webkit-scrollbar { display: none; }
+    nav button { flex: none; padding: .55rem .5rem; font-size: .9rem; }
+    /* iOS zooms the page into any input under 16px: keep fields at 16px, and taps at a comfortable size */
+    input:not([type=checkbox]), select, textarea { font-size: 16px; min-height: 40px; }
+    button { min-height: 40px; }
+    .items li button, .tree button, nav button { min-height: 0; }
+    .items li button { min-height: 34px; }
+    .tree button { padding: .5rem .5rem; }
+    /* dialogs: nearly the full screen instead of a floating 520px box */
+    dialog { width: calc(100vw - 16px); min-width: 0; max-width: none; max-height: calc(100dvh - 16px); margin: 8px auto; padding: .9rem .9rem 1rem; overflow-y: auto; box-sizing: border-box; }
+    dialog h2 { font-size: 1.2rem; margin: 0 0 .3rem; }
+    dialog .row { flex-wrap: wrap; } dialog .row button { flex: 1 1 auto; }
+    .cdiff { max-height: 42vh; } pre { max-height: 40vh; }
+    .toast { top: calc(.5rem + env(safe-area-inset-top)); width: calc(100vw - 16px); max-width: none; box-sizing: border-box; justify-content: space-between; }
+    .cards { margin: .5rem 0; } .cards button { flex: 1 1 auto; }
+  }
+  /* On a phone a wide table can't fit: each row becomes a card, one "label  value" line per column. */
+  @media (max-width: 640px) {
+    table.stack thead { display: none; }
+    table.stack, table.stack tbody { display: block; }
+    table.stack tr { display: block; border: 1px solid #8884; border-radius: 6px; margin: .6rem 0; padding: .25rem 0; }
+    table.stack td { display: flex; justify-content: space-between; gap: 1rem; border: 0; padding: .2rem .75rem; text-align: right; overflow-wrap: anywhere; }
+    table.stack td::before { content: attr(data-label); flex: none; opacity: .6; text-align: left; }
+    table.stack td:last-child { justify-content: flex-start; flex-wrap: wrap; gap: .4rem; padding: .5rem .75rem .35rem; border-top: 1px solid #8883; margin-top: .25rem; }
+    table.stack td:last-child::before { content: none; }
+    /* the first cell is the card's title (a service, a setting): no "Name"/"Setting" label in front of it */
+    table.stack td:first-child { justify-content: flex-start; text-align: left; font-weight: 600; font-size: 1rem; padding-top: .5rem; }
+    table.stack td:first-child::before { content: none; }
+    table.stack td .help { text-align: left; max-width: none; }
+    .tree { max-height: 38vh; }
+  }
+  /* "What changed": current on the left, changed on the right — as things, not as code */
+  .cdiff { max-height: 50vh; overflow: auto; margin: .5rem 0; }
+  .dcard { border: 1px solid #8884; border-radius: 6px; margin: .5rem 0; overflow: hidden; }
+  .dhead { padding: .4rem .6rem; background: #8881; }
+  .badge { display: inline-block; font-size: .65rem; letter-spacing: .03em; text-transform: uppercase; padding: .05rem .45rem; border-radius: 99px; margin-right: .45rem; color: #fff; vertical-align: .1em; }
+  .badge.added { background: #2a7d3a; } .badge.removed { background: #a33; } .badge.changed { background: #946200; }
+  .dtab { width: 100%; border-collapse: collapse; font-size: .85rem; margin: 0; table-layout: fixed; }
+  .dtab th { font-size: .7rem; font-weight: 600; opacity: .7; padding: .25rem .5rem; border: 0; }
+  .dtab td { padding: .3rem .5rem; border-top: 1px solid #8883; overflow-wrap: anywhere; vertical-align: top; }
+  .dtab td:first-child, .dtab th:first-child { width: 26%; opacity: .75; }
+  .dtab td.del { background: #d333; } .dtab td.add { background: #2a33; } .dtab td.nil { opacity: .4; }
+  .dsec { margin: .7rem 0 .2rem; font-size: .8rem; opacity: .75; }
+  .dfiles { margin: .2rem 0; padding-left: 1.1rem; font-size: .85rem; } .dfiles code { font-size: .8rem; }
+  .picked { font-family: ui-monospace, Menlo, monospace; font-size: .9rem; margin: .2rem 0 .5rem; overflow-wrap: anywhere; }
+  .small { font-size: .8rem; margin-top: .25rem; }
+  td .help { display: block; font-size: .8rem; opacity: .65; max-width: 34rem; margin-top: .15rem; }
 </style>
 </head>
 <body>
 <h1>hemma</h1>
 <p class="meta" id="summary"></p>
 <nav id="tabs"></nav>
-<div id="banner" class="banner" hidden></div>
 <section id="view"></section>
-<pre id="out" hidden></pre>
+<div id="savebar" class="save-bar" hidden></div>
+<footer id="foot" class="meta"></footer>
+<div id="toast" class="toast" role="status" hidden></div>
 
-<dialog id="dlg">
+<dialog id="rdlg" tabindex="-1" autofocus>
+  <h2 id="rtitle"></h2>
+  <pre id="rout"></pre>
+  <div class="row"><button type="button" id="rclose">Close</button></div>
+</dialog>
+
+<dialog id="dlg" tabindex="-1" autofocus>
   <form method="dialog" id="form">
     <h2 id="dtitle"></h2>
     <p class="meta" id="dhelp"></p>
     <div id="fields"></div>
     <p class="err" id="derr"></p>
-    <div class="row"><button type="button" id="cancel">Cancel</button><button class="primary" id="go">Run</button></div>
+    <div class="row">
+      <button type="button" id="cancel">Cancel</button>
+      <button type="button" id="dclear" hidden>Clear</button>
+      <button class="primary" id="go">Run</button>
+    </div>
   </form>
 </dialog>
 
-<dialog id="cdlg">
+<dialog id="cdlg" tabindex="-1" autofocus>
   <form method="dialog" id="cform">
     <h2>Commit changes</h2>
     <p class="meta">These changes are in the repo but not committed. They go live only after you commit them with a message.</p>
-    <pre id="cfiles"></pre>
+    <div id="cdiff" class="cdiff"></div>
+    <details><summary class="meta">All changed files</summary><pre id="cfiles"></pre></details>
     <label>Change message *<textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
     <label id="cpushl"><input type="checkbox" id="cpush"> Push to origin after committing (deploy pulls from origin)</label>
     <p class="err" id="cerr"></p>
@@ -61,20 +166,46 @@
 <script>
 const $ = s => document.querySelector(s);
 let changes = { git: false, files: [] };
-let state = { services: [], hosts: [], domains: [], defaults: {} };
+let state = { services: [], hosts: [], domains: [], settings: [] };
 let cmds = {};
 let tab = "Services";
-const TABS = ["Services", "Hosts", "Domains", "Defaults", "Diagnose", "About"];
+const TABS = ["Services", "Hosts", "Domains", "Defaults", "Diagnose"];
 
 async function post(url, body) {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const text = await r.text();
-  try { return JSON.parse(text); } catch { return { ok: false, output: `HTTP ${r.status}: ${text}` }; }
+  try { return { ...JSON.parse(text), status: r.status }; } catch { return { ok: false, status: r.status, output: `HTTP ${r.status}: ${text}` }; }
 }
-function show(res) {
-  const o = $("#out"); o.hidden = false; o.className = res.ok ? "" : "err";
-  o.textContent = (res.ok ? "OK\n" : "FAILED\n") + (res.output || res.error || "");
-  o.scrollIntoView({ block: "nearest" });
+/* ---------- feedback ----------
+   No shared output panel. A change is confirmed with a short message; the save bar
+   (with Deploy) is what the page then points you at. Raw command output appears only where it IS
+   the result (list, verify, doctor, …) or behind "Details" when something needs a closer look. */
+let toastTimer;
+function toast(msg, kind, details) {
+  const t = $("#toast"); t.className = "toast " + (kind || "");
+  t.replaceChildren(el("span", msg));
+  if (details) t.append(btn("Details", () => { t.hidden = true; showResult(details.title, details.text); }));
+  if (kind === "err") t.append(btn("Dismiss", () => { t.hidden = true; }));
+  t.hidden = false; clearTimeout(toastTimer);
+  if (kind !== "err") toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
+}
+// Browsers focus the first field of a modal dialog by default (and a phone then pops its keyboard).
+// Focus the dialog itself instead: nothing is pre-selected, Tab and Escape still work.
+function openModal(d) { d.showModal(); d.focus({ preventScroll: true }); }
+function showResult(title, text) { $("#rtitle").textContent = title; $("#rout").textContent = text; openModal($("#rdlg")); }
+$("#rclose").onclick = () => $("#rdlg").close();
+// toastResult: one line for a finished action; warnings and failures keep the output behind Details.
+function toastResult(title, res, done) {
+  const text = res.output || res.error || "";
+  if (!res.ok) return toast(`${title} failed`, "err", { title, text });
+  if (/⚠/.test(text)) return toast(`${done || title}, with warnings`, "warn", { title, text });
+  toast(done || title, "ok");
+}
+// Commands whose output IS the result open it in a dialog; everything else just confirms.
+function notify(key, res) {
+  const c = cmds[key];
+  if (c && (c.readonly || key === "doctor")) return showResult(c.title, (res.ok ? "" : "Finished with problems:\n\n") + (res.output || res.error || ""));
+  toastResult(c ? c.title : key, res, c ? `${c.title}: done` : "Done");
 }
 function el(tag, text, props) { const e = document.createElement(tag); if (text != null) e.textContent = text; return Object.assign(e, props || {}); }
 function btn(label, fn, cls) { const b = el("button", label, { onclick: fn }); if (cls) b.className = cls; return b; }
@@ -83,84 +214,341 @@ function btn(label, fn, cls) { const b = el("button", label, { onclick: fn }); i
 async function run(key, values, confirmMsg) {
   if (confirmMsg && !confirm(confirmMsg)) return;
   const res = await post("/api/run", { command: key, values });
-  show(res); if (!cmds[key].readonly) load();
+  if (!cmds[key].readonly) await load();
+  notify(key, res);
 }
+
+/* ---------- typed values ----------
+   A field is never "a string": it is a host, a service, a CIDR list… Known sets are pickers,
+   lists are row-per-entry editors with an add box, free text is checked against its shape. The server re-checks everything. */
+const RX = {
+  name: /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+  backend: /^[A-Za-z0-9._-]+:[0-9]+$/,
+  dnsname: /^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/,
+  path: /^\/[^\s,]*$/,
+  relpath: /^[A-Za-z0-9._][A-Za-z0-9._\/-]*$/,
+};
+const ipv4 = s => { const p = s.split("."); return p.length === 4 && p.every(x => /^\d{1,3}$/.test(x) && +x <= 255); };
+const isIP = s => ipv4(s) || (s.includes(":") && /^[0-9a-fA-F:.]+$/.test(s));
+const isCIDR = s => { const [a, n, ...r] = s.split("/"); return !r.length && n !== undefined && /^\d{1,3}$/.test(n) && isIP(a) && +n <= (ipv4(a) ? 32 : 128); };
+const CHECK = {  // each returns true or an error message
+  svcname: v => RX.name.test(v) || "use letters, digits, '.', '_' and '-' only",
+  name: v => RX.name.test(v) || "use letters, digits, '.', '_' and '-' only",
+  backend: v => (RX.backend.test(v) && +v.split(":").pop() >= 1 && +v.split(":").pop() <= 65535) || "use name:port, e.g. web:8080",
+  dnsname: v => RX.dnsname.test(v) || "not a valid domain name",
+  ip: v => isIP(v) || "not an IP address",
+  cidr: v => isCIDR(v) || "not a CIDR range, e.g. 192.168.1.0/24",
+  ipcidr: v => isIP(v) || isCIDR(v) || "not an IP address or CIDR range",
+  path: v => RX.path.test(v) || "must start with '/'",
+  relpath: v => (RX.relpath.test(v) && !v.includes("..")) || "must be a path inside the repo",
+};
+const HINT = { ip: "192.168.1.10", backend: "name:port", dnsname: "example.com", cidr: "192.168.1.0/24", ipcidr: "IP or CIDR", path: "/path", name: "name", relpath: "folder/file" };
+const names = list => list.map(x => x.name);
+
+// A picker over a known set. `blank` adds a leading empty choice (optional fields).
+function picker(options, current, blank) {
+  // A required choice with nothing chosen yet: with one option it is simply that one; with several,
+  // make the user pick rather than leaving the control looking empty.
+  if (!blank && !current && options.length > 1 && !options.includes("")) blank = "Choose…";
+  const sel = el("select");
+  if (!options.length && !blank) sel.append(new Option("(none defined yet)", ""));
+  if (blank) sel.append(new Option(blank, ""));
+  options.forEach(o => sel.append(typeof o === "string" ? new Option(o === "" ? "(none)" : o, o) : new Option(o[1], o[0])));
+  sel.value = current ?? "";
+  if (sel.selectedIndex < 0 || (current && sel.value !== current) || (!current && !blank && sel.value === "" && options.length)) sel.selectedIndex = 0;
+  return sel;
+}
+
+// A list of validated values: one entry per row with a Remove button, and an add box below.
+function listEditor(initial, check, placeholder, onchange) {
+  let items = (initial || []).filter(Boolean);
+  const wrap = el("div"), rows = el("ul", null, { className: "items" }), adder = el("div", null, { className: "adder" });
+  const inp = el("input", null, { type: "text", placeholder: placeholder || "", autocomplete: "off", autocapitalize: "off" });
+  const msg = el("div", null, { className: "err small" });
+  const draw = () => rows.replaceChildren(...(items.length ? items.map((v, i) => {
+    const li = el("li", null, { className: "item" });
+    li.append(el("span", v), el("button", "Remove", { type: "button", onclick: () => { items.splice(i, 1); draw(); onchange && onchange(); } }));
+    return li;
+  }) : [el("li", "None yet", { className: "muted" })]));
+  const commit = () => {   // returns false if the box holds an invalid value
+    const v = inp.value.trim(); if (!v) return true;
+    const r = check(v);
+    if (r !== true) { msg.textContent = `"${v}": ${r}`; return false; }
+    if (!items.includes(v)) items.push(v);
+    inp.value = ""; msg.textContent = ""; draw(); onchange && onchange(); return true;
+  };
+  inp.onkeydown = e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commit(); } };
+  adder.append(inp, el("button", "Add", { type: "button", onclick: commit }));
+  draw(); wrap.append(rows, adder, msg);
+  return { node: wrap, flush: commit, get: () => items.join(",") };
+}
+
+// The repo, as mounted into the container, as an expandable tree. Folders load when opened and
+// open themselves along the path of the current selection; click a file to choose it.
+// Hemma's own generated files are shown but can't be chosen.
+function fileTree(selected, onpick) {
+  let sel = selected || "";
+  const node = el("div"), picked = el("div", null, { className: "picked" }), tree = el("div", null, { className: "tree" });
+  const showPicked = () => { picked.textContent = sel ? sel : "No file chosen"; picked.classList.toggle("muted", !sel); };
+  async function fill(ul, dir) {
+    const r = await fetch("/api/browse?path=" + encodeURIComponent(dir));
+    const data = await r.json();
+    if (data.error) { ul.replaceChildren(el("li", data.error, { className: "note err" })); return; }
+    if (!data.entries.length) { ul.replaceChildren(el("li", "Empty", { className: "note muted" })); return; }
+    ul.replaceChildren();
+    for (const e of data.entries) {
+      const li = el("li");
+      if (e.dir) {
+        const sub = el("ul"); sub.hidden = true;
+        const b = el("button", "▸ " + e.name, { type: "button", className: "dir" });
+        let loaded = false;
+        const toggle = async () => {
+          sub.hidden = !sub.hidden; b.textContent = (sub.hidden ? "▸ " : "▾ ") + e.name;
+          if (!sub.hidden && !loaded) { loaded = true; await fill(sub, e.path); }
+        };
+        b.onclick = toggle; li.append(b, sub);
+        if (sel.startsWith(e.path + "/")) await toggle();   // open along the current selection
+      } else {
+        const b = el("button", e.name + (e.generated ? "  (generated by hemma)" : ""), { type: "button" });
+        if (e.generated) { b.className = "gen"; b.disabled = true; }
+        if (e.path === sel) b.classList.add("sel");
+        b.onclick = () => { sel = e.path; tree.querySelectorAll("button.sel").forEach(x => x.classList.remove("sel")); b.classList.add("sel"); showPicked(); onpick && onpick(sel); };
+        li.append(b);
+      }
+      ul.append(li);
+    }
+  }
+  const root = el("ul"); tree.append(root); showPicked(); node.append(picked, tree); fill(root, "");
+  return { node, get: () => sel };
+}
+
+// A service address is "<name>.<domain>": pick the domain, type the name.
+function fqdnControl(current, required) {
+  const doms = state.domains;
+  const dom = doms.filter(d => current === d || current?.endsWith("." + d)).sort((a, b) => b.length - a.length)[0] || doms[0] || "";
+  const sub = current && dom && current !== dom ? current.slice(0, -(dom.length + 1)) : "";
+  const wrap = el("div", null, { className: "fqdn" });
+  const inp = el("input", null, { type: "text", value: sub, placeholder: "name", autocomplete: "off", autocapitalize: "off" });
+  const sel = picker(doms, dom);
+  wrap.append(inp, el("span", "."), sel);
+  return { node: wrap, get: () => { const s = inp.value.trim(); return s ? `${s}.${sel.value}` : sel.value; },
+           check: () => (required && !sel.value) ? "define a domain first (Domains tab)" : (inp.value && !RX.dnsname.test(`${inp.value.trim()}.${sel.value || "x.io"}`) ? "the name has characters that are not allowed" : "") };
+}
+
+// One control for one field; returns {node, get(), check()} where check() is "" or an error.
+function control(fd, prefill, locked) {
+  const v = prefill[fd.name];
+  const need = r => (fd.required && !r) ? `${fd.label} is required` : "";
+  if (fd.kind === "bool") { const i = el("input", null, { type: "checkbox", checked: !!v });
+    return { inline: true, node: i, get: () => i.checked, check: () => "" }; }
+  if (fd.kind === "int") { const i = el("input", null, { type: "number", min: 0, max: 1000, value: v ?? "" });
+    return { node: i, get: () => i.value === "" ? "" : Number(i.value), check: () => "" }; }
+  if (fd.kind === "list") {
+    const cl = listEditor(String(v || "").split(",").filter(Boolean), CHECK[fd.ref] || (() => true), HINT[fd.ref]);
+    return { node: cl.node, get: () => cl.get(), check: () => cl.flush() ? "" : "fix or clear the value in the box" };
+  }
+  if (fd.ref === "fqdn") { const c = fqdnControl(v, fd.required); return { node: c.node, get: c.get, check: c.check }; }
+  const pickSet = { host: () => names(state.hosts), service: () => names(state.services), domain: () => state.domains,
+                    "service-fqdn": () => state.services.map(s => s.fqdn) }[fd.ref];
+  if (fd.options || pickSet) {
+    // An optional choice that already has a value must not offer "(none)": a service can't lose its host.
+    const blank = (fd.required || v) ? null : (fd.ref === "service-fqdn" ? "(all services)" : "(none)");
+    const sel = picker(fd.options || pickSet(), v, fd.options?.includes("") ? null : blank);
+    if (locked) sel.disabled = true;
+    return { node: sel, get: () => sel.value, check: () => need(sel.value) };
+  }
+  const inp = el("input", null, { type: "text", value: v ?? "", autocomplete: "off", autocapitalize: "off", placeholder: HINT[fd.ref] || "" });
+  if (locked) inp.readOnly = true;
+  return { node: inp, get: () => inp.value.trim(),
+           check: () => { const s = inp.value.trim(); if (!s) return need(s); const r = (CHECK[fd.ref] || (() => true))(s); return r === true ? "" : `${fd.label}: ${r}`; } };
+}
+
+function dialogLabel(c) { return c.key.startsWith("add ") ? "Add" : c.key.startsWith("update ") ? "Save" : c.key.startsWith("rename ") ? "Rename" : "Run"; }
 
 // openCmd renders a form from the command's schema; prefill pre-populates it.
 function openCmd(key, prefill = {}) {
-  const c = cmds[key], f = $("#form");
+  const c = cmds[key];
   $("#dtitle").textContent = c.title; $("#dhelp").textContent = c.help || ""; $("#derr").textContent = "";
+  // The Defaults editor leaves Save disabled until something changes: reset the shared buttons.
+  $("#dclear").hidden = true; $("#go").textContent = dialogLabel(c); $("#go").disabled = false;
   const box = $("#fields"); box.replaceChildren();
-  const inputs = {};
+  const ctl = [];
   for (const fd of c.fields) {
-    const lab = el("label", fd.label + (fd.required ? " *" : ""));
-    let inp;
-    if (fd.kind === "select" || fd.options) {
-      inp = el("select");
-      for (const o of fd.options) inp.append(new Option(o === "" ? "(none)" : o, o));
-    } else if (fd.kind === "bool") { inp = el("input", null, { type: "checkbox" }); }
-    else if (fd.kind === "int") { inp = el("input", null, { type: "number", min: 0, max: 1000 }); }
-    else { inp = el("input", null, { type: "text", autocomplete: "off" }); }
-    const v = prefill[fd.name];
-    if (v !== undefined) { if (fd.kind === "bool") inp.checked = !!v; else inp.value = v; }
-    if (prefill.__lock === fd.name) inp.readOnly = true, inp.disabled = fd.kind === "select";
-    if (fd.kind === "bool") { lab.prepend(inp); } else { lab.append(inp); }
-    box.append(lab); inputs[fd.name] = { fd, inp };
+    const k = control(fd, prefill, prefill.__lock === fd.name);
+    const title = fd.label + (fd.required ? " *" : "");
+    // A list holds buttons, so it must not live inside a <label> (tapping the title would press one).
+    const lab = fd.kind === "list" ? el("div", null, { className: "fld" }) : el("label", k.inline ? "" : title);
+    if (fd.kind === "list") lab.append(el("div", title, { className: "fl" }), k.node);
+    else if (k.inline) lab.append(k.node, " " + fd.label);
+    else lab.append(k.node);
+    box.append(lab); ctl.push({ fd, k });
   }
   $("#go").onclick = async e => {
     e.preventDefault();
-    if (!f.reportValidity()) return;
+    const errs = ctl.map(({ k }) => k.check()).filter(Boolean);
+    if (errs.length) { $("#derr").textContent = errs[0]; return; }
     const values = {};
-    for (const [n, { fd, inp }] of Object.entries(inputs)) {
-      if (fd.kind === "bool") values[n] = inp.checked;
-      else if (fd.kind === "int") { if (inp.value !== "") values[n] = Number(inp.value); }
-      else if (inp.value !== "" || c.update) values[n] = inp.value;
+    for (const { fd, k } of ctl) {
+      const v = k.get();
+      if (fd.kind === "bool" || fd.kind === "int" && v !== "") values[fd.name] = v;
+      else if (fd.kind !== "int" && (v !== "" || c.update)) values[fd.name] = v;
     }
     if (c.confirm && !confirm(c.confirm)) return;
     $("#go").disabled = true;
     try {
       const res = await post("/api/run", { command: key, values });
-      if (!res.ok) { $("#derr").textContent = res.output; return; }
-      $("#dlg").close(); show(res); if (!c.readonly) load();
+      // A rejected request (HTTP 400) is a problem with what was entered: say so in the form. But a
+      // diagnostic that ran and found problems (verify, doctor) has produced its RESULT: show that.
+      const diagnostic = c.readonly || key === "doctor";
+      if (!res.ok && !(diagnostic && res.status === 200)) { $("#derr").textContent = res.output; return; }
+      if (!c.readonly) await load();   // refresh behind the dialog first, so no stale value flashes
+      $("#dlg").close(); notify(key, res);
     } finally { $("#go").disabled = false; }
   };
-  $("#dlg").showModal();
+  openModal($("#dlg"));
 }
 $("#cancel").onclick = () => $("#dlg").close();
 
+// openSetting edits ONE repo-wide default with an editor that matches what it is.
+async function openSetting(s) {
+  $("#dtitle").textContent = s.label; $("#dhelp").textContent = s.help; $("#derr").textContent = "";
+  const box = $("#fields"); box.replaceChildren();
+  const save = $("#go"); save.textContent = "Save"; save.disabled = true;
+  const changed = () => { save.disabled = ctl.get() === (s.value || ""); };
+  let ctl;
+  if (s.kind === "cidrs") {
+    const cl = listEditor((s.value || "").split(",").filter(Boolean), CHECK.cidr, HINT.cidr, changed);
+    ctl = { node: cl.node, get: () => cl.get(), check: () => cl.flush() ? "" : "fix or clear the value in the box" };
+  } else if (s.kind === "host" || s.kind === "service") {
+    // Unset shows a placeholder, not the first item — which would read as if it were the current value.
+    const sel = picker(s.kind === "host" ? names(state.hosts) : names(state.services), s.value, s.value ? null : `Choose a ${s.kind}…`);
+    sel.onchange = changed; ctl = { node: sel, get: () => sel.value, check: () => sel.value ? "" : `Choose a ${s.kind}` };
+  } else if (s.kind === "file") {
+    // Browse the repo as mounted into the container and click the file — no typing a path.
+    const ft = fileTree(s.value, changed);
+    ctl = { node: ft.node, get: () => ft.get(), check: () => ft.get() ? "" : "Choose a file" };
+  } else {
+    const i = el("input", null, { type: "text", value: s.value || "", placeholder: HINT.relpath, autocomplete: "off", autocapitalize: "off" });
+    i.oninput = changed; ctl = { node: i, get: () => i.value.trim(), check: () => { const r = CHECK.relpath(i.value.trim()); return r === true ? "" : r; } };
+  }
+  const heading = s.kind === "cidrs" ? "Ranges" : s.kind === "file" ? "Choose a file from the repo" : s.kind === "relpath" ? "Folder name (inside each host's directory)" : s.label;
+  // Lists and the file tree contain buttons: inside a <label>, tapping the heading would press the first one.
+  const multi = s.kind === "cidrs" || s.kind === "file";
+  const lab = el(multi ? "div" : "label", multi ? null : heading, multi ? { className: "fld" } : {});
+  if (multi) lab.append(el("div", heading, { className: "fl" }));
+  lab.append(ctl.node); box.append(lab);
+  const apply = async value => {
+    const res = await post("/api/run", { command: "defaults set", values: { key: s.key, value } });
+    if (!res.ok) { $("#derr").textContent = res.output; return; }
+    await load();
+    $("#dlg").close(); toastResult(s.label, res, `${s.label} updated`);
+  };
+  save.onclick = e => { e.preventDefault(); const err = ctl.check(); if (err) { $("#derr").textContent = err; return; } apply(ctl.get()); };
+  const clear = $("#dclear");
+  clear.hidden = !(s.clearable && s.value);
+  clear.onclick = () => { if (confirm(`Clear ${s.label}?`)) apply("-"); };
+  openModal($("#dlg"));
+}
+
 function table(headers, rows) {
-  const t = el("table"), h = el("tr"); headers.forEach(x => h.append(el("th", x)));
+  const t = el("table", null, { className: "stack" }), h = el("tr"); headers.forEach(x => h.append(el("th", x)));
   t.append(el("thead")); t.firstChild.append(h);
+  // data-label feeds the card layout on narrow screens (each cell shows its column name)
+  rows.forEach(r => [...r.children].forEach((td, i) => { td.dataset.label = headers[i] || ""; }));
   const b = el("tbody"); rows.forEach(r => b.append(r)); t.append(b); return t;
 }
 function row(cells, actions, off) {
   const tr = el("tr"); if (off) tr.className = "off";
-  cells.forEach(c => tr.append(el("td", c)));
+  cells.forEach(c => { const td = el("td"); if (c instanceof Node) td.append(c); else td.textContent = c; tr.append(td); });
   const a = el("td"); (actions || []).forEach(x => a.append(x)); tr.append(a); return tr;
 }
 const cards = list => { const d = el("div"); d.className = "cards"; list.forEach(x => d.append(x)); return d; };
+
 // Going live needs a clean tree: uncommitted changes must be committed (with a message) first.
 // The server enforces the same rule, so this is only the friendly path.
 const GATED = ["apply"];
 const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, () => {
   if (GATED.includes(key) && changes.files.length) return openCommit();
+  if (!cmds[key].fields.length) return run(key, {}, cmds[key].confirm);   // nothing to ask: just run it
   openCmd(key, prefill);
 }, "");
 
 async function pushNow() {
-  const res = await post("/api/push", {}); show(res); await load(); return res.ok;
+  const res = await post("/api/push", {}); toastResult("Push", res, "Pushed to origin"); await load(); return res.ok;
 }
 // goLive deploys: pull from origin, then apply. With no origin there is nothing to pull, so it
 // just applies this machine's committed config. Unpushed commits are pushed first (with consent).
+// The save bar shows progress while it runs, then the outcome: green "Deployed", or red with Details and Retry.
+let busy = null;      // "Deploying…" while a deploy runs
+let flash = null;     // the last outcome: { kind: "saved" | "failed", msg, details }
+let pending = null;   // /api/diff summary of the unsaved changes (null when there are none)
 async function goLive() {
   const key = changes.has_remote ? "deploy" : "apply";
   if (changes.has_remote && changes.ahead > 0 &&
       !(confirm(`${changes.ahead} commit(s) are not on origin yet — push them first?`) && await pushNow())) return;
-  await run(key, {}, cmds[key].confirm);
+  if (!confirm(cmds[key].confirm)) return;
+  busy = key === "deploy" ? "Deploying…" : "Applying…"; flash = null; renderBar();
+  try {
+    const res = await post("/api/run", { command: key, values: {} });
+    if (res.ok) {
+      const mine = flash = { kind: "saved", msg: key === "deploy" ? "Deployed" : "Applied" };
+      setTimeout(() => { if (flash === mine) { flash = null; renderBar(); } }, 6000);
+    } else flash = { kind: "failed", msg: `${cmds[key].title} failed`, details: { title: cmds[key].title, text: res.output || res.error || "" } };
+  } finally { busy = null; await load(); }
+}
+// discard puts hemma's own output back to the last commit; files hemma doesn't manage are left alone.
+async function discard() {
+  if (!confirm("Discard your unsaved changes? services.yaml and the generated files go back to the last commit. Files hemma doesn't manage are left alone.")) return;
+  const res = await post("/api/discard", {});
+  flash = null; toastResult("Discard", res, "Changes discarded"); await load();
+}
+
+// renderDiff: what changed in what hemma manages, current (left) against changed (right).
+// Hemma's generated files are only counted; any other file is listed by name — never interpreted.
+const FILE_STATUS = { M: "modified", MM: "modified", A: "new", "??": "new", D: "deleted", R: "renamed" };
+function renderDiff(d) {
+  const root = el("div");
+  for (const e of d.entities) {
+    const card = el("div", null, { className: "dcard" }), head = el("div", null, { className: "dhead" });
+    head.append(el("span", e.status, { className: "badge " + e.status }), el("strong", `${e.kind} · ${e.name}`));
+    card.append(head);
+    const rows = e.fields.filter(f => e.status === "changed" || (e.status === "added" ? f.after !== "—" : f.before !== "—"));
+    if (rows.length) {
+      const t = el("table", null, { className: "dtab" });
+      const hr = el("tr"); ["", "Current", "Changed"].forEach(h => hr.append(el("th", h)));
+      const th = el("thead"); th.append(hr); t.append(th);
+      const tb = el("tbody");
+      for (const f of rows) {
+        const tr = el("tr");
+        tr.append(el("td", f.field),
+          el("td", f.before, { className: f.before === "—" ? "nil" : "del" }),
+          el("td", f.after, { className: f.after === "—" ? "nil" : "add" }));
+        tb.append(tr);
+      }
+      t.append(tb); card.append(t);
+    }
+    root.append(card);
+  }
+  if (d.generated.length) {
+    const det = el("details", null, { className: "dsec" });
+    det.append(el("summary", `${d.generated.length} generated ${d.generated.length === 1 ? "file" : "files"} updated automatically`));
+    const ul = el("ul", null, { className: "dfiles" }); d.generated.forEach(p => ul.append(el("li", p))); det.append(ul); root.append(det);
+  }
+  if (d.other.length) {
+    root.append(el("div", "Other files changed (not managed by hemma — listed only)", { className: "dsec" }));
+    const ul = el("ul", null, { className: "dfiles" });
+    d.other.forEach(f => { const li = el("li"); li.append(el("code", f.path), ` — ${FILE_STATUS[f.status] || f.status}`); ul.append(li); });
+    root.append(ul);
+  }
+  if (!root.children.length) root.append(el("p", "No changes.", { className: "meta" }));
+  return root;
 }
 
 // openCommit: write the change message; optionally carry straight on to deploying.
 function openCommit() {
+  $("#cdiff").replaceChildren(el("p", "Loading changes…", { className: "meta" }));
+  fetch("/api/diff").then(r => r.json()).then(d => $("#cdiff").replaceChildren(d.error ? el("p", d.error, { className: "err" }) : renderDiff(d)))
+    .catch(() => $("#cdiff").replaceChildren(el("p", "Could not load the changes.", { className: "err" })));
   $("#cfiles").textContent = changes.files.map(f => `${f.status.padEnd(2)} ${f.path}`).join("\n");
   $("#cmsg").value = ""; $("#cerr").textContent = "";
   $("#cpush").checked = false; $("#cpushl").hidden = !changes.has_remote;
@@ -173,25 +561,48 @@ function openCommit() {
       const push = andLive ? changes.has_remote : $("#cpush").checked;
       const res = await post("/api/commit", { message: $("#cmsg").value, push });
       if (!res.ok) { $("#cerr").textContent = res.output; return; }
-      $("#cdlg").close(); show(res); await load();
+      $("#cdlg").close(); toast(push ? "Committed and pushed" : "Committed", "ok"); await load();
       if (andLive) await goLive();
     } finally { $("#cgo").disabled = $("#cdeploy").disabled = false; }
   };
   $("#cgo").onclick = e => { e.preventDefault(); submit(false); };
   $("#cdeploy").onclick = e => { e.preventDefault(); submit(true); };
-  $("#cdlg").showModal();
+  openModal($("#cdlg"));
 }
 $("#ccancel").onclick = () => $("#cdlg").close();
 
-// The banner lives on the Services page and only appears when there is something to deploy.
-function renderBanner() {
-  const b = $("#banner"), n = changes.files.length;
-  b.hidden = tab !== "Services" || !changes.git || !(n || changes.undeployed);
-  if (b.hidden) return;
-  if (n) b.replaceChildren(el("span", `${n} uncommitted ${n === 1 ? "change" : "changes"} — commit them to deploy.`),
-    btn("Review and commit", openCommit, "primary"));
-  else b.replaceChildren(el("span", "Committed changes have not been deployed yet."),
-    btn(changes.has_remote ? "Deploy" : "Apply", goLive, "primary"));
+// The save bar (as in Reaparr): pinned to the bottom of every tab, present only when there is
+// something to act on. What it says and offers follows the state of the changes:
+//   busy → dirty (unsaved) → failed → pending (committed, not deployed) → saved → absent
+function describePending() {
+  const p = pending, n = changes.files.length;
+  if (!p) return `${n} unsaved ${n === 1 ? "change" : "changes"}`;
+  const e = p.entities.length;
+  if (e) return `${e} unsaved ${e === 1 ? "change" : "changes"}`;
+  if (p.generated.length) return `${p.generated.length} generated ${p.generated.length === 1 ? "file" : "files"} changed`;
+  return `${p.other.length} other ${p.other.length === 1 ? "file" : "files"} changed`;
+}
+function renderBar() {
+  const bar = $("#savebar"), n = changes.files.length, go = changes.has_remote ? "Deploy" : "Apply";
+  let kind = "", msg = "", acts = [];
+  if (busy) { kind = "busy"; msg = busy; }
+  else if (changes.git && n) {
+    kind = "dirty"; msg = describePending();
+    const mine = !pending || pending.entities.length || pending.generated.length;   // anything hemma can revert?
+    const d = btn("Discard", discard); d.disabled = !mine;
+    acts = [d, btn(`Review & ${go.toLowerCase()}`, openCommit, "primary")];
+  } else if (flash?.kind === "failed") {
+    kind = "failed"; msg = flash.msg;
+    acts = [btn("Details", () => showResult(flash.details.title, flash.details.text)), btn("Retry", goLive, "primary")];
+  } else if (changes.git && changes.undeployed) {
+    kind = "pending"; msg = "Committed changes aren't deployed yet"; acts = [btn(go, goLive, "primary")];
+  } else if (flash?.kind === "saved") { kind = "saved"; msg = flash.msg; }
+  bar.hidden = !kind; $("#view").classList.toggle("with-bar", !!kind);
+  if (!kind) return;
+  bar.className = "save-bar " + kind;
+  const m = el("span", null, { className: "msg" }); m.append(el("span", null, { className: "dot" }), msg);
+  const a = el("div", null, { className: "acts" }); acts.forEach(x => a.append(x));
+  bar.replaceChildren(m, a);
 }
 
 const VIEWS = {
@@ -202,7 +613,7 @@ const VIEWS = {
        btn(s.disabled ? "Enable" : "Disable", () => run(s.disabled ? "enable service" : "disable service", { name: s.name })),
        btn("Rename", () => openCmd("rename service", { old: s.name, __lock: "old" })),
        btn("Remove", () => run("remove service", { name: s.name }, cmds["remove service"].confirm))], s.disabled));
-    return [cards([cmdBtn("add service")]), table(["Name", "FQDN", "Host", "Backend", "Auth", "Internet", ""], rows)];
+    return [cards([cmdBtn("add service")]), table(["Name", "Address", "Host", "Backend", "Auth", "Internet", ""], rows)];
   },
   Hosts() {
     const rows = state.hosts.map(h => row([h.name, h.ip, h["trusted-proxies"] || "—"],
@@ -215,26 +626,34 @@ const VIEWS = {
     return [cards([cmdBtn("add domain")]), table(["Domain", ""], rows)];
   },
   Defaults() {
-    const rows = Object.entries(state.defaults).map(([k, v]) => row([k, v || "(unset)"], [btn("Change", () => openCmd("defaults set", { key: k, value: v, __lock: "key" }))]));
+    const rows = state.settings.map(s => {
+      const label = el("span"); label.append(el("strong", s.label), el("span", s.help, { className: "help" }));
+      const val = s.value ? el("span", s.value.split(",").join("  ·  ")) : el("span", "Not set", { className: "muted" });
+      return row([label, val], [btn("Edit", () => openSetting(s))]);
+    });
     return [table(["Setting", "Value", ""], rows)];
   },
   Diagnose() { return [cards(["list", "verify", "measure", "doctor", "apply"].map(k => cmdBtn(k))),
     el("p", "Apply re-applies the committed config on this machine without pulling. Deploying new changes is done from the Services page.", { className: "meta" })]; },
-  About() { return [cards(["version", "help", "completion", "defaults"].map(k => cmdBtn(k)))]; },
 };
 
 function render() {
-  $("#summary").textContent = `${state.services.length} services · ${state.hosts.length} hosts · ${state.domains.join(", ")}`;
+  const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  $("#summary").textContent = `${pl(state.services.length, "service", "services")} · ${pl(state.hosts.length, "host", "hosts")} · ${state.domains.join(", ")}`;
   const nav = $("#tabs"); nav.replaceChildren();
   TABS.forEach(t => nav.append(btn(t, () => { tab = t; render(); }, t === tab ? "on" : "")));
+  nav.querySelector(".on")?.scrollIntoView({ inline: "nearest", block: "nearest" });   // a narrow phone may scroll the tab strip
   $("#view").replaceChildren(...VIEWS[tab]());
-  renderBanner();
+  $("#foot").textContent = state.version || "";
+  renderBar();
 }
 async function load() {
   const r = await fetch("/api/state"); const s = await r.json();
-  if (s.error) { show({ ok: false, output: s.error }); return; }
+  if (s.error) { toast("Could not load services.yaml", "err", { title: "Could not load", text: s.error }); return; }
   state = s;
   changes = await (await fetch("/api/changes")).json();
+  pending = null;
+  if (changes.files.length) { const d = await (await fetch("/api/diff")).json().catch(() => null); if (d && !d.error) pending = d; }
   render();
 }
 (async () => {
