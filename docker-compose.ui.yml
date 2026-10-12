@@ -1,6 +1,11 @@
 # hemma-ui — SINGLE-HOST web UI (multi-host is deliberately not supported yet).
 # Run on the host that runs pihole/caddy.
-# Set HEMMA_UI_PASSWORD in the environment (or an .env file); the UI refuses to start without it.
+# Sign-in is handled by authy (github.com/miista/authy) and cannot be switched off.
+#   - Recommended: set the four HEMMA_UI_OIDC_* variables below and let your IdP (Authelia, …)
+#     decide who may sign in. Register a confidential client with redirect URI
+#     <BASE_URL>/auth/callback; restrict the client to your admins at the IdP.
+#   - With no OIDC variables, the FIRST visitor creates a local account: create it yourself,
+#     immediately after starting, before anyone else can reach the port.
 # Put it behind your Caddy (TLS) and keep it LAN-only: the Docker socket mount below
 # gives this container root-equivalent control of the host.
 services:
@@ -8,16 +13,25 @@ services:
     build: { context: ., dockerfile: Dockerfile.ui }
     network_mode: host            # apply identifies the host by local IP
     environment:
-      HEMMA_UI_PASSWORD: ${HEMMA_UI_PASSWORD:?set HEMMA_UI_PASSWORD}
       HEMMA_UI_ADDR: ":8080"
+      # OIDC sign-in (all four together; omit them all to use the local account instead):
+      # HEMMA_UI_OIDC_ISSUER: https://auth.example.com
+      # HEMMA_UI_OIDC_CLIENT_ID: hemma-ui
+      # HEMMA_UI_OIDC_CLIENT_SECRET: ${HEMMA_UI_OIDC_CLIENT_SECRET}
+      # HEMMA_UI_OIDC_BASE_URL: https://hemma.example.com
+      # HEMMA_UI_LOCAL_ENABLED: "true"    # optional break-glass local account next to OIDC
       # Author of the commits made from the UI's "Commit changes" dialog.
       HEMMA_UI_GIT_NAME: ${HEMMA_UI_GIT_NAME:-hemma-ui}
       HEMMA_UI_GIT_EMAIL: ${HEMMA_UI_GIT_EMAIL:-hemma-ui@localhost}
     volumes:
       - ${HEMMA_REPO_DIR:?set HEMMA_REPO_DIR}:/repo
+      - hemma-ui-auth:/data/auth      # authy's session-signing key and sign-out records (and the local account, if used)
       - /var/run/docker.sock:/var/run/docker.sock
       # `deploy` pulls from, and the UI pushes to, the repo's origin. That needs git credentials
       # inside the container; none are baked in. Provision a dedicated, least-privilege credential
       # (e.g. a read/write deploy key limited to this one repo), mounted read-only, e.g.:
       # - ./git_deploy_key:/root/.ssh/id_ed25519:ro
-      # - ./known_hosts:/root/.ssh/known_hosts:ro    restart: unless-stopped
+      # - ./known_hosts:/root/.ssh/known_hosts:ro
+    restart: unless-stopped
+volumes:
+  hemma-ui-auth:

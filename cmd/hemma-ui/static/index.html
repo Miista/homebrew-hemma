@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>hemma</title>
 <link rel="stylesheet" href="/static/style.css">
+<!-- authy announces itself (sets html[data-authy]); the Sign out link only shows when the gate is on -->
+<script src="/auth/client.js"></script>
+<style>html:not([data-authy]) .only-with-gate { display: none !important }</style>
 </head>
 <body>
 <header class="topbar">
@@ -56,6 +59,8 @@
 </dialog>
 
 <script>
+// A session that has ended answers API calls with 401: go back through sign-in instead of showing a broken page.
+{ const f = window.fetch; window.fetch = async (...a) => { const r = await f(...a); if (r.status === 401) location.reload(); return r; }; }
 const $ = s => document.querySelector(s);
 let changes = { git: false, files: [] };
 let state = { services: [], hosts: [], domains: [], settings: [] };
@@ -577,7 +582,7 @@ function render() {
   });
   $("#view").replaceChildren(...VIEWS[tab]());
   $("#view").classList.toggle("has-fab", tab === "Services");
-  $("#foot").textContent = state.version || "";
+  $("#foot").replaceChildren(state.version || "", " · ", Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" }));
   renderDeploy();
   renderBar();
 }
