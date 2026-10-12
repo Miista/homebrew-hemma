@@ -50,7 +50,8 @@
 /* ---------- base ---------- */
 * { box-sizing: border-box; }
 html { background: var(--bg); }
-body { max-width: 1100px; margin: 0 auto; padding: 0 20px; font: 15px/1.5 var(--sans); color: var(--text); -webkit-font-smoothing: antialiased; }
+body { max-width: 1100px; margin: 0 auto; padding: 0 20px; font: 15px/1.5 var(--sans); color: var(--text); -webkit-font-smoothing: antialiased;
+       display: flex; flex-direction: column; min-height: 100dvh; }   /* a full-height column, so the footer can sit at the bottom of a short page */
 body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: 520px; z-index: -1; pointer-events: none;
                background: radial-gradient(1200px 500px at 50% -200px, var(--glow), transparent 70%); }
 [hidden] { display: none !important; } /* class display rules (.save-bar …) must not defeat `hidden` */
@@ -112,7 +113,7 @@ nav button.on { color: var(--violet-text); background: var(--violet-bg); font-we
 nav .count { margin-left: 6px; font-size: 11px; font-weight: 600; padding: 0 6px; min-width: 18px; text-align: center; border-radius: 999px; background: var(--violet); color: #fff; }
 #deploy { flex: none; margin-left: auto; padding: 9px 20px; }
 #summary { margin: 16px 0 0; }
-footer { margin: 32px 0 8px; text-align: center; }
+footer { margin: 32px 0 8px; text-align: center; margin-top: auto; padding-top: 32px; }   /* pushed to the end of the page, not left floating under a short list */
 footer a { color: inherit; text-decoration: underline; }   /* the Sign out link takes the footer's own (AA-checked) colour, not the browser's link blue */
 
 /* ---------- panels: tables sit in a rounded card, rows hover ---------- */
@@ -196,7 +197,7 @@ body.with-bar { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
 
 /* ---------- phone: space is tight, so every pixel and every tap has to count ---------- */
 @media (max-width: 640px) {
-  body { margin: 8px auto; padding: 0 12px calc(var(--menu-h) + 12px + env(safe-area-inset-bottom)); }   /* room for the bottom menu */
+  body { margin: 8px auto; min-height: calc(100dvh - 16px); padding: 0 12px calc(var(--menu-h) + 12px + env(safe-area-inset-bottom)); }   /* room for the bottom menu; the 16px is the body's own margin, so a short page does not scroll */
   .topbar { padding: 8px 0; gap: 10px; }
   .brand { font-size: 17px; } .brand-icon { width: 34px; height: 34px; border-radius: 10px; }
   #summary { margin: 8px 0 4px; }
