@@ -9,6 +9,9 @@ services:
     environment:
       HEMMA_UI_PASSWORD: ${HEMMA_UI_PASSWORD:?set HEMMA_UI_PASSWORD}
       HEMMA_UI_ADDR: ":8080"
+      # Author of the commits made from the UI's "Commit changes" dialog.
+      HEMMA_UI_GIT_NAME: ${HEMMA_UI_GIT_NAME:-hemma-ui}
+      HEMMA_UI_GIT_EMAIL: ${HEMMA_UI_GIT_EMAIL:-hemma-ui@localhost}
     volumes:
       - ${HEMMA_REPO_DIR:?set HEMMA_REPO_DIR}:/repo
       - /var/run/docker.sock:/var/run/docker.sock

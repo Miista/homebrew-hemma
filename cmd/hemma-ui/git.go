@@ -110,25 +110,25 @@ func (s *server) handleCommit(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"ok": false, "output": "nothing to commit"})
 		return
 	}
-	var log strings.Builder
+	var sb strings.Builder
 	for _, step := range [][]string{{"add", "-A"}, {"commit", "--message=" + msg}} {
 		out, err := s.git(time.Minute, step...)
-		log.WriteString(out)
+		sb.WriteString(out)
 		if err != nil {
-			writeJSON(w, 200, map[string]any{"ok": false, "output": log.String()})
+			writeJSON(w, 200, map[string]any{"ok": false, "output": sb.String()})
 			return
 		}
 	}
 	if in.Push {
 		out, err := s.git(2*time.Minute, "push")
-		log.WriteString(out)
+		sb.WriteString(out)
 		if err != nil {
-			writeJSON(w, 200, map[string]any{"ok": false, "output": "committed locally, but push failed:\n" + log.String()})
+			writeJSON(w, 200, map[string]any{"ok": false, "output": "committed locally, but push failed:\n" + sb.String()})
 			return
 		}
 	}
-	log.Printf("commit:%d files (push=%v)", len(ch.Files), in.Push)
-	writeJSON(w, 200, map[string]any{"ok": true, "output": log.String()})
+	log.Printf("commit: %d files (push=%v)", len(ch.Files), in.Push)
+	writeJSON(w, 200, map[string]any{"ok": true, "output": sb.String()})
 }
 
 // gated reports whether a command may not run while changes are uncommitted.
