@@ -46,10 +46,11 @@
   /* the bar floats over the page, so the page keeps room for it at the end (content AND footer stay reachable) */
   body.with-bar { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
   @media (max-width: 640px) {
-    .save-bar { bottom: calc(8px + env(safe-area-inset-bottom)); width: calc(100vw - 16px); flex-wrap: nowrap; gap: 8px; padding: 8px 8px 8px 12px; border-radius: 12px; }
+    /* sits just above the bottom menu (52px tall + its border + the home-indicator inset), never over it */
+    .save-bar { bottom: calc(53px + 8px + env(safe-area-inset-bottom)); width: calc(100vw - 16px); flex-wrap: nowrap; gap: 8px; padding: 8px 8px 8px 12px; border-radius: 12px; }
     .save-bar .msg { min-width: 0; font-size: .85rem; line-height: 1.25; } .save-bar button { padding: .4rem .65rem; font-size: .9rem; white-space: nowrap; }
     .save-bar .acts { gap: 6px; flex: none; }
-    body.with-bar { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+    body.with-bar { padding-bottom: calc(53px + 84px + env(safe-area-inset-bottom)); }   /* menu + save bar */
   }
   .toast { position: fixed; left: 50%; top: 1rem; transform: translateX(-50%); z-index: 20; max-width: min(92vw, 34rem); display: flex; align-items: center; gap: .8rem;
            padding: .6rem 1rem; border-radius: 8px; background: #222; color: #fff; box-shadow: 0 4px 16px #0005; }
@@ -70,18 +71,25 @@
   .tree button.dir { font-weight: 600; } .tree button.sel { background: #36c3; font-weight: 600; }
   .tree button.gen { opacity: .45; cursor: not-allowed; } .tree .note { padding: .3rem .5rem; }
   footer { margin: 2rem 0 .5rem; text-align: center; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+  .top h1 { margin: .3rem 0 .1rem; } .top #summary { margin: 0; }
+  #deploy { flex: none; margin-top: .3rem; padding: .5rem 1.1rem; border-radius: 8px; background: #3b5bdb; border: 1px solid #3b5bdb; color: #fff; font-weight: 600; }
+  #deploy:disabled { opacity: .6; cursor: default; }
+  .sec h2 { font-size: 1.1rem; margin: 1.6rem 0 .1rem; } .sec:first-child h2 { margin-top: .6rem; }
   /* ---- phone pass: space is tight, so every pixel and every tap has to count ---- */
   @media (max-width: 640px) {
-    body { margin: .75rem auto; padding: 0 .75rem env(safe-area-inset-bottom); }
+    body { margin: .75rem auto; padding: 0 .75rem calc(68px + env(safe-area-inset-bottom)); }   /* room for the bottom menu */
     h1 { font-size: 1.4rem; margin: .2rem 0; } #summary { margin: .1rem 0 .4rem; }
-    /* five tabs in ONE row, scrolling sideways if a narrow phone can't fit them */
-    nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: .5rem 0; gap: 0; }
-    nav::-webkit-scrollbar { display: none; }
-    nav button { flex: none; padding: .55rem .5rem; font-size: .9rem; }
+    /* the menu lives at the bottom edge, in thumb reach: three items, so each gets a third of the width */
+    nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; margin: 0; gap: 0; flex-wrap: nowrap; border: 0; border-top: 1px solid #8884;
+          padding-bottom: env(safe-area-inset-bottom); background: color-mix(in srgb, Canvas 94%, transparent);
+          -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+    nav button { flex: 1 1 0; min-height: 52px; padding: .5rem .25rem; font-size: .95rem; border-bottom: 0; border-top: 3px solid transparent; }
+    nav button.on { border-top-color: #3b5bdb; }
     /* iOS zooms the page into any input under 16px: keep fields at 16px, and taps at a comfortable size */
     input:not([type=checkbox]), select, textarea { font-size: 16px; min-height: 40px; }
     button { min-height: 40px; }
-    .items li button, .tree button, nav button { min-height: 0; }
+    .items li button, .tree button { min-height: 0; }
     .items li button { min-height: 34px; }
     .tree button { padding: .5rem .5rem; }
     /* dialogs: nearly the full screen instead of a floating 520px box */
@@ -126,8 +134,11 @@
 </style>
 </head>
 <body>
-<h1>hemma</h1>
-<p class="meta" id="summary"></p>
+<header class="top">
+  <div><h1>hemma</h1><p class="meta" id="summary"></p></div>
+  <!-- Deploying is its own phase, separate from saving: always here, whenever you want it. -->
+  <button id="deploy" class="primary" type="button" title="Pull the saved configuration from origin and make it live on this machine">Deploy</button>
+</header>
 <nav id="tabs"></nav>
 <section id="view"></section>
 <div id="savebar" class="save-bar" hidden></div>
@@ -156,14 +167,13 @@
 
 <dialog id="cdlg" tabindex="-1" autofocus>
   <form method="dialog" id="cform">
-    <h2>Commit changes</h2>
-    <p class="meta">These changes are in the repo but not committed. They go live only after you commit them with a message.</p>
+    <h2>Save changes</h2>
+    <p class="meta">Saving records these changes with your message. Deploying them is a separate step.</p>
     <div id="cdiff" class="cdiff"></div>
     <details><summary class="meta">All changed files</summary><pre id="cfiles"></pre></details>
     <label>Change message *<textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
-    <label id="cpushl"><input type="checkbox" id="cpush"> Push to origin after committing (deploy pulls from origin)</label>
     <p class="err" id="cerr"></p>
-    <div class="row"><button type="button" id="ccancel">Cancel</button><button id="cgo">Commit</button><button class="primary" id="cdeploy">Commit and deploy</button></div>
+    <div class="row"><button type="button" id="ccancel">Cancel</button><button class="primary" id="cgo">Save</button></div>
   </form>
 </dialog>
 
@@ -173,7 +183,7 @@ let changes = { git: false, files: [] };
 let state = { services: [], hosts: [], domains: [], settings: [] };
 let cmds = {};
 let tab = "Services";
-const TABS = ["Services", "Hosts", "Domains", "Defaults", "Diagnose"];
+const TABS = ["Services", "Settings", "Issues"];   // Settings = hosts, domains and defaults, together
 
 async function post(url, body) {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -468,11 +478,7 @@ function row(cells, actions, off) {
 }
 const cards = list => { const d = el("div"); d.className = "cards"; list.forEach(x => d.append(x)); return d; };
 
-// Going live needs a clean tree: uncommitted changes must be committed (with a message) first.
-// The server enforces the same rule, so this is only the friendly path.
-const GATED = ["apply"];
 const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, () => {
-  if (GATED.includes(key) && changes.files.length) return openCommit();
   if (!cmds[key].fields.length) return run(key, {}, cmds[key].confirm);   // nothing to ask: just run it
   openCmd(key, prefill);
 }, "");
@@ -480,31 +486,38 @@ const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, () => {
 async function pushNow() {
   const res = await post("/api/push", {}); toastResult("Push", res, "Pushed to origin"); await load(); return res.ok;
 }
-// goLive deploys: pull from origin, then apply. With no origin there is nothing to pull, so it
-// just applies this machine's committed config. Unpushed commits are pushed first (with consent).
-// The save bar shows progress while it runs, then the outcome: green "Deployed", or red with Details and Retry.
-let busy = null;      // "Deploying…" while a deploy runs
-let flash = null;     // the last outcome: { kind: "saved" | "failed", msg, details }
+
+// Two phases, kept apart:
+//   1. SAVING changes  — the save bar (Discard / Save), present only while there are unsaved changes.
+//   2. DEPLOYING       — the Deploy button in the header, available at any time. Nothing is inferred about
+//                        what is live, so it also works on a freshly set-up machine with nothing to save.
+// Deploy pulls from origin, then applies (with no origin there is nothing to pull: it just applies). It needs
+// everything saved — the server enforces that — and offers to push unpushed commits first.
+let deploying = false;
 let pending = null;   // /api/diff summary of the unsaved changes (null when there are none)
-async function goLive() {
+function renderDeploy() {
+  const b = $("#deploy"); b.disabled = deploying; b.textContent = deploying ? "Deploying…" : "Deploy";
+}
+async function deploy() {
+  if (deploying) return;
+  if (changes.git && changes.files.length) return toast("Save or discard your unsaved changes before deploying", "warn");
   const key = changes.has_remote ? "deploy" : "apply";
   if (changes.has_remote && changes.ahead > 0 &&
-      !(confirm(`${changes.ahead} commit(s) are not on origin yet — push them first?`) && await pushNow())) return;
+      !(confirm(`${changes.ahead} saved change(s) are not on origin yet — push them first?`) && await pushNow())) return;
   if (!confirm(cmds[key].confirm)) return;
-  busy = key === "deploy" ? "Deploying…" : "Applying…"; flash = null; renderBar();
+  deploying = true; renderDeploy();
   try {
     const res = await post("/api/run", { command: key, values: {} });
-    if (res.ok) {
-      const mine = flash = { kind: "saved", msg: key === "deploy" ? "Deployed" : "Applied" };
-      setTimeout(() => { if (flash === mine) { flash = null; renderBar(); } }, 6000);
-    } else flash = { kind: "failed", msg: `${cmds[key].title} failed`, details: { title: cmds[key].title, text: res.output || res.error || "" } };
-  } finally { busy = null; await load(); }
+    toastResult(cmds[key].title, res, key === "deploy" ? "Deployed" : "Applied");   // failures stay on screen, with Details
+  } finally { deploying = false; renderDeploy(); await load(); }
 }
-// discard puts hemma's own output back to the last commit; files hemma doesn't manage are left alone.
+$("#deploy").onclick = deploy;
+
+// discard puts hemma's own output back to the last save; files hemma doesn't manage are left alone.
 async function discard() {
-  if (!confirm("Discard your unsaved changes? services.yaml and the generated files go back to the last commit. Files hemma doesn't manage are left alone.")) return;
+  if (!confirm("Discard your unsaved changes? services.yaml and the generated files go back to how they were when last saved. Files hemma doesn't manage are left alone.")) return;
   const res = await post("/api/discard", {});
-  flash = null; toastResult("Discard", res, "Changes discarded"); await load();
+  toastResult("Discard", res, "Changes discarded"); await load();
 }
 
 // renderDiff: what changed in what hemma manages, current (left) against changed (right).
@@ -549,36 +562,31 @@ function renderDiff(d) {
   return root;
 }
 
-// openCommit: write the change message; optionally carry straight on to deploying.
+// openCommit (the Save panel): review what changed, write the change message, save. Saving only records
+// the changes; deploying them is the separate Deploy button.
 function openCommit() {
   $("#cdiff").replaceChildren(el("p", "Loading changes…", { className: "meta" }));
   fetch("/api/diff").then(r => r.json()).then(d => $("#cdiff").replaceChildren(d.error ? el("p", d.error, { className: "err" }) : renderDiff(d)))
     .catch(() => $("#cdiff").replaceChildren(el("p", "Could not load the changes.", { className: "err" })));
   $("#cfiles").textContent = changes.files.map(f => `${f.status.padEnd(2)} ${f.path}`).join("\n");
   $("#cmsg").value = ""; $("#cerr").textContent = "";
-  $("#cpush").checked = false; $("#cpushl").hidden = !changes.has_remote;
-  $("#cdeploy").textContent = changes.has_remote ? "Commit and deploy" : "Commit and apply";
-  const submit = async andLive => {
+  $("#cgo").onclick = async e => {
+    e.preventDefault();
     if (!$("#cform").reportValidity()) return;
-    $("#cgo").disabled = $("#cdeploy").disabled = true;
+    $("#cgo").disabled = true;
     try {
-      // Deploying pulls from origin, so "commit and deploy" always pushes when there is one.
-      const push = andLive ? changes.has_remote : $("#cpush").checked;
-      const res = await post("/api/commit", { message: $("#cmsg").value, push });
+      const res = await post("/api/commit", { message: $("#cmsg").value, push: false });
       if (!res.ok) { $("#cerr").textContent = res.output; return; }
-      $("#cdlg").close(); toast(push ? "Committed and pushed" : "Committed", "ok"); await load();
-      if (andLive) await goLive();
-    } finally { $("#cgo").disabled = $("#cdeploy").disabled = false; }
+      await load();
+      $("#cdlg").close(); toast("Saved", "ok");
+    } finally { $("#cgo").disabled = false; }
   };
-  $("#cgo").onclick = e => { e.preventDefault(); submit(false); };
-  $("#cdeploy").onclick = e => { e.preventDefault(); submit(true); };
   openModal($("#cdlg"));
 }
 $("#ccancel").onclick = () => $("#cdlg").close();
 
-// The save bar (as in Reaparr): pinned to the bottom of every tab, present only when there is
-// something to act on. What it says and offers follows the state of the changes:
-//   busy → dirty (unsaved) → failed → pending (committed, not deployed) → saved → absent
+// The save bar (as in Reaparr): pinned to the bottom of every tab, present only while there are
+// unsaved changes, with Discard and Save. Deploying is separate (the header button).
 function describePending() {
   const p = pending, n = changes.files.length;
   const files = k => `${k} ${k === 1 ? "file" : "files"} changed`;
@@ -591,25 +599,14 @@ function describePending() {
   return files(n);   // never a "0 … changed"
 }
 function renderBar() {
-  const bar = $("#savebar"), n = changes.files.length, go = changes.has_remote ? "Deploy" : "Apply";
-  let kind = "", msg = "", acts = [];
-  if (busy) { kind = "busy"; msg = busy; }
-  else if (changes.git && n) {
-    kind = "dirty"; msg = describePending();
-    const mine = !pending || pending.entities.length || pending.generated.length || pending.reformatted;   // anything hemma can revert?
-    const d = btn("Discard", discard); d.disabled = !mine;
-    acts = [d, btn(`Review & ${go.toLowerCase()}`, openCommit, "primary")];
-  } else if (flash?.kind === "failed") {
-    kind = "failed"; msg = flash.msg;
-    acts = [btn("Details", () => showResult(flash.details.title, flash.details.text)), btn("Retry", goLive, "primary")];
-  } else if (changes.git && changes.undeployed) {
-    kind = "pending"; msg = "Committed changes aren't deployed yet"; acts = [btn(go, goLive, "primary")];
-  } else if (flash?.kind === "saved") { kind = "saved"; msg = flash.msg; }
-  bar.hidden = !kind; document.body.classList.toggle("with-bar", !!kind);
-  if (!kind) return;
-  bar.className = "save-bar " + kind;
-  const m = el("span", null, { className: "msg" }); m.append(el("span", null, { className: "dot" }), msg);
-  const a = el("div", null, { className: "acts" }); acts.forEach(x => a.append(x));
+  const bar = $("#savebar"), dirty = changes.git && changes.files.length > 0;
+  bar.hidden = !dirty; document.body.classList.toggle("with-bar", dirty);
+  if (!dirty) return;
+  bar.className = "save-bar dirty";
+  const mine = !pending || pending.entities.length || pending.generated.length || pending.reformatted;   // anything hemma can revert?
+  const d = btn("Discard", discard); d.disabled = !mine;
+  const m = el("span", null, { className: "msg" }); m.append(el("span", null, { className: "dot" }), describePending());
+  const a = el("div", null, { className: "acts" }); a.append(d, btn("Save", openCommit, "primary"));
   bar.replaceChildren(m, a);
 }
 
@@ -641,8 +638,13 @@ const VIEWS = {
     });
     return [table(["Setting", "Value", ""], rows)];
   },
-  Diagnose() { return [cards(["list", "verify", "measure", "doctor", "apply"].map(k => cmdBtn(k))),
-    el("p", "Apply re-applies the committed config on this machine without pulling. Deploying new changes is done from the Services page.", { className: "meta" })]; },
+  // General settings: the three things that describe the setup itself, one section each.
+  Settings() {
+    const sec = (id, title, nodes) => { const s = el("section", null, { id: `sec-${id}`, className: "sec" }); s.append(el("h2", title), ...nodes); return s; };
+    return [sec("hosts", "Hosts", VIEWS.Hosts()), sec("domains", "Domains", VIEWS.Domains()), sec("defaults", "Defaults", VIEWS.Defaults())];
+  },
+  Issues() { return [cards(["list", "verify", "measure", "doctor"].map(k => cmdBtn(k))),
+    el("p", "Checks on the setup. To make saved changes live, use the Deploy button at the top.", { className: "meta" })]; },
 };
 
 function render() {
@@ -650,9 +652,9 @@ function render() {
   $("#summary").textContent = `${pl(state.services.length, "service", "services")} · ${pl(state.hosts.length, "host", "hosts")} · ${state.domains.join(", ")}`;
   const nav = $("#tabs"); nav.replaceChildren();
   TABS.forEach(t => nav.append(btn(t, () => { tab = t; render(); }, t === tab ? "on" : "")));
-  nav.querySelector(".on")?.scrollIntoView({ inline: "nearest", block: "nearest" });   // a narrow phone may scroll the tab strip
   $("#view").replaceChildren(...VIEWS[tab]());
   $("#foot").textContent = state.version || "";
+  renderDeploy();
   renderBar();
 }
 async function load() {

@@ -142,8 +142,11 @@ A deliberately small web UI for one host (image: `Dockerfile.ui`; compose + synt
 - **Git is the change tracker.** Edits land in the repo immediately; the working tree is the "unsaved changes"
   list, `/api/diff` renders it as things (services, hosts, defaults — current vs changed), hemma's generated
   files are only counted, and other files are listed by name, never interpreted. `apply`/`deploy` are refused
-  server-side while the tree is dirty, so everything that goes live carries a commit message. The last deployed
-  commit is kept in a private ref (`refs/hemma/deployed`) inside `.git`.
+  server-side while the tree is dirty, so everything that goes live carries a commit message.
+- **Two phases, deliberately separate:** *saving* (the bottom save bar: Discard / Save, which commits with a message)
+  and *deploying* (a standing **Deploy** button, always available — nothing is inferred about what is live, so it
+  works on a freshly set-up machine with nothing to save). Deploy pulls from origin then applies, and offers to
+  push unpushed commits first; with no origin it just applies.
 - **Not exposed on purpose:** credential minting (`create app/user`), and terminal-only `help`/`completion`/
   `version`/`defaults` listings. The file browser only ever shows the mounted repo (no `..`, no symlinks, no
   dot-folders).

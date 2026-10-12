@@ -181,9 +181,6 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 	out, err := cmd.CombinedOutput()
 	// Log the command key only: arguments and output can carry secrets.
 	log.Printf("run %q -> err=%v", c.Key, err)
-	if err == nil && gated(c) {
-		s.recordDeployed() // what is live now: the banner stops offering a deploy
-	}
 	writeJSON(w, 200, map[string]any{"ok": err == nil, "output": string(out)})
 }
 
