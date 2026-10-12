@@ -13,6 +13,9 @@ FROM alpine:3.21
 # (`deploy` pulls from origin; on a single host it never ssh's to a host).
 RUN apk add --no-cache docker-cli git bash curl gawk openssh-client
 COPY --from=build /out/hemma /out/hemma-ui /usr/local/bin/
+# The bind-mounted repo is owned by the host user, not root: without this git refuses
+# it ("dubious ownership"), which breaks hemma's own git calls (deploy preflight/pull).
+RUN git config --system --add safe.directory '*'
 ENV HEMMA_REPO=/repo HEMMA_UI_ADDR=:8080
 # Needs host networking so `apply` can match this machine's IP to a host in
 # services.yaml; see docker-compose.ui.yml.

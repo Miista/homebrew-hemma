@@ -1,0 +1,37 @@
+# Test fixture for hemma-ui: the containers `hemma apply` expects, none exposed to the host
+# except the UI on 127.0.0.1:18080. Synthetic data only — run setup.sh first.
+#   pihole, cloudflared: stubs (just need to answer `docker restart`)
+#   caddy:               the real image, so `caddy validate` / `caddy reload` genuinely run
+name: hemma-fixture
+services:
+  pihole:
+    container_name: pihole
+    image: alpine:3.21
+    command: sleep infinity
+    networks: { fx: { ipv4_address: 172.28.0.12 } }
+  cloudflared:
+    container_name: cloudflared
+    image: alpine:3.21
+    command: sleep infinity
+    networks: { fx: { ipv4_address: 172.28.0.13 } }
+  caddy:
+    container_name: caddy
+    image: caddy:2-alpine
+    volumes:
+      - ./.work/repo/pi/caddy/data:/etc/caddy
+    networks: { fx: { ipv4_address: 172.28.0.11 } }
+  hemma-ui:
+    container_name: hemma-ui-fixture
+    build: { context: ../.., dockerfile: Dockerfile.ui }
+    environment:
+      HEMMA_UI_PASSWORD: fixture   # synthetic fixture only
+    ports: ["127.0.0.1:18080:8080"]
+    volumes:
+      - ./.work/repo:/repo
+      - ./.work/remote.git:/remote.git
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: { fx: { ipv4_address: 172.28.0.10 } }
+    depends_on: [pihole, caddy, cloudflared]
+networks:
+  fx:
+    ipam: { config: [{ subnet: 172.28.0.0/24 }] }
