@@ -23,6 +23,10 @@ generated filenames, Caddyfile import line, .gitignore markers) are auto-migrate
 
 ## Build / test / release
 
+Everyday commands are in the `Makefile` — `make help` lists them (`make check` = gofmt + vet + all tests;
+`make test-fast` skips the ~40s CLI snapshot tests; `make snapshots-update` regenerates the goldens;
+`make fixture-redeploy` recreates the UI test container). Underneath they are plain `go` commands:
+
 ```sh
 go build ./...                       # build
 go test ./...                        # all tests
