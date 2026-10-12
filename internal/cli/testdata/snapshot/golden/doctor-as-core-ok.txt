@@ -17,4 +17,5 @@ These advisories require manual edits (see their fix: lines) — 'hemma doctor -
 --- stderr ---
 --- external commands ---
 git -C <repo> check-ignore --stdin
+ssh-keygen -F 192.0.2.20
 --- files ---

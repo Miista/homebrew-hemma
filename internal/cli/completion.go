@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"strings"
+
+	"hemma/internal/cli/kernel"
 )
 
 // Shell completion scripts are static (this CLI hand-rolls flag parsing, so
@@ -17,7 +19,7 @@ import (
 // than a plain const so its set_keys word list is generated from setSpecs
 // (nouns.go) — the exact list that went stale here when tunnel-dir was added
 // to dispatchSet/help.go but not to this file's own separate copy.
-var BashCompletion = strings.Replace(bashCompletionTemplate, "__SET_KEYS__", strings.Join(setKeyStrings(), " "), 1)
+var BashCompletion = strings.Replace(bashCompletionTemplate, "__SET_KEYS__", strings.Join(kernel.SetKeys(), " "), 1)
 
 const bashCompletionTemplate = `# bash completion for hemma
 _hemma() {
@@ -73,7 +75,7 @@ complete -F _hemma hemma splitdns
 
 // ZshCompletion is the zsh completion script for hemma. Computed for the same
 // reason as BashCompletion above.
-var ZshCompletion = strings.Replace(zshCompletionTemplate, "__SET_KEYS__", strings.Join(setKeyStrings(), " "), 1)
+var ZshCompletion = strings.Replace(zshCompletionTemplate, "__SET_KEYS__", strings.Join(kernel.SetKeys(), " "), 1)
 
 const zshCompletionTemplate = `#compdef hemma splitdns
 # zsh completion for hemma
@@ -125,8 +127,8 @@ _hemma "$@"
 // carry a help topic. Usage: hemma completion <bash|zsh>.
 func cmdCompletion(args []string) int {
 	if len(args) < 1 {
-		errf("Missing the shell — expected bash or zsh.")
-		hint("Usage: hemma completion <bash|zsh>")
+		kernel.Errf("Missing the shell — expected bash or zsh.")
+		kernel.Hint("Usage: hemma completion <bash|zsh>")
 		return 2
 	}
 	switch args[0] {
@@ -135,7 +137,7 @@ func cmdCompletion(args []string) int {
 	case "zsh":
 		fmt.Print(ZshCompletion)
 	default:
-		errf("Unsupported shell %q — expected bash or zsh.", args[0])
+		kernel.Errf("Unsupported shell %q — expected bash or zsh.", args[0])
 		return 2
 	}
 	return 0

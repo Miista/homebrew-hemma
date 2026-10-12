@@ -1,4 +1,4 @@
-package cli
+package kernel
 
 import (
 	"path/filepath"
