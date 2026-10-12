@@ -136,6 +136,39 @@ does not import `hemma.trusted_proxies.generated.caddy` (design §4.7 — hemma 
 boundary, so it refuses to reload a Caddy that would silently ignore it; `doctor` only advises
 there, since the global options block it belongs in is hand-maintained).
 
+## `hemma-ui` — single-host web UI (`cmd/hemma-ui`)
+
+A deliberately small web UI for one host (image: `Dockerfile.ui`; compose + synthetic test fixture:
+`docker-compose.ui.yml`, `hack/ui-fixture/`). **Single host only for now** — multi-host (ssh targets,
+`deploy-host`) is intentionally not exposed. It is NOT a second implementation of hemma:
+
+- **Every change goes through the `hemma` binary** (`commands.go` is an allowlist of typed commands, run as an
+  argv, never a shell), so validation and the single-writer invariant are exactly the CLI's. The UI never writes
+  `services.yaml` or generated files itself.
+- **Typed fields** (`Ref` in `commands.go`, validators in `refs.go`): a host is picked from hosts, a CIDR list is
+  validated as CIDRs, a file is picked from the repo tree. The browser offers only valid choices *and* the
+  server re-checks every value — the browser is a convenience, not the control.
+- **Git is the change tracker.** Edits land in the repo immediately; the working tree is the "unsaved changes"
+  list, `/api/diff` renders it as things (services, hosts, defaults — current vs changed), hemma's generated
+  files are only counted, and other files are listed by name, never interpreted. `apply`/`deploy` are refused
+  server-side while the tree is dirty, so everything that goes live carries a commit message.
+- **Two phases, deliberately separate:** *saving* (the bottom save bar: Discard / Save, which commits with a message)
+  and *deploying* (a standing **Deploy** button, always available — nothing is inferred about what is live, so it
+  works on a freshly set-up machine with nothing to save). Deploy pulls from origin then applies, and offers to
+  push unpushed commits first; with no origin it just applies.
+- **Not exposed on purpose:** credential minting (`create app/user`), and terminal-only `help`/`completion`/
+  `version`/`defaults` listings. The file browser only ever shows the mounted repo (no `..`, no symlinks, no
+  dot-folders).
+- **Security posture:** one shared password (`HEMMA_UI_PASSWORD`, required), plain HTTP — put it behind TLS.
+  The container mounts the Docker socket (root-equivalent on the host), so keep it LAN-only.
+- **Phones are the primary screen:** keep fields at 16px (iOS zoom), tables become cards under 640px, and
+  nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
+- **Look and feel:** the same design language as reaparr/albumreq (Geist, violet accent, glow, glass bars, the
+  top-bar-plus-bottom-tab-bar menu), but following the system light/dark setting instead of dark only. All colours
+  are tokens with a light and a dark value in `static/style.css` — never hard-code a colour in the page. The page
+  (`static/index.html`) holds markup and script only; the stylesheet and the Geist font files (SIL OFL-1.1, license
+  alongside) are embedded and served from `/static/` behind the same login. Keep text at WCAG AA (4.5:1) in both themes.
+
 ## Scope boundary (do not cross)
 
 **Update (commit `e49d8bb`, 2026-07-28): this section describes an architecture superseded in

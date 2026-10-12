@@ -1,0 +1,52 @@
+# Test fixture for hemma-ui: the containers `hemma apply` expects, none exposed to the host
+# except the UI on 127.0.0.1:18080. Synthetic data only — run setup.sh first.
+#   pihole, cloudflared: stubs (just need to answer `docker restart`)
+#   caddy:               the real image, so `caddy validate` / `caddy reload` genuinely run
+#   authelia (optional): stub with a fake `authelia config validate` — profile "auth", see README
+name: hemma-fixture
+services:
+  pihole:
+    container_name: pihole
+    image: alpine:3.21
+    command: sleep infinity
+    networks: { fx: { ipv4_address: 172.28.0.12 } }
+  cloudflared:
+    container_name: cloudflared
+    image: alpine:3.21
+    command: sleep infinity
+    networks: { fx: { ipv4_address: 172.28.0.13 } }
+  # OPTIONAL (profile "auth"): stand-in auth provider. Only used when the repo was built with
+  # `./setup.sh --with-auth`; start with `docker compose --profile auth up -d`.
+  # The container name must equal the auth service's name in services.yaml.
+  authelia:
+    profiles: ["auth"]
+    container_name: authelia
+    image: alpine:3.21
+    command: sleep infinity
+    volumes:
+      - ./authelia-stub.sh:/usr/local/bin/authelia:ro
+    networks: { fx: { ipv4_address: 172.28.0.14 } }
+  caddy:
+    container_name: caddy
+    image: caddy:2-alpine
+    volumes:
+      - ./.work/repo/pi/caddy/data:/etc/caddy
+    networks: { fx: { ipv4_address: 172.28.0.11 } }
+  hemma-ui:
+    container_name: hemma-ui-fixture
+    build: { context: ../.., dockerfile: Dockerfile.ui }
+    environment:
+      # Default is a fixed throwaway password, which is only acceptable because the port is
+      # loopback-only. The UI container has the Docker socket, so anyone who can log in controls
+      # every container on this machine: when you widen FIXTURE_BIND, set FIXTURE_PASSWORD too.
+      HEMMA_UI_PASSWORD: ${FIXTURE_PASSWORD:-fixture}
+    ports: ["${FIXTURE_BIND:-127.0.0.1}:18080:8080"]
+    volumes:
+      - ./.work/repo:/repo
+      - ./.work/remote.git:/remote.git
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: { fx: { ipv4_address: 172.28.0.10 } }
+    depends_on: [pihole, caddy, cloudflared]
+networks:
+  fx:
+    ipam: { config: [{ subnet: 172.28.0.0/24 }] }
