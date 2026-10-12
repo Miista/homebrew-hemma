@@ -254,9 +254,15 @@ func TestDiff(t *testing.T) {
 		}
 	}
 	// Clean tree: nothing to show.
-	if d, err := s.diff(); err != nil || len(d.Entities) != 0 || len(d.Generated) != 0 || len(d.Other) != 0 {
+	if d, err := s.diff(); err != nil || len(d.Entities) != 0 || len(d.Generated) != 0 || len(d.Other) != 0 || d.Reformatted {
 		t.Fatalf("clean diff = %+v, %v", d, err)
 	}
+	// Only whitespace changed (hemma rewrites the file on every edit): no entity changes, but it is not "nothing".
+	write("services.yaml", v1+"\n\n")
+	if d, err := s.diff(); err != nil || len(d.Entities) != 0 || !d.Reformatted {
+		t.Fatalf("format-only diff = %+v, %v (want no entities and Reformatted)", d, err)
+	}
+	write("services.yaml", v1)
 
 	v2 := "hosts:\n    pi:\n        ip: 192.0.2.50\n        trusted_proxies:\n            - 10.0.0.0/8\ndomains:\n    - example.com\n    - example.net\n" +
 		"defaults:\n    dns_host: pi\n    local_networks:\n        - 10.0.10.0/24\n" +

@@ -25,8 +25,11 @@
   .cards { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0; }
   /* Save bar — the same pattern as Reaparr: a rounded, translucent panel pinned to the bottom edge.
      It says what is pending and carries the buttons to act on it; it is absent when nothing is. */
-  .save-bar { position: sticky; bottom: 20px; z-index: 5; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-              padding: 12px 12px 12px 18px; margin-top: 1rem; border-radius: 14px; border: 1px solid #8886;
+  /* Pinned to the SCREEN edge (not "sticky"): a sticky bar only reaches the bottom when the page is tall
+     enough, and floats mid-screen on a short page. Centred, and as wide as the page content. */
+  .save-bar { position: fixed; left: 0; right: 0; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 5; box-sizing: border-box;
+              width: min(1076px, calc(100vw - 24px)); margin: 0 auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+              padding: 12px 12px 12px 18px; border-radius: 14px; border: 1px solid #8886;
               background: color-mix(in srgb, Canvas 88%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
               box-shadow: 0 20px 50px -10px #0007; }
   .save-bar.dirty, .save-bar.pending { border-color: #c98a0088; } .save-bar.saved { border-color: #1f8a3b88; } .save-bar.failed { border-color: #c3333388; }
@@ -40,12 +43,13 @@
   .save-bar button.primary, dialog button.primary { background: #3b5bdb; border-color: #3b5bdb; color: #fff; border-radius: 8px; }
   dialog button { border-radius: 8px; }
   .save-bar button:disabled { opacity: .45; cursor: default; }
-  .with-bar { padding-bottom: 72px; }
+  /* the bar floats over the page, so the page keeps room for it at the end (content AND footer stay reachable) */
+  body.with-bar { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
   @media (max-width: 640px) {
-    .save-bar { bottom: calc(8px + env(safe-area-inset-bottom)); flex-wrap: nowrap; gap: 8px; padding: 8px 8px 8px 12px; border-radius: 12px; margin-top: .6rem; }
+    .save-bar { bottom: calc(8px + env(safe-area-inset-bottom)); width: calc(100vw - 16px); flex-wrap: nowrap; gap: 8px; padding: 8px 8px 8px 12px; border-radius: 12px; }
     .save-bar .msg { min-width: 0; font-size: .85rem; line-height: 1.25; } .save-bar button { padding: .4rem .65rem; font-size: .9rem; white-space: nowrap; }
     .save-bar .acts { gap: 6px; flex: none; }
-    .with-bar { padding-bottom: 56px; }
+    body.with-bar { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   }
   .toast { position: fixed; left: 50%; top: 1rem; transform: translateX(-50%); z-index: 20; max-width: min(92vw, 34rem); display: flex; align-items: center; gap: .8rem;
            padding: .6rem 1rem; border-radius: 8px; background: #222; color: #fff; box-shadow: 0 4px 16px #0005; }
@@ -529,6 +533,7 @@ function renderDiff(d) {
     }
     root.append(card);
   }
+  if (d.reformatted) root.append(el("p", "services.yaml was rewritten by hemma, but no value in it changed — only its formatting. You can commit it or discard it.", { className: "meta" }));
   if (d.generated.length) {
     const det = el("details", null, { className: "dsec" });
     det.append(el("summary", `${d.generated.length} generated ${d.generated.length === 1 ? "file" : "files"} updated automatically`));
@@ -576,11 +581,14 @@ $("#ccancel").onclick = () => $("#cdlg").close();
 //   busy → dirty (unsaved) → failed → pending (committed, not deployed) → saved → absent
 function describePending() {
   const p = pending, n = changes.files.length;
+  const files = k => `${k} ${k === 1 ? "file" : "files"} changed`;
   if (!p) return `${n} unsaved ${n === 1 ? "change" : "changes"}`;
   const e = p.entities.length;
   if (e) return `${e} unsaved ${e === 1 ? "change" : "changes"}`;
-  if (p.generated.length) return `${p.generated.length} generated ${p.generated.length === 1 ? "file" : "files"} changed`;
-  return `${p.other.length} other ${p.other.length === 1 ? "file" : "files"} changed`;
+  if (p.reformatted) return "services.yaml was reformatted";
+  if (p.generated.length) { const k = p.generated.length; return `${k} generated ${k === 1 ? "file" : "files"} changed`; }
+  if (p.other.length) return `${p.other.length} other ${p.other.length === 1 ? "file" : "files"} changed`;
+  return files(n);   // never a "0 … changed"
 }
 function renderBar() {
   const bar = $("#savebar"), n = changes.files.length, go = changes.has_remote ? "Deploy" : "Apply";
@@ -588,7 +596,7 @@ function renderBar() {
   if (busy) { kind = "busy"; msg = busy; }
   else if (changes.git && n) {
     kind = "dirty"; msg = describePending();
-    const mine = !pending || pending.entities.length || pending.generated.length;   // anything hemma can revert?
+    const mine = !pending || pending.entities.length || pending.generated.length || pending.reformatted;   // anything hemma can revert?
     const d = btn("Discard", discard); d.disabled = !mine;
     acts = [d, btn(`Review & ${go.toLowerCase()}`, openCommit, "primary")];
   } else if (flash?.kind === "failed") {
@@ -597,7 +605,7 @@ function renderBar() {
   } else if (changes.git && changes.undeployed) {
     kind = "pending"; msg = "Committed changes aren't deployed yet"; acts = [btn(go, goLive, "primary")];
   } else if (flash?.kind === "saved") { kind = "saved"; msg = flash.msg; }
-  bar.hidden = !kind; $("#view").classList.toggle("with-bar", !!kind);
+  bar.hidden = !kind; document.body.classList.toggle("with-bar", !!kind);
   if (!kind) return;
   bar.className = "save-bar " + kind;
   const m = el("span", null, { className: "msg" }); m.append(el("span", null, { className: "dot" }), msg);

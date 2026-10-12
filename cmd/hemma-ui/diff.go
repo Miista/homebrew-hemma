@@ -33,6 +33,9 @@ type diffResult struct {
 	Entities  []entityChange `json:"entities"`
 	Generated []string       `json:"generated"` // files hemma regenerated from the above
 	Other     []change       `json:"other"`     // hand-edited files: no meaningful summary, listed by name
+	// Reformatted: services.yaml differs on disk but no value in it changed. Hemma rewrites the file
+	// wholesale on every edit, so setting something and clearing it again leaves different whitespace.
+	Reformatted bool `json:"reformatted"`
 }
 
 const none = "—"
@@ -183,15 +186,18 @@ func (s *server) diff() (diffResult, error) {
 		}
 	}
 
+	yamlChanged := false
 	for _, f := range s.changes().Files {
 		switch {
 		case f.Path == "services.yaml":
+			yamlChanged = true
 		case s.isGeneratedChange(f):
 			res.Generated = append(res.Generated, f.Path)
 		default:
 			res.Other = append(res.Other, f)
 		}
 	}
+	res.Reformatted = yamlChanged && len(res.Entities) == 0
 	return res, nil
 }
 
