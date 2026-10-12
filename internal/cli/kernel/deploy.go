@@ -1,8 +1,10 @@
 package kernel
 
 import (
+	"bytes"
 	"fmt"
-	"os"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -112,6 +114,9 @@ type deployRunner interface {
 type execRunner struct{ env *Env }
 
 func (r execRunner) run(t deployTarget, argv []string) (string, error) {
+	if t.Local && argv[0] == inProcessApply {
+		return r.applyLocal(argv[2])
+	}
 	if !t.Local {
 		// The command is passed as a single string for the remote shell to
 		// parse — that is what lets the literal ~/docker expand remotely.
@@ -218,24 +223,35 @@ func headArgv(t deployTarget, localRepo string) []string {
 	return []string{"git", "-C", repo, "rev-parse", "HEAD"}
 }
 
-// selfExecutable is the path of the running binary; a variable so tests can
-// stand in a fake rather than re-executing the test binary.
-var selfExecutable = os.Executable
+// inProcessApply stands in for the program name of this host's own apply: it is
+// run by the kernel itself (see execRunner.run), not as a child process, so
+// deploy works the same from the CLI, the web UI or any other front end and
+// never depends on a hemma binary being installed.
+const inProcessApply = "<in-process hemma>"
 
-func applyArgv(env *Env, t deployTarget, localRepo string) []string {
+func applyArgv(t deployTarget, localRepo string) []string {
 	if t.Local {
-		// Re-invoke this same binary (hemma may not be on PATH in a dev build).
-		// A front end that is not the hemma binary names one in Env.Self.
-		exe := env.Self
-		if exe == "" {
-			var err error
-			if exe, err = selfExecutable(); err != nil {
-				exe = "hemma"
-			}
-		}
-		return []string{exe, "-C", localRepo, "apply"}
+		return []string{inProcessApply, "-C", localRepo, "apply"}
 	}
 	return []string{"hemma", "apply"}
+}
+
+// ansiEscape matches the colour codes glyphs may carry when the process's
+// stdout is a terminal; a child process writing to a pipe never emitted them,
+// so the in-process apply's captured output is stripped to match.
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// applyLocal runs this host's own apply in-process and returns its combined
+// output, as a child process's CombinedOutput would have.
+func (r execRunner) applyLocal(localRepo string) (string, error) {
+	var buf bytes.Buffer
+	sub := &Env{Out: &buf, Err: &buf, Ctx: r.env.Ctx, NoTerminal: true}
+	code := cmdApply(sub, localRepo, filepath.Join(localRepo, configName), nil)
+	out := ansiEscape.ReplaceAllString(buf.String(), "")
+	if code != 0 {
+		return out, fmt.Errorf("apply exited %d", code)
+	}
+	return out, nil
 }
 
 // summarizePull condenses successful `git pull --ff-only` output to one
@@ -375,7 +391,7 @@ func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo strin
 	failed := 0
 	for _, t := range targets {
 		fmt.Fprintf(env.Out, "\n%s== %s ==%s\n", boldOn, t.Name, boldOff)
-		out, err := r.run(t, applyArgv(env, t, localRepo))
+		out, err := r.run(t, applyArgv(t, localRepo))
 		printIndented(env, out)
 		if err != nil {
 			fmt.Fprintln(env.Out, "  "+cross+" apply FAILED")

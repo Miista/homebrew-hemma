@@ -180,19 +180,12 @@ func Hint(env *Env, format string, a ...any) { hint(env, format, a...) }
 // SetKeys lists the `defaults set` keys, for shell completion.
 func SetKeys() []string { return setKeyStrings() }
 
-// SetLocalHost and SetSelfExecutable swap the "which host is this machine"
-// and "path of this binary" lookups, returning a restore func. They exist for
-// tests that need a deterministic machine identity.
+// SetLocalHost swaps the "which host is this machine" lookup, returning a
+// restore func. It exists for tests that need a deterministic machine identity.
 func SetLocalHost(f func(*config.Config) string) (restore func()) {
 	old := localHost
 	localHost = f
 	return func() { localHost = old }
-}
-
-func SetSelfExecutable(f func() (string, error)) (restore func()) {
-	old := selfExecutable
-	selfExecutable = f
-	return func() { selfExecutable = old }
 }
 
 // dispatchNoun routes verb-first commands of the form

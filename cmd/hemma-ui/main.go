@@ -34,7 +34,6 @@ var static embed.FS
 
 type server struct {
 	repo    string
-	self    string     // a hemma binary, which `deploy` re-invokes for this host's own apply
 	version string     // "hemma <version>", shown in the page footer
 	mu      sync.Mutex // one mutating hemma invocation at a time
 }
@@ -45,7 +44,7 @@ func main() {
 		log.Fatal("HEMMA_UI_PASSWORD must be set — refusing to start without a login")
 	}
 	kernel.DisableColor() // output is captured for a browser, never a terminal
-	s := &server{repo: env("HEMMA_REPO", "/repo"), self: env("HEMMA_BIN", "hemma"), version: "hemma " + cli.Version}
+	s := &server{repo: env("HEMMA_REPO", "/repo"), version: "hemma " + cli.Version}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := static.ReadFile("static/index.html")
@@ -207,7 +206,7 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 // as it did when the hemma binary's combined output was captured.
 func (s *server) runKernel(ctx context.Context, argv []string) (code int, output string) {
 	var buf syncBuf
-	kenv := &kernel.Env{Out: &buf, Err: &buf, Ctx: ctx, NoTerminal: true, Self: s.self}
+	kenv := &kernel.Env{Out: &buf, Err: &buf, Ctx: ctx, NoTerminal: true}
 	defer func() {
 		// A bug in a command must not take the whole UI down with it.
 		if p := recover(); p != nil {
