@@ -48,6 +48,7 @@ func main() {
 	mux.HandleFunc("GET /api/commands", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, commands) })
 	mux.HandleFunc("GET /api/changes", s.handleChanges)
 	mux.HandleFunc("POST /api/commit", s.handleCommit)
+	mux.HandleFunc("POST /api/push", s.handlePush)
 	mux.HandleFunc("POST /api/run", s.runCommand)
 	mux.HandleFunc("POST /api/create-user", s.createUser)
 	addr := env("HEMMA_UI_ADDR", ":8080")

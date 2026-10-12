@@ -50,10 +50,12 @@ func TestBuild(t *testing.T) {
 	}
 }
 
-// The UI is single-host for now: nothing that reaches other hosts is exposed.
+// The UI is single-host for now: no ssh targets or deploy-host are exposed.
+// `deploy` itself stays: with one host it pulls and applies locally, no ssh.
 func TestSingleHostOnly(t *testing.T) {
-	if lookup("deploy") != nil {
-		t.Error("deploy must not be in the single-host registry")
+	d := lookup("deploy")
+	if d == nil || len(d.Fields) != 0 {
+		t.Error("deploy must exist and take no host arguments")
 	}
 	for _, c := range commands {
 		for _, f := range c.Fields {

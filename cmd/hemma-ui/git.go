@@ -7,12 +7,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
 
 // Change tracking: edits write straight to the repo (hemma's sync), and the
-// repo's git working tree IS the list of pending changes. apply is
+// repo's git working tree IS the list of pending changes. apply/deploy are
 // refused while it is dirty, so every change that goes live carries a commit
 // message the operator wrote. If the repo is not a git repository the gate is
 // off (nothing to commit to) and /api/changes says so.
@@ -26,6 +27,9 @@ type changes struct {
 	Git    bool     `json:"git"`
 	Files  []change `json:"files"`
 	Branch string   `json:"branch,omitempty"`
+	// HasRemote/Ahead: deploy pulls from origin and refuses unpushed commits.
+	HasRemote bool `json:"has_remote"`
+	Ahead     int  `json:"ahead"`
 }
 
 func (s *server) git(timeout time.Duration, args ...string) (string, error) {
@@ -58,7 +62,25 @@ func (s *server) changes() changes {
 	if b, err := s.git(5*time.Second, "rev-parse", "--abbrev-ref", "HEAD"); err == nil {
 		c.Branch = strings.TrimSpace(b)
 	}
+	if n, err := s.git(5*time.Second, "rev-list", "--count", "@{u}..HEAD"); err == nil {
+		c.HasRemote = true
+		c.Ahead, _ = strconv.Atoi(strings.TrimSpace(n))
+	}
 	return c
+}
+
+// handlePush pushes the current branch to its upstream. Needs git credentials
+// available inside the container (see docker-compose.ui.yml); none are stored here.
+func (s *server) handlePush(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.changes().HasRemote {
+		writeJSON(w, 400, map[string]any{"ok": false, "output": "no upstream configured for this branch — nothing to push to"})
+		return
+	}
+	out, err := s.git(2*time.Minute, "push")
+	log.Printf("push: err=%v", err)
+	writeJSON(w, 200, map[string]any{"ok": err == nil, "output": out})
 }
 
 func (s *server) handleChanges(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +93,7 @@ func (s *server) handleChanges(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleCommit(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Message string `json:"message"`
+		Push    bool   `json:"push"`
 	}
 	if json.NewDecoder(r.Body).Decode(&in) != nil {
 		writeJSON(w, 400, map[string]any{"ok": false, "output": "invalid request body"})
@@ -101,9 +124,17 @@ func (s *server) handleCommit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	log.Printf("commit: %d files", len(ch.Files))
+	if in.Push {
+		out, err := s.git(2*time.Minute, "push")
+		sb.WriteString(out)
+		if err != nil {
+			writeJSON(w, 200, map[string]any{"ok": false, "output": "committed locally, but push failed:\n" + sb.String()})
+			return
+		}
+	}
+	log.Printf("commit: %d files (push=%v)", len(ch.Files), in.Push)
 	writeJSON(w, 200, map[string]any{"ok": true, "output": sb.String()})
 }
 
 // gated reports whether a command may not run while changes are uncommitted.
-func gated(c *command) bool { return c.Key == "apply" }
+func gated(c *command) bool { return c.Key == "apply" || c.Key == "deploy" }

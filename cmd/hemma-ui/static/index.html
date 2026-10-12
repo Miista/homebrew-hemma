@@ -51,6 +51,7 @@
     <p class="meta">These changes are in the repo but not committed. They go live only after you commit them with a message.</p>
     <pre id="cfiles"></pre>
     <label>Change message *<textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
+    <label id="cpushl"><input type="checkbox" id="cpush"> Push to origin after committing (deploy pulls from origin)</label>
     <p class="err" id="cerr"></p>
     <div class="row"><button type="button" id="ccancel">Cancel</button><button class="primary" id="cgo">Commit</button></div>
   </form>
@@ -155,21 +156,28 @@ function row(cells, actions, off) {
 const cards = list => { const d = el("div"); d.className = "cards"; list.forEach(x => d.append(x)); return d; };
 // apply makes changes live, so uncommitted changes must be committed
 // (with a message) first; the server enforces the same rule.
-const GATED = ["apply"];
-const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, () => {
-  if (GATED.includes(key) && changes.files.length) openCommit(key); else openCmd(key, prefill);
+// deploy additionally needs everything pushed, because it pulls from origin.
+const GATED = ["apply", "deploy"];
+async function pushNow() {
+  const res = await post("/api/push", {}); show(res); await load(); return res.ok;
+}
+const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, async () => {
+  if (GATED.includes(key) && changes.files.length) return openCommit(key);
+  if (key === "deploy" && changes.ahead > 0 && !(confirm(`${changes.ahead} commit(s) are not pushed — deploy needs them on origin. Push now?`) && await pushNow())) return;
+  openCmd(key, prefill);
 }, "");
 
 function openCommit(then) {
   $("#cfiles").textContent = changes.files.map(f => `${f.status.padEnd(2)} ${f.path}`).join("\n");
   $("#cmsg").value = ""; $("#cerr").textContent = "";
+  $("#cpush").checked = then === "deploy"; $("#cpushl").hidden = !changes.has_remote;
   $("#cgo").textContent = then ? "Commit and continue" : "Commit";
   $("#cgo").onclick = async e => {
     e.preventDefault();
     if (!$("#cform").reportValidity()) return;
     $("#cgo").disabled = true;
     try {
-      const res = await post("/api/commit", { message: $("#cmsg").value });
+      const res = await post("/api/commit", { message: $("#cmsg").value, push: $("#cpush").checked });
       if (!res.ok) { $("#cerr").textContent = res.output; return; }
       $("#cdlg").close(); show(res); await load();
       if (then) openCmd(then);
@@ -180,11 +188,13 @@ function openCommit(then) {
 $("#ccancel").onclick = () => $("#cdlg").close();
 
 function renderBanner() {
-  const b = $("#banner"), n = changes.files.length;
-  b.hidden = !(changes.git && n);
+  const b = $("#banner"), n = changes.files.length, a = changes.ahead || 0;
+  b.hidden = !(changes.git && (n || a));
   if (b.hidden) return;
-  b.replaceChildren(el("span", `${n} uncommitted ${n === 1 ? "change" : "changes"} — apply is locked until you commit them.`),
+  if (n) b.replaceChildren(el("span", `${n} uncommitted ${n === 1 ? "change" : "changes"} — apply and deploy are locked until you commit them.`),
     btn("Review and commit", () => openCommit(null), "primary"));
+  else b.replaceChildren(el("span", `${a} commit${a === 1 ? "" : "s"} not pushed to origin — deploy needs them pushed.`),
+    btn("Push", pushNow, "primary"));
 }
 
 const VIEWS = {
@@ -213,8 +223,8 @@ const VIEWS = {
   },
   Credentials() { return [cards([cmdBtn("create app oidc"), btn("Create user", openCreateUser)]),
     el("p", "Print-only: the auth provider's config and users database are never written. Paste the output in yourself.", { className: "meta" })]; },
-  Operate() { return [cards([cmdBtn("apply")]),
-    el("p", "Apply makes the committed config live on this host: it validates, then restarts pihole, reloads caddy and restarts the auth provider.", { className: "meta" })]; },
+  Operate() { return [cards([cmdBtn("apply"), cmdBtn("deploy")]),
+    el("p", "Apply makes the committed config on this machine live. Deploy first pulls from origin (so commit and push first), then applies. Both validate, then restart pihole, reload caddy and restart the auth provider.", { className: "meta" })]; },
   Diagnose() { return [cards(["list", "verify", "measure", "doctor"].map(k => cmdBtn(k)))]; },
   About() { return [cards(["version", "help", "completion", "defaults"].map(k => cmdBtn(k)))]; },
 };

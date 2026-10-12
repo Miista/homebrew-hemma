@@ -9,8 +9,9 @@ RUN CGO_ENABLED=0 go build -o /out/hemma . \
 FROM alpine:3.21
 # docker-cli: `hemma apply` shells out to `docker exec/restart` against the host daemon.
 # git: hemma reads repo state. Both are needed at runtime.
-# bash/curl/gawk: `hemma measure`. Single-host only: no ssh client, so `hemma deploy` is out.
-RUN apk add --no-cache docker-cli git bash curl gawk
+# bash/curl/gawk: `hemma measure`. openssh-client: only for a git remote reached over ssh
+# (`deploy` pulls from origin; on a single host it never ssh's to a host).
+RUN apk add --no-cache docker-cli git bash curl gawk openssh-client
 COPY --from=build /out/hemma /out/hemma-ui /usr/local/bin/
 ENV HEMMA_REPO=/repo HEMMA_UI_ADDR=:8080
 # Needs host networking so `apply` can match this machine's IP to a host in
