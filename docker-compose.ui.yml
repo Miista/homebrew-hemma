@@ -1,0 +1,15 @@
+# hemma-ui — single-host web UI. Run on the host that runs pihole/caddy.
+# Set HEMMA_UI_PASSWORD in the environment (or an .env file); the UI refuses to start without it.
+# Put it behind your Caddy (TLS) and keep it LAN-only: the Docker socket mount below
+# gives this container root-equivalent control of the host.
+services:
+  hemma-ui:
+    build: { context: ., dockerfile: Dockerfile.ui }
+    network_mode: host            # apply identifies the host by local IP
+    environment:
+      HEMMA_UI_PASSWORD: ${HEMMA_UI_PASSWORD:?set HEMMA_UI_PASSWORD}
+      HEMMA_UI_ADDR: ":8080"
+    volumes:
+      - ${HEMMA_REPO_DIR:?set HEMMA_REPO_DIR}:/repo
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped

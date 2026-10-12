@@ -1,0 +1,17 @@
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /out/hemma . \
+ && CGO_ENABLED=0 go build -o /out/hemma-ui ./cmd/hemma-ui
+
+FROM alpine:3.21
+# docker-cli: `hemma apply` shells out to `docker exec/restart` against the host daemon.
+# git: hemma reads repo state. Both are needed at runtime.
+RUN apk add --no-cache docker-cli git
+COPY --from=build /out/hemma /out/hemma-ui /usr/local/bin/
+ENV HEMMA_REPO=/repo HEMMA_UI_ADDR=:8080
+# Needs host networking so `apply` can match this machine's IP to a host in
+# services.yaml; see docker-compose.ui.yml.
+ENTRYPOINT ["hemma-ui"]

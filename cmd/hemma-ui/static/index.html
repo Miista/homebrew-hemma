@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>hemma</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #8884; }
+  tr.off td { opacity: .5; }
+  button { padding: .35rem .8rem; cursor: pointer; }
+  button.primary { font-weight: 600; }
+  dialog { min-width: min(480px, 92vw); }
+  label { display: block; margin: .6rem 0 .2rem; font-size: .85rem; }
+  input:not([type=checkbox]), select { width: 100%; padding: .35rem; box-sizing: border-box; }
+  pre { background: #8882; padding: .8rem; overflow: auto; max-height: 24rem; white-space: pre-wrap; }
+  .err { color: #c33; } .meta { opacity: .7; font-size: .85rem; }
+  .row { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>hemma</h1>
+  <div><button id="add">Add service</button> <button id="apply" class="primary">Apply changes</button></div>
+</header>
+<p class="meta" id="summary"></p>
+<table>
+  <thead><tr><th>Name</th><th>FQDN</th><th>Host</th><th>Backend</th><th>Auth</th><th>Internet</th><th></th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<pre id="out" hidden></pre>
+
+<dialog id="dlg">
+  <form method="dialog" id="form">
+    <h2 id="dtitle"></h2>
+    <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._-]*"></label>
+    <label>FQDN <input name="fqdn" required placeholder="app.example.com"></label>
+    <label>Host <select name="host" required></select></label>
+    <label>Backend <input name="backend" required placeholder="container:port"></label>
+    <label>Auth <select name="auth_mode">
+      <option value="none">none</option><option value="forward">forward</option>
+      <option value="oidc">oidc</option><option value="external">external</option></select></label>
+    <label>Auth groups (comma-separated) <input name="auth_groups"></label>
+    <label><input type="checkbox" name="tunnel"> Reachable from the internet (tunnel)</label>
+    <p class="err" id="derr"></p>
+    <div class="row"><button type="button" id="cancel">Cancel</button><button class="primary" id="save">Save</button></div>
+  </form>
+</dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+let state = { services: [], hosts: {}, domains: [] };
+
+async function api(method, url, body) {
+  const r = await fetch(url, { method, headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok && r.status !== 200) throw new Error(await r.text());
+  return r.json();
+}
+function show(res) {
+  const o = $("#out"); o.hidden = false; o.className = res.ok ? "" : "err";
+  o.textContent = (res.ok ? "OK\n" : "FAILED\n") + (res.output || res.error || "");
+}
+function td(tr, text) { const c = document.createElement("td"); c.textContent = text; tr.append(c); return c; }
+function btn(label, fn) { const b = document.createElement("button"); b.textContent = label; b.onclick = fn; return b; }
+
+function render() {
+  $("#summary").textContent = `${state.services.length} services · ${Object.keys(state.hosts).length} hosts · ${state.domains.join(", ")}`;
+  const body = $("#rows"); body.replaceChildren();
+  for (const s of state.services) {
+    const tr = document.createElement("tr"); if (s.disabled) tr.className = "off";
+    td(tr, s.name); td(tr, s.fqdn); td(tr, s.host); td(tr, s.backend);
+    td(tr, s.auth_mode || "none"); td(tr, s.tunnel ? "yes" : "no");
+    const act = td(tr, "");
+    act.append(btn("Edit", () => edit(s)),
+      btn(s.disabled ? "Enable" : "Disable", () => act2(s.name, s.disabled ? "enable" : "disable")),
+      btn("Remove", () => { if (confirm(`Remove ${s.name}?`)) del(s.name); }));
+    body.append(tr);
+  }
+}
+async function load() {
+  try { state = await api("GET", "/api/state"); if (state.error) throw new Error(state.error); render(); }
+  catch (e) { show({ ok: false, error: String(e) }); }
+}
+async function act2(name, action) { show(await api("POST", `/api/services/${name}/${action}`)); load(); }
+async function del(name) { show(await api("DELETE", `/api/services/${name}`)); load(); }
+
+function edit(s) {
+  const f = $("#form"); f.reset(); $("#derr").textContent = "";
+  $("#dtitle").textContent = s ? `Edit ${s.name}` : "Add service";
+  f.host.replaceChildren(...Object.keys(state.hosts).map(h => new Option(h, h)));
+  f.name.readOnly = !!s;
+  if (s) {
+    f.name.value = s.name; f.fqdn.value = s.fqdn; f.host.value = s.host; f.backend.value = s.backend;
+    f.auth_mode.value = s.auth_mode || "none"; f.auth_groups.value = (s.auth_groups || []).join(","); f.tunnel.checked = s.tunnel;
+  }
+  f._orig = s || null;
+  $("#dlg").showModal();
+}
+$("#add").onclick = () => edit(null);
+$("#cancel").onclick = () => $("#dlg").close();
+$("#save").onclick = async e => {
+  e.preventDefault();
+  const f = $("#form"); if (!f.reportValidity()) return;
+  const o = f._orig || {};
+  const body = { fqdn: f.fqdn.value.trim(), host: f.host.value, backend: f.backend.value.trim(),
+    auth_mode: f.auth_mode.value, tunnel: f.tunnel.checked,
+    auth_groups: f.auth_groups.value.split(",").map(x => x.trim()).filter(Boolean),
+    // not editable in this MVP — carried over so an edit never drops them
+    bypass_paths: o.bypass_paths || [], policy_local: o.policy_local || "", policy_public: o.policy_public || "" };
+  const res = await api("PUT", `/api/services/${f.name.value}`, body);
+  if (!res.ok) { $("#derr").textContent = res.output || res.error; return; }
+  $("#dlg").close(); show(res); load();
+};
+$("#apply").onclick = async () => {
+  if (!confirm("Apply to this host? This restarts pihole and reloads caddy.")) return;
+  $("#apply").disabled = true; try { show(await api("POST", "/api/apply")); } finally { $("#apply").disabled = false; }
+};
+load();
+</script>
+</body>
+</html>
