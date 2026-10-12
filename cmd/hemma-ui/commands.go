@@ -41,7 +41,6 @@ type command struct {
 var (
 	authModes = []string{"", "none", "forward", "oidc", "external"}
 	levels    = []string{"", "bypass", "one_factor", "two_factor", "deny"}
-	nameRe    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	posRe     = regexp.MustCompile(`^[^\s\x00-\x1f-][^\s\x00-\x1f]*$`)
 )
 
@@ -87,10 +86,7 @@ var commands = []command{
 		{Name: "key", Label: "Setting", Kind: "pos", Required: true, Options: []string{"dns-host", "auth-snippet", "auth-service", "local-networks", "tunnel-dir"}},
 		{Name: "value", Label: "Value ('-' clears)", Kind: "pos", Required: true}}},
 
-	{Words: []string{"create", "app", "oidc"}, Group: "Credentials", Title: "Create OIDC app credentials", Fields: []field{pos("app_name", "App name", true), pos("callback_path", "Callback path", false)},
-		Help: "Prints a client id, secret and config snippet. The secret is shown once and not stored."},
-
-	{Words: []string{"apply"}, Group: "Operate", Title: "Apply to this host", Timeout: 5 * time.Minute, Fields: nil,
+	{Words: []string{"apply"}, Group: "Operate", Title: "Apply on this host", Timeout: 5 * time.Minute, Fields: nil,
 		Confirm: "Apply now? This restarts pihole, reloads caddy and restarts the auth provider on this host."},
 
 	// deploy on a single host: `git pull --ff-only` from origin, then apply — all local, no ssh

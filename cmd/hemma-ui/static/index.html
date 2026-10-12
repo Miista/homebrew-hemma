@@ -24,6 +24,7 @@
   .row { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
   .cards { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0; }
   .banner { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .6rem .9rem; margin: 1rem 0; border: 1px solid #d90; border-radius: 6px; background: #fa02; }
+  [hidden] { display: none !important; } /* class display rules (.banner) must not defeat `hidden` */
   textarea { width: 100%; box-sizing: border-box; padding: .35rem; font: inherit; }
 </style>
 </head>
@@ -53,7 +54,7 @@
     <label>Change message *<textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
     <label id="cpushl"><input type="checkbox" id="cpush"> Push to origin after committing (deploy pulls from origin)</label>
     <p class="err" id="cerr"></p>
-    <div class="row"><button type="button" id="ccancel">Cancel</button><button class="primary" id="cgo">Commit</button></div>
+    <div class="row"><button type="button" id="ccancel">Cancel</button><button id="cgo">Commit</button><button class="primary" id="cdeploy">Commit and deploy</button></div>
   </form>
 </dialog>
 
@@ -63,7 +64,7 @@ let changes = { git: false, files: [] };
 let state = { services: [], hosts: [], domains: [], defaults: {} };
 let cmds = {};
 let tab = "Services";
-const TABS = ["Services", "Hosts", "Domains", "Defaults", "Credentials", "Operate", "Diagnose", "About"];
+const TABS = ["Services", "Hosts", "Domains", "Defaults", "Diagnose", "About"];
 
 async function post(url, body) {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -127,22 +128,6 @@ function openCmd(key, prefill = {}) {
 }
 $("#cancel").onclick = () => $("#dlg").close();
 
-function openCreateUser() {
-  const f = $("#form"); $("#dtitle").textContent = "Create user"; $("#derr").textContent = "";
-  $("#dhelp").textContent = "Prints a users-database entry to paste in. The password is hashed here and never stored or logged.";
-  const box = $("#fields"); box.replaceChildren();
-  const mk = (name, label, type) => { const i = el("input", null, { type, required: true, autocomplete: "off" }); const l = el("label", label); l.append(i); box.append(l); return i; };
-  const u = mk("u", "Username", "text"), m = mk("e", "Email", "email"), p = mk("p", "Password", "password"), c = mk("c", "Retype password", "password");
-  $("#go").onclick = async e => {
-    e.preventDefault(); if (!f.reportValidity()) return;
-    const res = await post("/api/create-user", { Username: u.value, Email: m.value, Password: p.value, Confirm: c.value });
-    p.value = c.value = "";
-    if (!res.ok) { $("#derr").textContent = res.output; return; }
-    $("#dlg").close(); show(res);
-  };
-  $("#dlg").showModal();
-}
-
 function table(headers, rows) {
   const t = el("table"), h = el("tr"); headers.forEach(x => h.append(el("th", x)));
   t.append(el("thead")); t.firstChild.append(h);
@@ -154,47 +139,59 @@ function row(cells, actions, off) {
   const a = el("td"); (actions || []).forEach(x => a.append(x)); tr.append(a); return tr;
 }
 const cards = list => { const d = el("div"); d.className = "cards"; list.forEach(x => d.append(x)); return d; };
-// apply makes changes live, so uncommitted changes must be committed
-// (with a message) first; the server enforces the same rule.
-// deploy additionally needs everything pushed, because it pulls from origin.
-const GATED = ["apply", "deploy"];
-async function pushNow() {
-  const res = await post("/api/push", {}); show(res); await load(); return res.ok;
-}
-const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, async () => {
-  if (GATED.includes(key) && changes.files.length) return openCommit(key);
-  if (key === "deploy" && changes.ahead > 0 && !(confirm(`${changes.ahead} commit(s) are not pushed — deploy needs them on origin. Push now?`) && await pushNow())) return;
+// Going live needs a clean tree: uncommitted changes must be committed (with a message) first.
+// The server enforces the same rule, so this is only the friendly path.
+const GATED = ["apply"];
+const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, () => {
+  if (GATED.includes(key) && changes.files.length) return openCommit();
   openCmd(key, prefill);
 }, "");
 
-function openCommit(then) {
+async function pushNow() {
+  const res = await post("/api/push", {}); show(res); await load(); return res.ok;
+}
+// goLive deploys: pull from origin, then apply. With no origin there is nothing to pull, so it
+// just applies this machine's committed config. Unpushed commits are pushed first (with consent).
+async function goLive() {
+  const key = changes.has_remote ? "deploy" : "apply";
+  if (changes.has_remote && changes.ahead > 0 &&
+      !(confirm(`${changes.ahead} commit(s) are not on origin yet — push them first?`) && await pushNow())) return;
+  await run(key, {}, cmds[key].confirm);
+}
+
+// openCommit: write the change message; optionally carry straight on to deploying.
+function openCommit() {
   $("#cfiles").textContent = changes.files.map(f => `${f.status.padEnd(2)} ${f.path}`).join("\n");
   $("#cmsg").value = ""; $("#cerr").textContent = "";
-  $("#cpush").checked = then === "deploy"; $("#cpushl").hidden = !changes.has_remote;
-  $("#cgo").textContent = then ? "Commit and continue" : "Commit";
-  $("#cgo").onclick = async e => {
-    e.preventDefault();
+  $("#cpush").checked = false; $("#cpushl").hidden = !changes.has_remote;
+  $("#cdeploy").textContent = changes.has_remote ? "Commit and deploy" : "Commit and apply";
+  const submit = async andLive => {
     if (!$("#cform").reportValidity()) return;
-    $("#cgo").disabled = true;
+    $("#cgo").disabled = $("#cdeploy").disabled = true;
     try {
-      const res = await post("/api/commit", { message: $("#cmsg").value, push: $("#cpush").checked });
+      // Deploying pulls from origin, so "commit and deploy" always pushes when there is one.
+      const push = andLive ? changes.has_remote : $("#cpush").checked;
+      const res = await post("/api/commit", { message: $("#cmsg").value, push });
       if (!res.ok) { $("#cerr").textContent = res.output; return; }
       $("#cdlg").close(); show(res); await load();
-      if (then) openCmd(then);
-    } finally { $("#cgo").disabled = false; }
+      if (andLive) await goLive();
+    } finally { $("#cgo").disabled = $("#cdeploy").disabled = false; }
   };
+  $("#cgo").onclick = e => { e.preventDefault(); submit(false); };
+  $("#cdeploy").onclick = e => { e.preventDefault(); submit(true); };
   $("#cdlg").showModal();
 }
 $("#ccancel").onclick = () => $("#cdlg").close();
 
+// The banner lives on the Services page and only appears when there is something to deploy.
 function renderBanner() {
-  const b = $("#banner"), n = changes.files.length, a = changes.ahead || 0;
-  b.hidden = !(changes.git && (n || a));
+  const b = $("#banner"), n = changes.files.length;
+  b.hidden = tab !== "Services" || !changes.git || !(n || changes.undeployed);
   if (b.hidden) return;
-  if (n) b.replaceChildren(el("span", `${n} uncommitted ${n === 1 ? "change" : "changes"} — apply and deploy are locked until you commit them.`),
-    btn("Review and commit", () => openCommit(null), "primary"));
-  else b.replaceChildren(el("span", `${a} commit${a === 1 ? "" : "s"} not pushed to origin — deploy needs them pushed.`),
-    btn("Push", pushNow, "primary"));
+  if (n) b.replaceChildren(el("span", `${n} uncommitted ${n === 1 ? "change" : "changes"} — commit them to deploy.`),
+    btn("Review and commit", openCommit, "primary"));
+  else b.replaceChildren(el("span", "Committed changes have not been deployed yet."),
+    btn(changes.has_remote ? "Deploy" : "Apply", goLive, "primary"));
 }
 
 const VIEWS = {
@@ -221,11 +218,8 @@ const VIEWS = {
     const rows = Object.entries(state.defaults).map(([k, v]) => row([k, v || "(unset)"], [btn("Change", () => openCmd("defaults set", { key: k, value: v, __lock: "key" }))]));
     return [table(["Setting", "Value", ""], rows)];
   },
-  Credentials() { return [cards([cmdBtn("create app oidc"), btn("Create user", openCreateUser)]),
-    el("p", "Print-only: the auth provider's config and users database are never written. Paste the output in yourself.", { className: "meta" })]; },
-  Operate() { return [cards([cmdBtn("apply"), cmdBtn("deploy")]),
-    el("p", "Apply makes the committed config on this machine live. Deploy first pulls from origin (so commit and push first), then applies. Both validate, then restart pihole, reload caddy and restart the auth provider.", { className: "meta" })]; },
-  Diagnose() { return [cards(["list", "verify", "measure", "doctor"].map(k => cmdBtn(k)))]; },
+  Diagnose() { return [cards(["list", "verify", "measure", "doctor", "apply"].map(k => cmdBtn(k))),
+    el("p", "Apply re-applies the committed config on this machine without pulling. Deploying new changes is done from the Services page.", { className: "meta" })]; },
   About() { return [cards(["version", "help", "completion", "defaults"].map(k => cmdBtn(k)))]; },
 };
 
@@ -234,13 +228,14 @@ function render() {
   const nav = $("#tabs"); nav.replaceChildren();
   TABS.forEach(t => nav.append(btn(t, () => { tab = t; render(); }, t === tab ? "on" : "")));
   $("#view").replaceChildren(...VIEWS[tab]());
+  renderBanner();
 }
 async function load() {
   const r = await fetch("/api/state"); const s = await r.json();
   if (s.error) { show({ ok: false, output: s.error }); return; }
   state = s;
   changes = await (await fetch("/api/changes")).json();
-  render(); renderBanner();
+  render();
 }
 (async () => {
   const list = await (await fetch("/api/commands")).json();

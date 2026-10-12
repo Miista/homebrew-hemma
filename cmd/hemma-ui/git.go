@@ -30,6 +30,19 @@ type changes struct {
 	// HasRemote/Ahead: deploy pulls from origin and refuses unpushed commits.
 	HasRemote bool `json:"has_remote"`
 	Ahead     int  `json:"ahead"`
+	// Undeployed: HEAD is not the commit last made live through this UI. Tracked in a
+	// private ref (refs/hemma/deployed) — inside .git, so it neither dirties the tree
+	// nor gets pushed. With no ref yet (never deployed from here) it reads as undeployed.
+	Undeployed bool `json:"undeployed"`
+}
+
+const deployedRef = "refs/hemma/deployed"
+
+// recordDeployed marks the current HEAD as live. Called after a successful apply/deploy.
+func (s *server) recordDeployed() {
+	if _, err := s.git(10*time.Second, "update-ref", deployedRef, "HEAD"); err != nil {
+		log.Printf("could not record deployed commit: %v", err)
+	}
 }
 
 func (s *server) git(timeout time.Duration, args ...string) (string, error) {
@@ -61,6 +74,10 @@ func (s *server) changes() changes {
 	}
 	if b, err := s.git(5*time.Second, "rev-parse", "--abbrev-ref", "HEAD"); err == nil {
 		c.Branch = strings.TrimSpace(b)
+	}
+	if head, err := s.git(5*time.Second, "rev-parse", "HEAD"); err == nil {
+		dep, _ := s.git(5*time.Second, "rev-parse", "--verify", "--quiet", deployedRef)
+		c.Undeployed = strings.TrimSpace(dep) != strings.TrimSpace(head)
 	}
 	if n, err := s.git(5*time.Second, "rev-list", "--count", "@{u}..HEAD"); err == nil {
 		c.HasRemote = true

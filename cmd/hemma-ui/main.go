@@ -2,8 +2,8 @@
 // It never writes generated files or services.yaml itself — every command is
 // run through the hemma binary from an allowlist (commands.go), so validation
 // and the single-writer invariant (design §6) stay exactly as on the CLI.
-// `create user` is the one exception: the CLI form is terminal-only, so it
-// calls the same auth-package hashing directly (print-only, nothing stored).
+// Credential minting (create app/user) is deliberately not exposed: its output
+// is secret material to paste elsewhere, which a browser can't act on.
 package main
 
 import (
@@ -20,7 +20,6 @@ import (
 	"strings"
 	"sync"
 
-	"hemma/internal/auth"
 	"hemma/internal/config"
 )
 
@@ -50,7 +49,6 @@ func main() {
 	mux.HandleFunc("POST /api/commit", s.handleCommit)
 	mux.HandleFunc("POST /api/push", s.handlePush)
 	mux.HandleFunc("POST /api/run", s.runCommand)
-	mux.HandleFunc("POST /api/create-user", s.createUser)
 	addr := env("HEMMA_UI_ADDR", ":8080")
 	log.Printf("hemma-ui listening on %s (repo %s)", addr, s.repo)
 	log.Fatal(http.ListenAndServe(addr, guard(pw, mux)))
@@ -65,7 +63,7 @@ func env(k, def string) string {
 
 // guard enforces HTTP basic auth (username "admin") and, for mutating
 // requests, a same-origin check so a page on another site cannot drive it.
-// Responses are never cached: they can carry credentials (create app oidc).
+// Responses are never cached: command output can include config and file paths.
 func guard(pw string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, p, ok := r.BasicAuth()
@@ -168,35 +166,10 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 	out, err := cmd.CombinedOutput()
 	// Log the command key only: arguments and output can carry secrets.
 	log.Printf("run %q -> err=%v", c.Key, err)
+	if err == nil && gated(c) {
+		s.recordDeployed() // what is live now: the banner stops offering a deploy
+	}
 	writeJSON(w, 200, map[string]any{"ok": err == nil, "output": string(out)})
-}
-
-// createUser hashes a password and returns the users-database snippet. The
-// password lives only in this request: it is not logged, stored or passed via
-// argv. Serve the UI over TLS (see compose notes) so it isn't sent in clear.
-func (s *server) createUser(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Username, Email, Password, Confirm string }
-	if json.NewDecoder(r.Body).Decode(&in) != nil {
-		writeJSON(w, 400, map[string]any{"ok": false, "output": "invalid request body"})
-		return
-	}
-	switch {
-	case !nameRe.MatchString(in.Username):
-		writeJSON(w, 400, map[string]any{"ok": false, "output": "invalid username"})
-	case !strings.Contains(in.Email, "@") || strings.ContainsAny(in.Email, " \r\n"):
-		writeJSON(w, 400, map[string]any{"ok": false, "output": "enter a valid email address"})
-	case in.Password == "" || in.Password != in.Confirm:
-		writeJSON(w, 400, map[string]any{"ok": false, "output": "the passwords are empty or do not match"})
-	default:
-		p := auth.Default()
-		digest, err := p.HashUserPassword(in.Password)
-		if err != nil {
-			writeJSON(w, 500, map[string]any{"ok": false, "output": err.Error()})
-			return
-		}
-		log.Printf("create user: hashed password for a new user")
-		writeJSON(w, 200, map[string]any{"ok": true, "output": "Created user " + in.Username + "\n\n" + p.UserSnippet(in.Username, strings.TrimSpace(in.Email), digest)})
-	}
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

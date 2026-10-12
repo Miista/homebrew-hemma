@@ -73,6 +73,15 @@ func TestSingleHostOnly(t *testing.T) {
 	}
 }
 
+// Credential minting prints secrets the browser can't act on: it stays CLI-only.
+func TestNoCredentialMinting(t *testing.T) {
+	for _, k := range []string{"create app oidc", "create user"} {
+		if lookup(k) != nil {
+			t.Errorf("%q must not be exposed", k)
+		}
+	}
+}
+
 func TestRegistryUniqueKeys(t *testing.T) {
 	seen := map[string]bool{}
 	for _, c := range commands {
