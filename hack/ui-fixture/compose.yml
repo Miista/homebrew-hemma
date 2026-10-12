@@ -2,6 +2,7 @@
 # except the UI on 127.0.0.1:18080. Synthetic data only — run setup.sh first.
 #   pihole, cloudflared: stubs (just need to answer `docker restart`)
 #   caddy:               the real image, so `caddy validate` / `caddy reload` genuinely run
+#   authelia (optional): stub with a fake `authelia config validate` — profile "auth", see README
 name: hemma-fixture
 services:
   pihole:
@@ -14,6 +15,17 @@ services:
     image: alpine:3.21
     command: sleep infinity
     networks: { fx: { ipv4_address: 172.28.0.13 } }
+  # OPTIONAL (profile "auth"): stand-in auth provider. Only used when the repo was built with
+  # `./setup.sh --with-auth`; start with `docker compose --profile auth up -d`.
+  # The container name must equal the auth service's name in services.yaml.
+  authelia:
+    profiles: ["auth"]
+    container_name: authelia
+    image: alpine:3.21
+    command: sleep infinity
+    volumes:
+      - ./authelia-stub.sh:/usr/local/bin/authelia:ro
+    networks: { fx: { ipv4_address: 172.28.0.14 } }
   caddy:
     container_name: caddy
     image: caddy:2-alpine

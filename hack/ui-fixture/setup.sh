@@ -2,7 +2,19 @@
 # Builds a SYNTHETIC homelab repo + local bare remote under .work/ for exercising
 # hemma-ui end to end (apply, deploy) without touching any real host or data.
 # Everything here is fake: RFC 5737-style addresses, a throwaway self-signed cert.
+#
+#   ./setup.sh              base fixture (pihole, caddy, cloudflared)
+#   ./setup.sh --with-auth  OPTIONAL: also declare an auth service so apply/deploy
+#                           exercise the auth-provider step. Start compose with
+#                           `--profile auth` to match, or apply fails on the missing container.
 set -euo pipefail
+
+with_auth=0
+case "${1:-}" in
+  "") ;;
+  --with-auth) with_auth=1 ;;
+  *) echo "usage: $0 [--with-auth]" >&2; exit 2 ;;
+esac
 
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
@@ -29,11 +41,13 @@ domains:
 defaults:
     dns_host: pi
     tunnel_dir: cloudflared
+$([ "$with_auth" = 1 ] && echo "    auth_service: authelia")
 services:
     demo:
         fqdn: demo.example.com
         host: pi
         backend: demo:80
+$([ "$with_auth" = 1 ] && printf '    authelia:\n        fqdn: auth.example.com\n        host: pi\n        backend: authelia:9091\n')
 EOF
 
 # Throwaway self-signed cert at the path hemma's TLS snippet expects.
