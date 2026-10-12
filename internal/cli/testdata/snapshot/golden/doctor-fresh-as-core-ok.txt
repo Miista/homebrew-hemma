@@ -1,0 +1,64 @@
+$ hemma doctor
+# machine: host="core" tools="ok"
+exit: 1
+--- stdout ---
+✓ No generated files are gitignored.
+✗ 43 generated files out of sync with services.yaml:
+  - missing:  core/authelia/data/config/hemma.access_control.generated.yml
+  - missing:  core/caddy/data/hemma.auth.generated.caddy
+  - missing:  core/caddy/data/hemma.generated.caddy
+  - missing:  core/caddy/data/hemma.trusted_proxies.generated.caddy
+  - missing:  core/caddy/data/sites/home.caddy
+  - missing:  core/caddy/data/sites/homepage.caddy
+  - missing:  core/caddy/data/sites/panel.caddy
+  - missing:  core/caddy/data/sites/registry.caddy
+  - missing:  core/caddy/data/sites/sso.caddy
+  - missing:  core/caddy/data/sites/status.caddy
+  - missing:  core/caddy/data/tls/tls_home_example.caddy
+  - missing:  core/cloudflared/config.yml
+  - missing:  core/pihole/data/dnsmasq.d/chat.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/dash.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/downloads.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/home.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/homepage.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/indexer.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/media.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/music.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/panel.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/registry.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/robot.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/speed.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/sso.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/status.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/wiki.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/wikijs.generated.conf
+  - missing:  edge/caddy/data/hemma.auth.generated.caddy
+  - missing:  edge/caddy/data/hemma.generated.caddy
+  - missing:  edge/caddy/data/hemma.trusted_proxies.generated.caddy
+  - missing:  edge/caddy/data/sites/chat.caddy
+  - missing:  edge/caddy/data/sites/dash.caddy
+  - missing:  edge/caddy/data/sites/downloads.caddy
+  - missing:  edge/caddy/data/sites/indexer.caddy
+  - missing:  edge/caddy/data/sites/media.caddy
+  - missing:  edge/caddy/data/sites/music.caddy
+  - missing:  edge/caddy/data/sites/robot.caddy
+  - missing:  edge/caddy/data/sites/speed.caddy
+  - missing:  edge/caddy/data/sites/wiki.caddy
+  - missing:  edge/caddy/data/sites/wikijs.caddy
+  - missing:  edge/caddy/data/tls/tls_home_example.caddy
+  - missing:  edge/cloudflared/config.yml
+
+Run 'hemma doctor --fix' to reconcile (regenerate missing/modified, remove orphaned).
+✓ Deploy readiness: 1 remote host in known_hosts.
+
+⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
+
+⚠ could not verify OIDC client for wikijs: open core/authelia/data/config/configuration.yml: no such file or directory
+
+⚠ could not verify that Authelia loads the generated hemma.access_control.generated.yml: open core/docker-compose.yml: no such file or directory
+
+These advisories require manual edits (see their fix: lines) — 'hemma doctor --fix' does not resolve them.
+--- stderr ---
+--- external commands ---
+git -C <repo> check-ignore --stdin
+--- files ---

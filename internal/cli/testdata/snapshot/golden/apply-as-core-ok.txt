@@ -1,0 +1,34 @@
+$ hemma apply
+# setup: doctor --fix
+# machine: host="core" tools="ok"
+exit: 0
+--- stdout ---
+Running on host "core".
+
+== Validate (core) ==
+  ✓ Caddyfile imports hemma.trusted_proxies.generated.caddy
+  ✓ caddy validate passes
+  ✓ sso config validate passes
+
+== DNS (core) ==
+  ✓ restarted pihole
+
+== Caddy (core) ==
+  ✓ caddy reloaded
+
+== Auth (sso) ==
+  ✓ sso reloaded
+
+== Tunnel (core) ==
+  ✓ restarted cloudflared
+
+Applied.
+--- stderr ---
+--- external commands ---
+docker exec caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec sso authelia config validate
+docker restart pihole
+docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+docker restart sso
+docker restart cloudflared
+--- files ---

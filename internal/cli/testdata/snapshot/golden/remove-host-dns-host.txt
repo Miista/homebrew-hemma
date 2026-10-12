@@ -1,0 +1,8 @@
+$ hemma remove host core
+# setup: doctor --fix
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Host "core" is still referenced by 17 services: chat, dash, downloads, home, homepage, indexer, media, music, panel, registry, robot, shelf, speed, sso, status, wiki, wikijs.
+Reassign or remove those services first.
+--- files ---

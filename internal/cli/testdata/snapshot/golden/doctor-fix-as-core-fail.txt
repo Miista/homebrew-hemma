@@ -1,0 +1,63 @@
+$ hemma doctor --fix
+# machine: host="core" tools="fail"
+exit: 0
+--- stdout ---
+✓ No generated files are gitignored.
+✓ Reconciled 43 generated files (43 created, 0 updated, 0 removed).
+✓ Deploy readiness: 1 remote host in known_hosts.
+
+⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
+
+⚠ could not verify OIDC client for wikijs: open core/authelia/data/config/configuration.yml: no such file or directory
+
+⚠ could not verify that Authelia loads the generated hemma.access_control.generated.yml: open core/docker-compose.yml: no such file or directory
+
+These advisories require manual edits (see their fix: lines) — 'hemma doctor --fix' does not resolve them.
+--- stderr ---
+--- external commands ---
+git -C <repo> check-ignore --stdin
+--- files ---
++ core/authelia/data/config/hemma.access_control.generated.yml cdc8708c21a5
++ core/caddy/data/hemma.auth.generated.caddy 171ae1603e0e
++ core/caddy/data/hemma.generated.caddy 356447515900
++ core/caddy/data/hemma.trusted_proxies.generated.caddy 6ec4ce478142
++ core/caddy/data/sites/home.caddy 146310cc5667
++ core/caddy/data/sites/homepage.caddy e14d668a4531
++ core/caddy/data/sites/panel.caddy d80d63131c83
++ core/caddy/data/sites/registry.caddy 7c16f7c29f27
++ core/caddy/data/sites/sso.caddy d6f1d5e4e13d
++ core/caddy/data/sites/status.caddy 92e99857488d
++ core/caddy/data/tls/tls_home_example.caddy 2dbd6138e789
++ core/cloudflared/config.yml 138943c623b2
++ core/pihole/data/dnsmasq.d/chat.generated.conf e2fe254f5eaa
++ core/pihole/data/dnsmasq.d/dash.generated.conf ebe21c0af1a5
++ core/pihole/data/dnsmasq.d/downloads.generated.conf f5fd79710ba9
++ core/pihole/data/dnsmasq.d/home.generated.conf fc5f43086421
++ core/pihole/data/dnsmasq.d/homepage.generated.conf a8b08b585383
++ core/pihole/data/dnsmasq.d/indexer.generated.conf fbdbe437aa14
++ core/pihole/data/dnsmasq.d/media.generated.conf 2abff58d132f
++ core/pihole/data/dnsmasq.d/music.generated.conf 9eb00f6266c2
++ core/pihole/data/dnsmasq.d/panel.generated.conf 1e4327e386cf
++ core/pihole/data/dnsmasq.d/registry.generated.conf 33a6a14119e6
++ core/pihole/data/dnsmasq.d/robot.generated.conf b09b382ff4fc
++ core/pihole/data/dnsmasq.d/speed.generated.conf b3585fd7de81
++ core/pihole/data/dnsmasq.d/sso.generated.conf 5433cee68593
++ core/pihole/data/dnsmasq.d/status.generated.conf 663cfdc4b90a
++ core/pihole/data/dnsmasq.d/wiki.generated.conf c35fb99d0f7f
++ core/pihole/data/dnsmasq.d/wikijs.generated.conf 4290148ee2fe
++ edge/caddy/data/hemma.auth.generated.caddy 1fd3aa7b2b44
++ edge/caddy/data/hemma.generated.caddy 356447515900
++ edge/caddy/data/hemma.trusted_proxies.generated.caddy 6ec4ce478142
++ edge/caddy/data/sites/chat.caddy 114a2f1bf52f
++ edge/caddy/data/sites/dash.caddy 2d8134873552
++ edge/caddy/data/sites/downloads.caddy 991976936242
++ edge/caddy/data/sites/indexer.caddy d9aa2fea6347
++ edge/caddy/data/sites/media.caddy fc01fd7075b7
++ edge/caddy/data/sites/music.caddy 73b493e367ab
++ edge/caddy/data/sites/robot.caddy d257d01454a5
++ edge/caddy/data/sites/speed.caddy e481c91d8ab6
++ edge/caddy/data/sites/wiki.caddy 4125521cfb05
++ edge/caddy/data/sites/wikijs.caddy 10af9b812c9e
++ edge/caddy/data/tls/tls_home_example.caddy 2dbd6138e789
++ edge/cloudflared/config.yml c108894dc88b
++ hemma-manifest.yaml bbc171ad3bc0

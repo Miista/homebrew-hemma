@@ -1,0 +1,24 @@
+$ hemma apply
+# setup: doctor --fix
+# machine: host="edge" tools="ok"
+exit: 0
+--- stdout ---
+Running on host "edge".
+
+== Validate (edge) ==
+  ✓ Caddyfile imports hemma.trusted_proxies.generated.caddy
+  ✓ caddy validate passes
+
+== Caddy (edge) ==
+  ✓ caddy reloaded
+
+== Tunnel (edge) ==
+  ✓ restarted cloudflared
+
+Applied.
+--- stderr ---
+--- external commands ---
+docker exec caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+docker restart cloudflared
+--- files ---

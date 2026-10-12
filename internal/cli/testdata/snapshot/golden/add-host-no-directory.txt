@@ -1,0 +1,7 @@
+$ hemma add host lab 192.0.2.30
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: No directory "lab" in the repo.
+A host's name is its repo directory, which must already exist. Check the name for a typo.
+--- files ---

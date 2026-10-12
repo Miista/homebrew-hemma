@@ -1,0 +1,7 @@
+$ hemma measure --compare dash
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: --compare must run on the dns-host (core): the public-IP lookup uses DoH, which only the resolver may reach on this network.
+Run 'hemma measure --compare' here for a single (split-horizon) measurement, or run --compare on core.
+--- files ---

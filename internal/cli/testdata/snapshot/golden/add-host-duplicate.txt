@@ -1,0 +1,6 @@
+$ hemma add host edge 192.0.2.99
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Host "edge" already exists.
+--- files ---

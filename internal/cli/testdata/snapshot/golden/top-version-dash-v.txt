@@ -1,0 +1,6 @@
+$ hemma -v
+exit: 0
+--- stdout ---
+hemma dev
+--- stderr ---
+--- files ---

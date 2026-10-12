@@ -1,0 +1,7 @@
+$ hemma update host
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the <name>.
+Usage: hemma update host <name> [--ip <ip>] [--ssh <dest>] [--trusted-proxies <list>]
+--- files ---

@@ -1,0 +1,6 @@
+$ hemma update host edge --ip nope
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: "nope" is not a valid IP address.
+--- files ---

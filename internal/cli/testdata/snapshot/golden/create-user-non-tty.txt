@@ -1,0 +1,6 @@
+$ hemma create user bob
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: create user is interactive — run it from a terminal.
+--- files ---

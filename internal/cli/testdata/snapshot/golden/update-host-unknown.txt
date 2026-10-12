@@ -1,0 +1,6 @@
+$ hemma update host nowhere --ip 192.0.2.50
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Host "nowhere" does not exist.
+--- files ---

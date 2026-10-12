@@ -1,0 +1,8 @@
+$ hemma help remove service
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma remove service — remove a service and its generated files
+
+Usage: hemma remove service <name>
+--- files ---

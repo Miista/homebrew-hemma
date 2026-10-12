@@ -1,0 +1,19 @@
+$ hemma doctor
+# setup: doctor --fix
+# machine: host="edge" tools="ok"
+exit: 0
+--- stdout ---
+✓ No generated files are gitignored.
+✓ Generated files are in sync with services.yaml.
+
+⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
+
+⚠ could not verify OIDC client for wikijs: open core/authelia/data/config/configuration.yml: no such file or directory
+
+⚠ could not verify that Authelia loads the generated hemma.access_control.generated.yml: open core/docker-compose.yml: no such file or directory
+
+These advisories require manual edits (see their fix: lines) — 'hemma doctor --fix' does not resolve them.
+--- stderr ---
+--- external commands ---
+git -C <repo> check-ignore --stdin
+--- files ---

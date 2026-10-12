@@ -1,0 +1,6 @@
+$ hemma -C
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: The -C flag requires a directory argument.
+--- files ---

@@ -1,0 +1,10 @@
+$ hemma deploy
+# setup: doctor --fix
+# machine: host="edge" tools="ok"
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: deploy_host is "core" — refusing to deploy from "edge".
+Run 'hemma deploy' on core, or drop the restriction with 'hemma defaults set deploy-host -'.
+--- external commands ---
+--- files ---

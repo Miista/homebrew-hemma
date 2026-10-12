@@ -1,0 +1,6 @@
+$ hemma enable service nowhere
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Service "nowhere" does not exist.
+--- files ---

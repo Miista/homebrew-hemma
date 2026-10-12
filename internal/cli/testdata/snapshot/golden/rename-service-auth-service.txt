@@ -1,0 +1,10 @@
+$ hemma rename service sso login
+# setup: doctor --fix
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Service "sso" is the configured auth_service — rename refused.
+Renaming it would leave the docker-compose container name and any hand-pasted
+Authelia OIDC client registration pointed at the old name. Rename those by hand
+first, then 'hemma defaults set auth-service login', then retry.
+--- files ---

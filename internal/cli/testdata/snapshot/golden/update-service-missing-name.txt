@@ -1,0 +1,7 @@
+$ hemma update service
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the <service> name.
+Usage: hemma update service <name> [--fqdn ...] [--host ...] [--backend ...]
+--- files ---

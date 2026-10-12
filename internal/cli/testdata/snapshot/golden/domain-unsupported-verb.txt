@@ -1,0 +1,6 @@
+$ hemma update domain home.example
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Cannot "update" a domain — domains support add and remove.
+--- files ---

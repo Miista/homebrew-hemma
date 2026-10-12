@@ -1,0 +1,6 @@
+$ hemma rename service dash dash
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Service "dash" already exists.
+--- files ---

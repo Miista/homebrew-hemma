@@ -1,0 +1,19 @@
+$ hemma help completion
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma completion — print a shell completion script
+
+Usage: hemma completion <bash|zsh>
+
+Writes a static completion script to stdout. It completes the top-level verbs,
+the nouns (service/host/domain), and the known flags — not existing service,
+host, or domain names (that would require invoking the tool).
+
+Install (bash):
+  hemma completion bash | sudo tee /usr/share/bash-completion/completions/hemma
+Install (zsh, into a dir on your $fpath):
+  hemma completion zsh > "${fpath[1]}/_hemma"
+
+The Debian package and Homebrew formula install these scripts for you.
+--- files ---

@@ -1,0 +1,7 @@
+$ hemma create app oidc
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the <app_name>.
+Usage: hemma create app oidc <app_name> [callback_path]
+--- files ---

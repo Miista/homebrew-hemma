@@ -1,0 +1,7 @@
+$ hemma enable
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the noun for "enable" — expected service, host, or domain.
+Usage: hemma enable service|host|domain ...
+--- files ---

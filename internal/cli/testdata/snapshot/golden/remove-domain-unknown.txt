@@ -1,0 +1,6 @@
+$ hemma remove domain nowhere.example
+exit: 0
+--- stdout ---
+Domain "nowhere.example" does not exist; nothing to remove.
+--- stderr ---
+--- files ---

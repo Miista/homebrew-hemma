@@ -1,0 +1,7 @@
+$ hemma add host
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the <name>.
+Usage: hemma add host <name> <ip> [--ssh <dest>]
+--- files ---

@@ -1,0 +1,7 @@
+$ hemma update service robot --auth-mode none
+# setup: doctor --fix
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Auth groups without an auth mode — pass --auth-mode forward|oidc, or clear the groups with --auth-groups ''.
+--- files ---

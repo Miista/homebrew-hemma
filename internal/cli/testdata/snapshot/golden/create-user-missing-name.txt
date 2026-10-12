@@ -1,0 +1,7 @@
+$ hemma create user
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the <username>.
+Usage: hemma create user <username>
+--- files ---

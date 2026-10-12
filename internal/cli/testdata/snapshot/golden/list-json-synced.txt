@@ -1,0 +1,162 @@
+$ hemma list --json
+# setup: doctor --fix
+exit: 0
+--- stdout ---
+[
+  {
+    "name": "chat",
+    "fqdn": "chat.home.example",
+    "host": "edge",
+    "backend": "chat:9000",
+    "auth_mode": "external",
+    "tunnel": false
+  },
+  {
+    "name": "dash",
+    "fqdn": "dash.home.example",
+    "host": "edge",
+    "backend": "dash:3000",
+    "auth_mode": "oidc",
+    "tunnel": true
+  },
+  {
+    "name": "downloads",
+    "fqdn": "downloads.home.example",
+    "host": "edge",
+    "backend": "vpn:8090",
+    "auth_mode": "none",
+    "tunnel": false
+  },
+  {
+    "name": "home",
+    "fqdn": "ha.home.example",
+    "host": "core",
+    "backend": "host.docker.internal:8123",
+    "auth_mode": "external",
+    "tunnel": true
+  },
+  {
+    "name": "homepage",
+    "fqdn": "start.home.example",
+    "host": "core",
+    "backend": "homepage:3000",
+    "auth_mode": "forward",
+    "policy_local": "one_factor",
+    "policy_public": "one_factor",
+    "tunnel": true
+  },
+  {
+    "name": "indexer",
+    "fqdn": "indexer.home.example",
+    "host": "edge",
+    "backend": "indexer:6767",
+    "auth_mode": "forward",
+    "policy_local": "one_factor",
+    "policy_public": "one_factor",
+    "tunnel": true
+  },
+  {
+    "name": "media",
+    "fqdn": "watch.home.example",
+    "host": "edge",
+    "backend": "media:8096",
+    "auth_mode": "external",
+    "tunnel": true
+  },
+  {
+    "name": "music",
+    "fqdn": "music.home.example",
+    "host": "edge",
+    "backend": "music:4533",
+    "auth_mode": "forward",
+    "policy_local": "one_factor",
+    "policy_public": "one_factor",
+    "tunnel": true
+  },
+  {
+    "name": "panel",
+    "fqdn": "panel.home.example",
+    "host": "core",
+    "backend": "host.docker.internal:8080",
+    "auth_mode": "forward",
+    "policy_local": "one_factor",
+    "policy_public": "one_factor",
+    "tunnel": false
+  },
+  {
+    "name": "registry",
+    "fqdn": "registry.home.example",
+    "host": "core",
+    "backend": "registry:5000",
+    "auth_mode": "none",
+    "tunnel": false
+  },
+  {
+    "name": "robot",
+    "fqdn": "robot.home.example",
+    "host": "edge",
+    "backend": "robot:8765",
+    "auth_mode": "forward",
+    "policy_local": "one_factor",
+    "policy_public": "one_factor",
+    "tunnel": true
+  },
+  {
+    "name": "shelf",
+    "fqdn": "shelf.home.example",
+    "host": "edge",
+    "backend": "shelf:80",
+    "auth_mode": "forward",
+    "policy_local": "bypass",
+    "policy_public": "one_factor",
+    "tunnel": true
+  },
+  {
+    "name": "speed",
+    "fqdn": "speed.home.example",
+    "host": "edge",
+    "backend": "speed-tracker:80",
+    "auth_mode": "forward",
+    "policy_local": "one_factor",
+    "policy_public": "one_factor",
+    "tunnel": false
+  },
+  {
+    "name": "sso",
+    "fqdn": "auth.home.example",
+    "host": "core",
+    "backend": "sso:9091",
+    "auth_mode": "none",
+    "tunnel": true
+  },
+  {
+    "name": "status",
+    "fqdn": "status.home.example",
+    "host": "core",
+    "backend": "status:8080",
+    "auth_mode": "forward",
+    "policy_local": "one_factor",
+    "policy_public": "one_factor",
+    "tunnel": true
+  },
+  {
+    "name": "wiki",
+    "fqdn": "wiki.home.example",
+    "host": "edge",
+    "backend": "wiki:3000",
+    "auth_mode": "forward",
+    "policy_local": "bypass",
+    "policy_public": "one_factor",
+    "tunnel": true
+  },
+  {
+    "name": "wikijs",
+    "fqdn": "docs.home.example",
+    "host": "edge",
+    "backend": "docs:8000",
+    "auth_mode": "oidc",
+    "tunnel": true
+  }
+]
+--- stderr ---
+--- files ---
