@@ -11,6 +11,7 @@ import (
 	"crypto/subtle"
 	"embed"
 	"encoding/json"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -23,7 +24,9 @@ import (
 	"hemma/internal/config"
 )
 
-//go:embed static/index.html
+// The page, its stylesheet and the Geist font files (SIL OFL-1.1, license alongside) are compiled into the binary.
+//
+//go:embed static
 var static embed.FS
 
 type server struct {
@@ -47,6 +50,11 @@ func main() {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(b)
 	})
+	assets, err := fs.Sub(static, "static")
+	if err != nil {
+		log.Fatal(err)
+	}
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(assets)))
 	mux.HandleFunc("GET /api/state", s.state)
 	mux.HandleFunc("GET /api/commands", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, commands) })
 	mux.HandleFunc("GET /api/browse", s.handleBrowse)
@@ -86,7 +94,11 @@ func guard(pw string, next http.Handler) http.Handler {
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, 1<<16)
 		}
-		w.Header().Set("Cache-Control", "no-store")
+		if strings.HasPrefix(r.URL.Path, "/static/fonts/") {
+			w.Header().Set("Cache-Control", "private, max-age=86400") // fixed font files: no need to refetch on every load
+		} else {
+			w.Header().Set("Cache-Control", "no-store")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

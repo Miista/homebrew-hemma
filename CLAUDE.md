@@ -154,6 +154,11 @@ A deliberately small web UI for one host (image: `Dockerfile.ui`; compose + synt
   The container mounts the Docker socket (root-equivalent on the host), so keep it LAN-only.
 - **Phones are the primary screen:** keep fields at 16px (iOS zoom), tables become cards under 640px, and
   nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
+- **Look and feel:** the same design language as reaparr/albumreq (Geist, violet accent, glow, glass bars, the
+  top-bar-plus-bottom-tab-bar menu), but following the system light/dark setting instead of dark only. All colours
+  are tokens with a light and a dark value in `static/style.css` — never hard-code a colour in the page. The page
+  (`static/index.html`) holds markup and script only; the stylesheet and the Geist font files (SIL OFL-1.1, license
+  alongside) are embedded and served from `/static/` behind the same login. Keep text at WCAG AA (4.5:1) in both themes.
 
 ## Scope boundary (do not cross)
 
