@@ -102,6 +102,15 @@
     .cdiff { max-height: 42vh; } pre { max-height: 40vh; }
     .toast { top: calc(.5rem + env(safe-area-inset-top)); width: calc(100vw - 16px); max-width: none; box-sizing: border-box; justify-content: space-between; }
     .cards { margin: .5rem 0; } .cards button { flex: 1 1 auto; }
+    /* Thumb reach: on a phone the main "add" action floats at the bottom right, above the menu — and above
+       the save bar whenever that is showing (--bar-extra is its height, set from the script). */
+    .cards.fabwrap { margin: 0; }
+    footer { text-align: left; }   /* the floating button sits bottom right, so keep the footer text clear of it */
+    .fab { position: fixed; right: 16px; bottom: calc(53px + 14px + env(safe-area-inset-bottom) + var(--bar-extra, 0px)); z-index: 4;
+           flex: none; min-height: 56px; padding: 0 22px 0 18px; border: 0; border-radius: 28px; background: #3b5bdb; color: #fff;
+           font-size: 1rem; font-weight: 600; box-shadow: 0 8px 24px -4px #0006; }
+    .fab::before { content: "+"; font-size: 1.5rem; line-height: 1; margin-right: .45rem; vertical-align: -.1em; }
+    #view.has-fab { padding-bottom: 76px; }   /* the last row can be scrolled clear of the floating button */
   }
   /* On a phone a wide table can't fit: each row becomes a card, one "label  value" line per column. */
   @media (max-width: 640px) {
@@ -614,6 +623,7 @@ function describePending() {
 function renderBar() {
   const bar = $("#savebar"), dirty = changes.git && changes.files.length > 0;
   bar.hidden = !dirty; document.body.classList.toggle("with-bar", dirty);   // nothing to save → no bar at all
+  document.documentElement.style.setProperty("--bar-extra", "0px");
   if (!dirty) return;
   bar.className = "save-bar dirty";
   const mine = !pending || pending.entities.length || pending.generated.length || pending.reformatted;   // anything hemma can revert?
@@ -623,6 +633,8 @@ function renderBar() {
   const a = el("div", null, { className: "acts" });
   a.append(discardBtn, btn("Save", openCommit, "primary"));
   bar.replaceChildren(m, a);
+  // the floating "add" button (phones) rides above the bar: tell it how tall the bar is, plus a gap
+  document.documentElement.style.setProperty("--bar-extra", bar.offsetHeight + 8 + "px");
 }
 
 const VIEWS = {
@@ -633,7 +645,10 @@ const VIEWS = {
        btn(s.disabled ? "Enable" : "Disable", () => run(s.disabled ? "enable service" : "disable service", { name: s.name })),
        btn("Rename", () => openCmd("rename service", { old: s.name, __lock: "old" })),
        btn("Remove", () => run("remove service", { name: s.name }, cmds["remove service"].confirm))], s.disabled));
-    return [cards([cmdBtn("add service")]), table(["Name", "Address", "Host", "Backend", "Auth", "Internet", ""], rows)];
+    // The same button everywhere: inline at the top on a wide screen, a floating button at the bottom right on a phone.
+    const add = cmdBtn("add service"); add.classList.add("fab");
+    const bar = cards([add]); bar.classList.add("fabwrap");
+    return [bar, table(["Name", "Address", "Host", "Backend", "Auth", "Internet", ""], rows)];
   },
   Hosts() {
     const rows = state.hosts.map(h => row([h.name, h.ip, h["trusted-proxies"] || "—"],
@@ -668,6 +683,7 @@ function render() {
   const nav = $("#tabs"); nav.replaceChildren();
   TABS.forEach(t => nav.append(btn(t, () => { tab = t; render(); }, t === tab ? "on" : "")));
   $("#view").replaceChildren(...VIEWS[tab]());
+  $("#view").classList.toggle("has-fab", tab === "Services");
   $("#foot").textContent = state.version || "";
   renderDeploy();
   renderBar();
