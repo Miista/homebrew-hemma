@@ -30,7 +30,7 @@ func stubKnown(t *testing.T, known func(string) bool) {
 // In tests localHost matches nothing, so BOTH role-carrying hosts are remote.
 func TestCheckDeployReadiness_UnknownHost(t *testing.T) {
 	stubKnown(t, func(string) bool { return false })
-	if got := checkDeployReadiness(deployCfg()); got != 2 {
+	if got := checkDeployReadiness(stdEnv(), deployCfg()); got != 2 {
 		t.Errorf("two unknown hosts should count 2 problems, got %d", got)
 	}
 }
@@ -44,7 +44,7 @@ func TestCheckDeployReadiness_KnownByEitherName(t *testing.T) {
 			asked = append(asked, h)
 			return h == knownName || h == "resolver" || h == "192.0.2.1"
 		})
-		if got := checkDeployReadiness(deployCfg()); got != 0 {
+		if got := checkDeployReadiness(stdEnv(), deployCfg()); got != 0 {
 			t.Errorf("host known as %q should pass, got %d problems (lookups: %v)", knownName, got, asked)
 		}
 	}
@@ -55,7 +55,7 @@ func TestCheckDeployReadiness_KnownByEitherName(t *testing.T) {
 func TestCheckDeployReadiness_ChecksOnlyDeployTargets(t *testing.T) {
 	asked := map[string]bool{}
 	stubKnown(t, func(h string) bool { asked[h] = true; return true })
-	if got := checkDeployReadiness(deployCfg()); got != 0 {
+	if got := checkDeployReadiness(stdEnv(), deployCfg()); got != 0 {
 		t.Errorf("all known should pass, got %d problems", got)
 	}
 	if asked["192.0.2.9"] || asked["spare"] {
@@ -105,7 +105,7 @@ func TestDeployReadiness_ScopedToDeployHost(t *testing.T) {
 	}
 	run := func() int {
 		var n int
-		captureStdout(t, func() { n = checkDeployReadiness(cfg) })
+		captureStdout(t, func() { n = checkDeployReadiness(stdEnv(), cfg) })
 		return n
 	}
 

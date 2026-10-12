@@ -33,8 +33,8 @@ import (
 // detect whether THIS run's generated config.yml differs from the previous one,
 // matching how Caddy is reloaded every run regardless of whether its config
 // actually changed.
-func cmdApply(repoRoot, cfgPath string, args []string) int {
-	cfg, code := loadExisting(cfgPath, "apply")
+func cmdApply(env *Env, repoRoot, cfgPath string, args []string) int {
+	cfg, code := loadExisting(env, cfgPath, "apply")
 	if cfg == nil {
 		return code
 	}
@@ -44,29 +44,29 @@ func cmdApply(repoRoot, cfgPath string, args []string) int {
 	// disk are the source of truth for reload, so they must match services.yaml
 	// first. This is the one command that hard-refuses on drift (design: apply
 	// is the point of no return; everything else reports-but-proceeds).
-	mf := loadManifest(repoRoot, cfg)
+	mf := loadManifest(env, repoRoot, cfg)
 	if d := detectDrift(repoRoot, cfg, mf); d.Any() {
-		errf("Refusing to apply: repo is drifted (%d %s out of sync with services.yaml).",
+		errf(env, "Refusing to apply: repo is drifted (%d %s out of sync with services.yaml).",
 			d.Count(), plural(d.Count(), "generated file"))
-		printDriftDetail(d)
-		fmt.Fprintln(os.Stderr)
-		hint("Run 'hemma doctor --fix' to reconcile the repo, then 'hemma apply' again.")
+		printDriftDetail(env, d)
+		fmt.Fprintln(env.Err)
+		hint(env, "Run 'hemma doctor --fix' to reconcile the repo, then 'hemma apply' again.")
 		return 1
 	}
 
 	self := localHost(cfg)
 	if self == "" {
-		errf("This machine's IP matches no host in services.yaml — run apply on a managed host (the resolver or a service host).")
+		errf(env, "This machine's IP matches no host in services.yaml — run apply on a managed host (the resolver or a service host).")
 		return 1
 	}
-	fmt.Printf("Running on host %q.\n", self)
+	fmt.Fprintf(env.Out, "Running on host %q.\n", self)
 
 	isDNS := self == cfg.DNSHost()
 	runsCaddy := hostRunsCaddy(cfg, self)
 	runsTunnel := hostHasPublicService(repoRoot, cfg, self)
 
 	if !isDNS && !runsCaddy {
-		fmt.Printf("Nothing to apply here: %q is neither the resolver (%s) nor a service host.\n", self, cfg.DNSHost())
+		fmt.Fprintf(env.Out, "Nothing to apply here: %q is neither the resolver (%s) nor a service host.\n", self, cfg.DNSHost())
 		return 0
 	}
 
@@ -89,7 +89,7 @@ func cmdApply(repoRoot, cfgPath string, args []string) int {
 	// or leave the host half-applied — validation failures abort the whole
 	// apply with nothing touched.
 	if runsCaddy || authValidate != nil {
-		fmt.Printf("\n%s== Validate (%s) ==%s\n", boldOn, self, boldOff)
+		fmt.Fprintf(env.Out, "\n%s== Validate (%s) ==%s\n", boldOn, self, boldOff)
 		if runsCaddy {
 			// hemma AUTHORED this host's trusted_proxies content (§4.7) — a
 			// trust boundary derived from services.yaml, not user-supplied
@@ -101,39 +101,39 @@ func cmdApply(repoRoot, cfgPath string, args []string) int {
 			// whole hazard, so it refuses HERE rather than only warning in
 			// doctor: if hemma generates the file, hemma makes it count.
 			if missing, err := caddyfileMissingTrustedProxiesImport(repoRoot, cfg, self); err != nil {
-				fmt.Printf("  "+cross+" could not read this host's Caddyfile: %v\n", err)
-				fmt.Println()
-				errf("Validation failed — nothing was restarted or reloaded.")
+				fmt.Fprintf(env.Out, "  "+cross+" could not read this host's Caddyfile: %v\n", err)
+				fmt.Fprintln(env.Out)
+				errf(env, "Validation failed — nothing was restarted or reloaded.")
 				return 1
 			} else if missing {
-				fmt.Printf("  "+cross+" Caddyfile does not import %s\n", render.TrustedProxiesFilename)
-				fmt.Printf("      hemma generated this host's trusted_proxies config, but Caddy never loads it —\n")
-				fmt.Printf("      client IPs would resolve to the nearest proxy, silently voiding any\n")
-				fmt.Printf("      source-IP-based auth rule. Add it inside your global options block:\n")
-				fmt.Printf("        {\n            servers {\n                import %s\n            }\n        }\n", render.TrustedProxiesFilename)
-				fmt.Println()
-				errf("Validation failed — nothing was restarted or reloaded.")
+				fmt.Fprintf(env.Out, "  "+cross+" Caddyfile does not import %s\n", render.TrustedProxiesFilename)
+				fmt.Fprintf(env.Out, "      hemma generated this host's trusted_proxies config, but Caddy never loads it —\n")
+				fmt.Fprintf(env.Out, "      client IPs would resolve to the nearest proxy, silently voiding any\n")
+				fmt.Fprintf(env.Out, "      source-IP-based auth rule. Add it inside your global options block:\n")
+				fmt.Fprintf(env.Out, "        {\n            servers {\n                import %s\n            }\n        }\n", render.TrustedProxiesFilename)
+				fmt.Fprintln(env.Out)
+				errf(env, "Validation failed — nothing was restarted or reloaded.")
 				return 1
 			}
-			fmt.Printf("  "+tick+" Caddyfile imports %s\n", render.TrustedProxiesFilename)
+			fmt.Fprintf(env.Out, "  "+tick+" Caddyfile imports %s\n", render.TrustedProxiesFilename)
 			// Validate provisions the TLS app, so a missing cert fails HERE
 			// rather than during the reload (verified: caddy v2.11 validate exit 1).
-			if !runQuiet("docker", "exec", caddyContainer, "caddy", "validate", "--config", cf, "--adapter", "caddyfile") {
-				fmt.Println("  " + cross + " caddy validate FAILED (missing cert or bad config?)")
-				fmt.Println()
-				errf("Validation failed — nothing was restarted or reloaded.")
+			if !runQuiet(env, "docker", "exec", caddyContainer, "caddy", "validate", "--config", cf, "--adapter", "caddyfile") {
+				fmt.Fprintln(env.Out, "  "+cross+" caddy validate FAILED (missing cert or bad config?)")
+				fmt.Fprintln(env.Out)
+				errf(env, "Validation failed — nothing was restarted or reloaded.")
 				return 1
 			}
-			fmt.Println("  " + tick + " caddy validate passes")
+			fmt.Fprintln(env.Out, "  "+tick+" caddy validate passes")
 		}
 		if authValidate != nil {
-			if !runQuiet(authValidate[0], authValidate[1:]...) {
-				fmt.Printf("  "+cross+" %s config validate FAILED\n", authName)
-				fmt.Println()
-				errf("Validation failed — nothing was restarted or reloaded.")
+			if !runQuiet(env, authValidate[0], authValidate[1:]...) {
+				fmt.Fprintf(env.Out, "  "+cross+" %s config validate FAILED\n", authName)
+				fmt.Fprintln(env.Out)
+				errf(env, "Validation failed — nothing was restarted or reloaded.")
 				return 1
 			}
-			fmt.Printf("  "+tick+" %s config validate passes\n", authName)
+			fmt.Fprintf(env.Out, "  "+tick+" %s config validate passes\n", authName)
 		}
 	}
 
@@ -141,38 +141,38 @@ func cmdApply(repoRoot, cfgPath string, args []string) int {
 	failed := 0
 
 	if isDNS {
-		fmt.Printf("\n%s== DNS (%s) ==%s\n", boldOn, self, boldOff)
+		fmt.Fprintf(env.Out, "\n%s== DNS (%s) ==%s\n", boldOn, self, boldOff)
 		// pihole v6 does not reload conf-dir on reloaddns; a restart is required.
-		if runQuiet("docker", "restart", piholeContainer) {
-			fmt.Printf("  "+tick+" restarted %s\n", piholeContainer)
+		if runQuiet(env, "docker", "restart", piholeContainer) {
+			fmt.Fprintf(env.Out, "  "+tick+" restarted %s\n", piholeContainer)
 		} else {
-			fmt.Printf("  "+cross+" failed to restart %s\n", piholeContainer)
+			fmt.Fprintf(env.Out, "  "+cross+" failed to restart %s\n", piholeContainer)
 			failed++
 		}
 	}
 
 	if runsCaddy {
-		fmt.Printf("\n%s== Caddy (%s) ==%s\n", boldOn, self, boldOff)
-		if runQuiet("docker", "exec", caddyContainer, "caddy", "reload", "--config", cf) {
-			fmt.Println("  " + tick + " caddy reloaded")
+		fmt.Fprintf(env.Out, "\n%s== Caddy (%s) ==%s\n", boldOn, self, boldOff)
+		if runQuiet(env, "docker", "exec", caddyContainer, "caddy", "reload", "--config", cf) {
+			fmt.Fprintln(env.Out, "  "+tick+" caddy reloaded")
 		} else {
-			fmt.Println("  " + cross + " caddy reload FAILED")
+			fmt.Fprintln(env.Out, "  "+cross+" caddy reload FAILED")
 			failed++
 		}
 	}
 
 	if authReload != nil {
-		fmt.Printf("\n%s== Auth (%s) ==%s\n", boldOn, authName, boldOff)
-		if runQuiet(authReload[0], authReload[1:]...) {
-			fmt.Printf("  "+tick+" %s reloaded\n", authName)
+		fmt.Fprintf(env.Out, "\n%s== Auth (%s) ==%s\n", boldOn, authName, boldOff)
+		if runQuiet(env, authReload[0], authReload[1:]...) {
+			fmt.Fprintf(env.Out, "  "+tick+" %s reloaded\n", authName)
 		} else {
-			fmt.Printf("  "+cross+" %s reload FAILED\n", authName)
+			fmt.Fprintf(env.Out, "  "+cross+" %s reload FAILED\n", authName)
 			failed++
 		}
 	}
 
 	if runsTunnel {
-		fmt.Printf("\n%s== Tunnel (%s) ==%s\n", boldOn, self, boldOff)
+		fmt.Fprintf(env.Out, "\n%s== Tunnel (%s) ==%s\n", boldOn, self, boldOff)
 		// A plain restart is enough: cloudflared-wrapper reads config.yml fresh
 		// on every process start (it has no live docker-events watch the way
 		// gatus-wrapper does), and hemma writes that file directly rather than
@@ -180,20 +180,20 @@ func cmdApply(repoRoot, cfgPath string, args []string) int {
 		// touching for cloudflared to see the current ingress set, unlike the
 		// label-based design this replaced (which would have needed every
 		// labelled service AND cloudflared recreated on every apply).
-		if runQuiet("docker", "restart", cloudflaredContainer) {
-			fmt.Printf("  "+tick+" restarted %s\n", cloudflaredContainer)
+		if runQuiet(env, "docker", "restart", cloudflaredContainer) {
+			fmt.Fprintf(env.Out, "  "+tick+" restarted %s\n", cloudflaredContainer)
 		} else {
-			fmt.Printf("  "+cross+" failed to restart %s\n", cloudflaredContainer)
+			fmt.Fprintf(env.Out, "  "+cross+" failed to restart %s\n", cloudflaredContainer)
 			failed++
 		}
 	}
 
-	fmt.Println()
+	fmt.Fprintln(env.Out)
 	if failed > 0 {
-		errf("%d %s failed.", failed, plural(failed, "step"))
+		errf(env, "%d %s failed.", failed, plural(failed, "step"))
 		return 1
 	}
-	fmt.Println("Applied.")
+	fmt.Fprintln(env.Out, "Applied.")
 	return 0
 }
 
@@ -254,8 +254,8 @@ func hostHasPublicService(repoRoot string, cfg *config.Config, host string) bool
 // only when the command fails. The happy path stays clean; on failure the
 // user still sees the tool's own diagnostics (notably caddy's missing-cert
 // error, which is why apply used to stream everything live).
-func runQuiet(name string, args ...string) bool {
-	return runQuietIn("", name, args...)
+func runQuiet(env *Env, name string, args ...string) bool {
+	return runQuietIn(env, "", name, args...)
 }
 
 // runQuietIn is runQuiet with an explicit working directory, for a command
@@ -263,7 +263,7 @@ func runQuiet(name string, args ...string) bool {
 // resolves its project from the directory it's run in — unlike a plain
 // `docker` command, which finds a container by name regardless of cwd). An
 // empty dir behaves exactly like runQuiet (inherits the caller's cwd).
-func runQuietIn(dir, name string, args ...string) bool {
+func runQuietIn(env *Env, dir, name string, args ...string) bool {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
@@ -271,7 +271,7 @@ func runQuietIn(dir, name string, args ...string) bool {
 		return true
 	}
 	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
-		fmt.Fprintf(os.Stderr, "    %s\n", line)
+		fmt.Fprintf(env.Err, "    %s\n", line)
 	}
 	return false
 }

@@ -20,7 +20,7 @@ func TestLoadManifest_MigratesLegacyNames(t *testing.T) {
 				t.Fatal(err)
 			}
 			cfg := load(t, dir)
-			mf := loadManifest(dir, cfg)
+			mf := loadManifest(stdEnv(), dir, cfg)
 			if _, err := os.Stat(filepath.Join(dir, manifestName)); err != nil {
 				t.Errorf("%s not created: %v", manifestName, err)
 			}

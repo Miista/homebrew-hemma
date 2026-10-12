@@ -21,7 +21,7 @@ func Run(args []string) int {
 	if len(args) < 1 {
 		return 2
 	}
-	code, ok := Route(repoRoot, filepath.Join(repoRoot, configName), args[0], args[1:])
+	code, ok := Route(stdEnv(), repoRoot, filepath.Join(repoRoot, configName), args[0], args[1:])
 	if !ok {
 		return 2
 	}

@@ -139,7 +139,7 @@ func TestCheckTrustedProxiesImport_MissingReportsProblem(t *testing.T) {
 		[]byte("import hemma.generated.caddy\n"), 0o644)
 	cfg := &config.Config{Hosts: map[string]config.Host{"appbox": {IP: "192.0.2.2"}}}
 
-	if got := checkTrustedProxiesImport(dir, cfg, false); got != 1 {
+	if got := checkTrustedProxiesImport(stdEnv(), dir, cfg, false); got != 1 {
 		t.Fatalf("expected 1 reported problem for missing import, got %d", got)
 	}
 }
@@ -165,7 +165,7 @@ func TestCheckTrustedProxiesImport_PresentIsSilent(t *testing.T) {
 		[]byte("{\n\tservers {\n\t\timport hemma.trusted_proxies.generated.caddy\n\t}\n}\n"), 0o644)
 	cfg := &config.Config{Hosts: map[string]config.Host{"appbox": {IP: "192.0.2.2"}}}
 
-	if got := checkTrustedProxiesImport(dir, cfg, false); got != 0 {
+	if got := checkTrustedProxiesImport(stdEnv(), dir, cfg, false); got != 0 {
 		t.Fatalf("expected 0 problems when import present, got %d", got)
 	}
 }
@@ -190,7 +190,7 @@ func TestCheckTrustedProxiesImport_FixNeverEditsCaddyfile(t *testing.T) {
 			cfg := &config.Config{Hosts: map[string]config.Host{"appbox": {IP: "192.0.2.2"}}}
 
 			// Still a problem in --fix mode: it is not mechanically fixable.
-			if got := checkTrustedProxiesImport(dir, cfg, true); got != 1 {
+			if got := checkTrustedProxiesImport(stdEnv(), dir, cfg, true); got != 1 {
 				t.Fatalf("expected the problem to persist under --fix, got %d", got)
 			}
 			b, _ := os.ReadFile(cfPath)
@@ -204,7 +204,7 @@ func TestCheckTrustedProxiesImport_FixNeverEditsCaddyfile(t *testing.T) {
 func TestCheckTrustedProxiesImport_NoCaddyfileSkipped(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{Hosts: map[string]config.Host{"appbox": {IP: "192.0.2.2"}}}
-	if got := checkTrustedProxiesImport(dir, cfg, false); got != 0 {
+	if got := checkTrustedProxiesImport(stdEnv(), dir, cfg, false); got != 0 {
 		t.Fatalf("host with no Caddyfile should be skipped, got %d problems", got)
 	}
 }
@@ -217,7 +217,7 @@ func TestAuthWiringWarnings_WiredThroughRepoLayout(t *testing.T) {
     environment:
       X_AUTHELIA_CONFIG: /config/configuration.yml,/config/hemma.access_control.generated.yml
 `)
-	cfg, code := loadExisting(filepath.Join(dir, configName), "test")
+	cfg, code := loadExisting(stdEnv(), filepath.Join(dir, configName), "test")
 	if cfg == nil {
 		t.Fatalf("load: %d", code)
 	}
@@ -230,7 +230,7 @@ func TestAuthWiringWarnings_UnwiredWarns(t *testing.T) {
 	dir := t.TempDir()
 	seedWithAuth(t, dir)
 	writeAuthComposeFixture(t, dir, "services:\n  authelia:\n    image: authelia/authelia\n")
-	cfg, _ := loadExisting(filepath.Join(dir, configName), "test")
+	cfg, _ := loadExisting(stdEnv(), filepath.Join(dir, configName), "test")
 	w := authWiringWarnings(dir, cfg)
 	if len(w) != 1 || !strings.Contains(w[0].String(), "X_AUTHELIA_CONFIG") {
 		t.Fatalf("want one unwired advisory, got %v", w)
@@ -241,7 +241,7 @@ func TestAuthWiringWarnings_GatedOnAuthService(t *testing.T) {
 	// No auth_service at all -> silent.
 	dir := t.TempDir()
 	seed(t, dir)
-	cfg, _ := loadExisting(filepath.Join(dir, configName), "test")
+	cfg, _ := loadExisting(stdEnv(), filepath.Join(dir, configName), "test")
 	if w := authWiringWarnings(dir, cfg); w != nil {
 		t.Errorf("no auth_service -> silent, got %v", w)
 	}
@@ -273,7 +273,7 @@ services:
 	if err := os.WriteFile(filepath.Join(dir2, configName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg2, _ := loadExisting(filepath.Join(dir2, configName), "test")
+	cfg2, _ := loadExisting(stdEnv(), filepath.Join(dir2, configName), "test")
 	if w := authWiringWarnings(dir2, cfg2); w != nil {
 		t.Errorf("disabled auth_service -> silent, got %v", w)
 	}

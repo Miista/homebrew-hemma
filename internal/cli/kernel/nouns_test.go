@@ -189,7 +189,7 @@ func TestSync_RefusesWithoutDNSHost(t *testing.T) {
 	if code := Run([]string{"-C", dir, "defaults", "set", "dns-host", "appbox"}); code != 0 {
 		t.Errorf("set dns-host after blocker resolved should exit 0, got %d", code)
 	}
-	if d := detectDrift(dir, load(t, dir), loadManifest(dir, load(t, dir))); d.Any() {
+	if d := detectDrift(dir, load(t, dir), loadManifest(stdEnv(), dir, load(t, dir))); d.Any() {
 		t.Errorf("repo should have no drift after set dns-host, got %d files", d.Count())
 	}
 }
@@ -287,7 +287,7 @@ func TestServiceRename_RegeneratesUnderNewName(t *testing.T) {
 		t.Errorf("new service's DNS file should exist after rename: %v", err)
 	}
 
-	if d := detectDrift(dir, c, loadManifest(dir, c)); d.Any() {
+	if d := detectDrift(dir, c, loadManifest(stdEnv(), dir, c)); d.Any() {
 		t.Errorf("repo should have no drift after rename, got %d files", d.Count())
 	}
 }
@@ -359,7 +359,7 @@ func TestHostRemoval_AutoGCsTLS(t *testing.T) {
 		t.Fatalf("spare's tls snippet should exist right after add domain: %v", err)
 	}
 	// No drift cliff: the repo is clean after a mutation, so apply won't refuse.
-	if d := detectDrift(dir, load(t, dir), loadManifest(dir, load(t, dir))); d.Any() {
+	if d := detectDrift(dir, load(t, dir), loadManifest(stdEnv(), dir, load(t, dir))); d.Any() {
 		t.Errorf("repo should have no drift after add domain, got %d files", d.Count())
 	}
 
@@ -417,7 +417,7 @@ func TestHostUpdate_IPChangeRegeneratesDNS(t *testing.T) {
 	if err != nil || !strings.Contains(string(b), "192.0.2.5") {
 		t.Errorf("DNS record should be regenerated with the new ip, got:\n%s (%v)", b, err)
 	}
-	if d := detectDrift(dir, load(t, dir), loadManifest(dir, load(t, dir))); d.Any() {
+	if d := detectDrift(dir, load(t, dir), loadManifest(stdEnv(), dir, load(t, dir))); d.Any() {
 		t.Errorf("repo should have no drift after update host --ip, got %d files", d.Count())
 	}
 }

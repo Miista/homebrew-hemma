@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,8 +18,8 @@ import (
 //
 // By default the Services section is filtered to those running on THIS host
 // (matched by local IP); --all shows every service regardless of host.
-func cmdList(cfgPath string, args []string) int {
-	cfg, code := loadExisting(cfgPath, "list")
+func cmdList(env *Env, cfgPath string, args []string) int {
+	cfg, code := loadExisting(env, cfgPath, "list")
 	if cfg == nil {
 		return code
 	}
@@ -35,7 +34,7 @@ func cmdList(cfgPath string, args []string) int {
 	}
 
 	if *jsonOut {
-		return cmdListJSON(cfg)
+		return cmdListJSON(env, cfg)
 	}
 
 	// Which host are we on? If we can't tell (IP matches no host), fall back to
@@ -45,12 +44,12 @@ func cmdList(cfgPath string, args []string) int {
 
 	// Big fat warning first: without a dns_host, nothing can sync.
 	if cfg.Defaults.DNSHost == "" {
-		fmt.Println(warn + " No dns_host set — services cannot sync.")
-		fmt.Println("   Set the resolver host:  hemma defaults set dns-host <name>")
-		fmt.Println()
+		fmt.Fprintln(env.Out, warn+" No dns_host set — services cannot sync.")
+		fmt.Fprintln(env.Out, "   Set the resolver host:  hemma defaults set dns-host <name>")
+		fmt.Fprintln(env.Out)
 	}
 
-	fmt.Printf("%s== Hosts (%d) ==%s\n", boldOn, len(cfg.Hosts), boldOff)
+	fmt.Fprintf(env.Out, "%s== Hosts (%d) ==%s\n", boldOn, len(cfg.Hosts), boldOff)
 	for _, name := range sortedKeysOf(cfg.Hosts) {
 		var roles []string
 		if name == cfg.Defaults.DNSHost {
@@ -63,12 +62,12 @@ func cmdList(cfgPath string, args []string) int {
 		if len(roles) > 0 {
 			marker = "  (" + strings.Join(roles, ", ") + ")"
 		}
-		fmt.Printf("  %-12s %s%s\n", name, cfg.Hosts[name].IP, marker)
+		fmt.Fprintf(env.Out, "  %-12s %s%s\n", name, cfg.Hosts[name].IP, marker)
 	}
 
-	fmt.Printf("\n%s== Domains (%d) ==%s\n", boldOn, len(cfg.Domains), boldOff)
+	fmt.Fprintf(env.Out, "\n%s== Domains (%d) ==%s\n", boldOn, len(cfg.Domains), boldOff)
 	for _, name := range sortedKeysOf(cfg.Domains) {
-		fmt.Printf("  %s\n", name)
+		fmt.Fprintf(env.Out, "  %s\n", name)
 	}
 
 	// Auth is repo-wide config, not per-host — its own section, only shown when
@@ -76,16 +75,16 @@ func cmdList(cfgPath string, args []string) int {
 	// is any Caddy auth directive (forward_auth, basic_auth, …); hemma is
 	// agnostic to its contents, so the section is named for the mechanism.
 	if cfg.Defaults.AuthSnippet != "" || cfg.Defaults.AuthService != "" {
-		fmt.Printf("\n%s== Auth ==%s\n", boldOn, boldOff)
+		fmt.Fprintf(env.Out, "\n%s== Auth ==%s\n", boldOn, boldOff)
 		if cfg.Defaults.AuthSnippet != "" {
-			fmt.Printf("  snippet:  %s\n", cfg.Defaults.AuthSnippet)
+			fmt.Fprintf(env.Out, "  snippet:  %s\n", cfg.Defaults.AuthSnippet)
 		} else {
-			fmt.Println("  snippet:  (none — set with 'hemma defaults set auth-snippet <path>')")
+			fmt.Fprintln(env.Out, "  snippet:  (none — set with 'hemma defaults set auth-snippet <path>')")
 		}
 		if cfg.Defaults.AuthService != "" {
-			fmt.Printf("  service:  %s\n", cfg.Defaults.AuthService)
+			fmt.Fprintf(env.Out, "  service:  %s\n", cfg.Defaults.AuthService)
 		} else {
-			fmt.Println("  service:  (none — set with 'hemma defaults set auth-service <name>')")
+			fmt.Fprintln(env.Out, "  service:  (none — set with 'hemma defaults set auth-service <name>')")
 		}
 	}
 
@@ -99,24 +98,24 @@ func cmdList(cfgPath string, args []string) int {
 	}
 
 	if filtered {
-		fmt.Printf("\n%s== Services on %s (%d of %d) ==%s\n", boldOn, self, len(svcNames), len(cfg.Services), boldOff)
+		fmt.Fprintf(env.Out, "\n%s== Services on %s (%d of %d) ==%s\n", boldOn, self, len(svcNames), len(cfg.Services), boldOff)
 	} else {
-		fmt.Printf("\n%s== Services (%d) ==%s\n", boldOn, len(svcNames), boldOff)
+		fmt.Fprintf(env.Out, "\n%s== Services (%d) ==%s\n", boldOn, len(svcNames), boldOff)
 	}
-	printServiceTable(cfg, svcNames, *policy)
+	printServiceTable(env, cfg, svcNames, *policy)
 	if filtered && len(svcNames) < len(cfg.Services) {
-		fmt.Printf("  (%d on other hosts hidden — use --all to show)\n", len(cfg.Services)-len(svcNames))
+		fmt.Fprintf(env.Out, "  (%d on other hosts hidden — use --all to show)\n", len(cfg.Services)-len(svcNames))
 	}
 
 	repoRoot := filepath.Dir(cfgPath)
 
 	// Auth-groups picture: union of the users database and services.yaml
 	// groups (hidden when no group exists on either side).
-	printGroupsSection(repoRoot, cfg)
+	printGroupsSection(env, repoRoot, cfg)
 
-	printAdvisories(repoRoot, authConfigWarnings(repoRoot, cfg))
+	printAdvisories(env, repoRoot, authConfigWarnings(repoRoot, cfg))
 
-	reportDrift(detectDrift(repoRoot, cfg, loadManifest(repoRoot, cfg)))
+	reportDrift(env, detectDrift(repoRoot, cfg, loadManifest(env, repoRoot, cfg)))
 	return 0
 }
 
@@ -134,9 +133,9 @@ func cmdList(cfgPath string, args []string) int {
 //
 // With policy set, LOCAL and PUBLIC columns (the per-horizon auth policy,
 // design §4.8) sit between AUTH and TUNNEL.
-func printServiceTable(cfg *config.Config, svcNames []string, policy bool) {
+func printServiceTable(env *Env, cfg *config.Config, svcNames []string, policy bool) {
 	if len(svcNames) == 0 {
-		fmt.Println("  (none)")
+		fmt.Fprintln(env.Out, "  (none)")
 		return
 	}
 	type row struct{ name, fqdn, host, backend, auth, local, public, tunnel, note string }
@@ -198,7 +197,7 @@ func printServiceTable(cfg *config.Config, svcNames []string, policy bool) {
 	if policy {
 		head += fmt.Sprintf("%-*s  %-*s  ", wLocal, hLocal, wPublic, hPublic)
 	}
-	fmt.Printf("  %s%s%s%s\n", boldOn, head, hPub, boldOff)
+	fmt.Fprintf(env.Out, "  %s%s%s%s\n", boldOn, head, hPub, boldOff)
 	for _, r := range rows {
 		line := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s  %-*s  ",
 			wName, r.name, wFQDN, r.fqdn, wHost, r.host, wBack, r.backend, wAuth, r.auth)
@@ -209,15 +208,15 @@ func printServiceTable(cfg *config.Config, svcNames []string, policy bool) {
 		if r.note != "" {
 			line += "  " + r.note
 		}
-		fmt.Println(line)
+		fmt.Fprintln(env.Out, line)
 	}
 	if anyAuth {
-		fmt.Println("  (AUTH: forward = imports the (auth) snippet; oidc = Authelia, app does OIDC itself; external = authenticated outside Authelia (app login / token / edge); (portal) = this service IS the auth provider; change with 'hemma update service <name> --auth-mode <mode>')")
+		fmt.Fprintln(env.Out, "  (AUTH: forward = imports the (auth) snippet; oidc = Authelia, app does OIDC itself; external = authenticated outside Authelia (app login / token / edge); (portal) = this service IS the auth provider; change with 'hemma update service <name> --auth-mode <mode>')")
 	}
 	if policy {
-		fmt.Println("  (LOCAL/PUBLIC: the auth.policy each horizon requires — bypass, one_factor, two_factor or deny; unset = one_factor; - = no policy, since only 'forward' mode carries one. PUBLIC is shown even when TUNNEL is no: the policy is declared, it just never fires from the internet)")
+		fmt.Fprintln(env.Out, "  (LOCAL/PUBLIC: the auth.policy each horizon requires — bypass, one_factor, two_factor or deny; unset = one_factor; - = no policy, since only 'forward' mode carries one. PUBLIC is shown even when TUNNEL is no: the policy is declared, it just never fires from the internet)")
 	}
-	fmt.Println("  (TUNNEL: yes = a cloudflared tunnel ingress entry is generated for the FQDN, so the internet can reach it; no = local horizon only)")
+	fmt.Fprintln(env.Out, "  (TUNNEL: yes = a cloudflared tunnel ingress entry is generated for the FQDN, so the internet can reach it; no = local horizon only)")
 }
 
 // horizonPolicies returns a service's effective auth policy per horizon, or
@@ -253,7 +252,7 @@ type jsonService struct {
 
 // cmdListJSON prints every service as a JSON array, one object per service,
 // sorted by name. No headers, no color, no advisories — just the array.
-func cmdListJSON(cfg *config.Config) int {
+func cmdListJSON(env *Env, cfg *config.Config) int {
 	names := sortedKeysOf(cfg.Services)
 	out := make([]jsonService, 0, len(names))
 	for _, name := range names {
@@ -274,10 +273,10 @@ func cmdListJSON(cfg *config.Config) int {
 		}
 		out = append(out, js)
 	}
-	enc := json.NewEncoder(os.Stdout)
+	enc := json.NewEncoder(env.Out)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(out); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: encoding JSON: %v\n", err)
+		fmt.Fprintf(env.Err, "Error: encoding JSON: %v\n", err)
 		return 1
 	}
 	return 0

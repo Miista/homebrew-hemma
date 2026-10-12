@@ -19,7 +19,7 @@ import (
 // hashes or emails. When the users database is missing or unreadable, a
 // services-only view is shown with a note. Hidden entirely when no group
 // exists on either side (keeps a no-auth repo's output clean, like == Auth ==).
-func printGroupsSection(repoRoot string, cfg *config.Config) {
+func printGroupsSection(env *Env, repoRoot string, cfg *config.Config) {
 	users, usersNote := loadUserGroups(repoRoot, cfg)
 
 	// group -> usernames.
@@ -53,14 +53,14 @@ func printGroupsSection(repoRoot string, cfg *config.Config) {
 	}
 	groups := sortedKeysOf(names)
 
-	fmt.Printf("\n%s== Groups (%d) ==%s\n", boldOn, len(groups), boldOff)
+	fmt.Fprintf(env.Out, "\n%s== Groups (%d) ==%s\n", boldOn, len(groups), boldOff)
 	if usersNote != "" {
-		fmt.Printf("  %s users unknown — %s (services-only view)\n", warn, usersNote)
+		fmt.Fprintf(env.Out, "  %s users unknown — %s (services-only view)\n", warn, usersNote)
 	}
 	for _, g := range groups {
-		fmt.Printf("  %s%s%s\n", boldOn, g, boldOff)
-		fmt.Printf("    users:     %s\n", joinOrPlaceholder(groupUsers[g], usersNote != "", "no user has this group"))
-		fmt.Printf("    services:  %s\n", joinOrPlaceholder(groupServices[g], false, "no service restricts to this group"))
+		fmt.Fprintf(env.Out, "  %s%s%s\n", boldOn, g, boldOff)
+		fmt.Fprintf(env.Out, "    users:     %s\n", joinOrPlaceholder(groupUsers[g], usersNote != "", "no user has this group"))
+		fmt.Fprintf(env.Out, "    services:  %s\n", joinOrPlaceholder(groupServices[g], false, "no service restricts to this group"))
 	}
 }
 

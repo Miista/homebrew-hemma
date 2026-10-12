@@ -4,11 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"golang.org/x/term"
 
 	"hemma/internal/config"
 )
@@ -23,19 +21,19 @@ import (
 // hostUpdateInteractive runs the interactive editor for one host. Reached only
 // from hostUpdate when zero flags were given; TTY-gated so scripts that forgot
 // their flags fail loud instead of hanging on a hidden prompt.
-func hostUpdateInteractive(cfgPath, name string) int {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		errf("no flags given and stdin is not a terminal — pass flags (see hemma help update)")
+func hostUpdateInteractive(env *Env, cfgPath, name string) int {
+	if !env.interactive() {
+		errf(env, "no flags given and stdin is not a terminal — pass flags (see hemma help update)")
 		return 2
 	}
 
-	cfg, code := loadExisting(cfgPath, "update a host in")
+	cfg, code := loadExisting(env, cfgPath, "update a host in")
 	if cfg == nil {
 		return code
 	}
 	h, exists := cfg.Hosts[name]
 	if !exists {
-		errf("Host %q does not exist.", name)
+		errf(env, "Host %q does not exist.", name)
 		return 1
 	}
 
@@ -98,12 +96,12 @@ func hostUpdateInteractive(cfgPath, name string) int {
 
 	// Render on stderr so stdout stays clean for the summary and sync report
 	// (same contract as the service editor and the create-user prompts).
-	if err := form.WithTheme(formTheme()).WithOutput(os.Stderr).Run(); err != nil {
+	if err := form.WithTheme(formTheme()).WithOutput(env.Err).Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "Aborted — no changes made.")
+			fmt.Fprintln(env.Err, "Aborted — no changes made.")
 			return 0
 		}
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 
@@ -114,13 +112,13 @@ func hostUpdateInteractive(cfgPath, name string) int {
 
 	lines := summarizeHostChanges(h, updated)
 	if len(lines) == 0 {
-		fmt.Println("No changes.")
+		fmt.Fprintln(env.Out, "No changes.")
 		return 0
 	}
 	for _, l := range lines {
-		fmt.Println(l)
+		fmt.Fprintln(env.Out, l)
 	}
-	return persistUpdatedHost(cfgPath, cfg, name, updated)
+	return persistUpdatedHost(env, cfgPath, cfg, name, updated)
 }
 
 // summarizeHostChanges renders one "field: old -> new" line per changed field,

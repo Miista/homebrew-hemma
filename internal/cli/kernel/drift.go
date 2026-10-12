@@ -87,24 +87,24 @@ func detectDrift(repoRoot string, cfg *config.Config, mf *manifest.Manifest) Dri
 // reportDrift prints a one-line status when drift exists, followed by the
 // affected files. Commands call this to surface drift as part of their own
 // output (report-but-proceed). Prints nothing when the repo is clean.
-func reportDrift(d Drift) {
+func reportDrift(env *Env, d Drift) {
 	if !d.Any() {
 		return
 	}
-	fmt.Printf("\n%s Repo drift: %d %s out of sync with services.yaml — run 'hemma doctor --fix'.\n",
+	fmt.Fprintf(env.Out, "\n%s Repo drift: %d %s out of sync with services.yaml — run 'hemma doctor --fix'.\n",
 		warn, d.Count(), plural(d.Count(), "generated file"))
-	printDriftDetail(d)
+	printDriftDetail(env, d)
 }
 
 // printDriftDetail lists each drifted file grouped by class.
-func printDriftDetail(d Drift) {
+func printDriftDetail(env *Env, d Drift) {
 	for _, f := range d.Missing {
-		fmt.Printf("  - missing:  %s\n", f)
+		fmt.Fprintf(env.Out, "  - missing:  %s\n", f)
 	}
 	for _, f := range d.Modified {
-		fmt.Printf("  - modified: %s\n", f)
+		fmt.Fprintf(env.Out, "  - modified: %s\n", f)
 	}
 	for _, f := range d.Orphaned {
-		fmt.Printf("  - orphaned: %s\n", f)
+		fmt.Fprintf(env.Out, "  - orphaned: %s\n", f)
 	}
 }

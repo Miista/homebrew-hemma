@@ -125,19 +125,19 @@ _hemma "$@"
 // cmdCompletion prints a shell completion script to stdout. It is a hidden
 // command (not listed in the verb inventory of `list`/help top matter) but does
 // carry a help topic. Usage: hemma completion <bash|zsh>.
-func cmdCompletion(args []string) int {
+func cmdCompletion(env *kernel.Env, args []string) int {
 	if len(args) < 1 {
-		kernel.Errf("Missing the shell — expected bash or zsh.")
-		kernel.Hint("Usage: hemma completion <bash|zsh>")
+		kernel.Errf(env, "Missing the shell — expected bash or zsh.")
+		kernel.Hint(env, "Usage: hemma completion <bash|zsh>")
 		return 2
 	}
 	switch args[0] {
 	case "bash":
-		fmt.Print(BashCompletion)
+		fmt.Fprint(env.Out, BashCompletion)
 	case "zsh":
-		fmt.Print(ZshCompletion)
+		fmt.Fprint(env.Out, ZshCompletion)
 	default:
-		kernel.Errf("Unsupported shell %q — expected bash or zsh.", args[0])
+		kernel.Errf(env, "Unsupported shell %q — expected bash or zsh.", args[0])
 		return 2
 	}
 	return 0
