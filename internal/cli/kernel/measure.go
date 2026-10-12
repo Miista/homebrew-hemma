@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 
@@ -148,7 +147,7 @@ func cmdMeasure(env *Env, cfgPath string, args []string) int {
 		errf(env, "Service %q host %q has no IP in services.yaml.", name, svc.Host)
 		return 1
 	}
-	publicIP, err := lookupPublicIP(svc.FQDN)
+	publicIP, err := lookupPublicIP(env, svc.FQDN)
 	if err != nil {
 		errf(env, "could not look up the public IP for %s via DoH: %v", svc.FQDN, err)
 		return 1
@@ -172,7 +171,7 @@ func cmdMeasure(env *Env, cfgPath string, args []string) int {
 // passing an optional pin IP (empty = natural resolution) plus the run and
 // warm-up counts. Output streams live.
 func runMeasureScript(env *Env, url, pinIP string, runs, warmup int) error {
-	cmd := exec.Command("bash", "-s", url, pinIP, strconv.Itoa(runs), strconv.Itoa(warmup))
+	cmd := env.command("bash", "-s", url, pinIP, strconv.Itoa(runs), strconv.Itoa(warmup))
 	cmd.Stdin = strings.NewReader(measureScript)
 	cmd.Stdout = env.Out
 	cmd.Stderr = env.Err
@@ -185,8 +184,8 @@ func runMeasureScript(env *Env, url, pinIP string, runs, warmup int) error {
 // lookupPublicIP resolves fqdn's public IPv4 via Cloudflare DoH over HTTPS.
 // Used only by --compare on the dns-host, where DoH egress is allowed. Returns
 // the first A record.
-func lookupPublicIP(fqdn string) (string, error) {
-	out, err := exec.Command("curl", "-s", "--max-time", "8",
+func lookupPublicIP(env *Env, fqdn string) (string, error) {
+	out, err := env.command("curl", "-s", "--max-time", "8",
 		"-H", "accept: application/dns-json",
 		"https://cloudflare-dns.com/dns-query?name="+fqdn+"&type=A").Output()
 	if err != nil {

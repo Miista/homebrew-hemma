@@ -2,7 +2,6 @@ package kernel
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"hemma/internal/config"
@@ -49,7 +48,7 @@ func checkDeployReadiness(env *Env, cfg *config.Config) int {
 		}
 		remotes++
 		ip := cfg.Hosts[t.Name].IP
-		if hostKnown(ip) || hostKnown(sshHostPart(t.Dest)) {
+		if hostKnown(env, ip) || hostKnown(env, sshHostPart(t.Dest)) {
 			continue
 		}
 		problems++
@@ -68,11 +67,11 @@ func checkDeployReadiness(env *Env, cfg *config.Config) int {
 // hostKnown reports whether ssh already trusts a host key for the given name
 // (ssh-keygen -F searches the default known_hosts set, hashed entries
 // included). Overridable in tests. An empty name is never known.
-var hostKnown = func(host string) bool {
+var hostKnown = func(env *Env, host string) bool {
 	if host == "" {
 		return false
 	}
-	return exec.Command("ssh-keygen", "-F", host).Run() == nil
+	return env.command("ssh-keygen", "-F", host).Run() == nil
 }
 
 // sshHostPart extracts the host from a verbatim ssh destination for the

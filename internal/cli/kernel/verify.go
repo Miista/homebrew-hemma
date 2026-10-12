@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"net"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -138,7 +137,7 @@ func (v *verifier) no(env *Env, f string, a ...any) {
 func (v *verifier) dns(env *Env, fqdn, wantIP string) {
 	// A record must be answered LOCALLY with the host IP. If the conf isn't
 	// loaded, pihole forwards upstream and returns the public IP instead.
-	a := dexec(piholeContainer, "dig", "+short", "A", fqdn, "@127.0.0.1")
+	a := dexec(env, piholeContainer, "dig", "+short", "A", fqdn, "@127.0.0.1")
 	if a == wantIP {
 		v.ok(env, "DNS A = %s (internal)", a)
 	} else {
@@ -146,8 +145,8 @@ func (v *verifier) dns(env *Env, fqdn, wantIP string) {
 	}
 
 	// Confirm answered locally (dnsmasq 'config'), not forwarded/cached.
-	dexec(piholeContainer, "dig", fqdn, "@127.0.0.1")
-	log := dexecSh(piholeContainer, "tail -n 30 /var/log/pihole/pihole.log 2>/dev/null")
+	dexec(env, piholeContainer, "dig", fqdn, "@127.0.0.1")
+	log := dexecSh(env, piholeContainer, "tail -n 30 /var/log/pihole/pihole.log 2>/dev/null")
 	switch {
 	case strings.Contains(log, "config "+fqdn+" is "+wantIP):
 		v.ok(env, "answered locally (dnsmasq 'config')")
@@ -158,7 +157,7 @@ func (v *verifier) dns(env *Env, fqdn, wantIP string) {
 	}
 
 	// AAAA must be :: (suppression), never ::1.
-	switch aaaa := dexec(piholeContainer, "dig", "+short", "AAAA", fqdn, "@127.0.0.1"); aaaa {
+	switch aaaa := dexec(env, piholeContainer, "dig", "+short", "AAAA", fqdn, "@127.0.0.1"); aaaa {
 	case "::":
 		v.ok(env, "DNS AAAA = :: (suppressed)")
 	case "::1":
@@ -169,7 +168,7 @@ func (v *verifier) dns(env *Env, fqdn, wantIP string) {
 
 	// HTTPS/SVCB (type 65) must be NODATA, else SVCB-aware clients (Safari) take
 	// the public endpoint hint and bypass split-horizon.
-	if h := dexec(piholeContainer, "dig", "+short", "-t", "TYPE65", fqdn, "@127.0.0.1"); h == "" {
+	if h := dexec(env, piholeContainer, "dig", "+short", "-t", "TYPE65", fqdn, "@127.0.0.1"); h == "" {
 		v.ok(env, "DNS HTTPS/SVCB = NODATA (no public-endpoint leak)")
 	} else {
 		v.no(env, "DNS HTTPS/SVCB record present — leaks public endpoint to SVCB clients")
@@ -183,19 +182,19 @@ func (v *verifier) caddy(env *Env, fqdn, backend string) {
 	// imports, ignoring comments), so this can't be fooled by commented-out or
 	// mis-ordered import lines the way a text grep can. If the fqdn is in the
 	// adapted config, the imports genuinely loaded the generated site block.
-	if strings.Contains(strings.ToLower(dexecShAll(caddyContainer, "caddy adapt --config "+cf+" --adapter caddyfile 2>/dev/null")), strings.ToLower(fqdn)) {
+	if strings.Contains(strings.ToLower(dexecShAll(env, caddyContainer, "caddy adapt --config "+cf+" --adapter caddyfile 2>/dev/null")), strings.ToLower(fqdn)) {
 		v.ok(env, "%s in adapted config (imports load the generated site)", fqdn)
 	} else {
 		v.no(env, "%s not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)", fqdn)
 	}
-	if dexecOK(caddyContainer, "caddy validate --config "+cf+" --adapter caddyfile") {
+	if dexecOK(env, caddyContainer, "caddy validate --config "+cf+" --adapter caddyfile") {
 		v.ok(env, "caddy validate passes")
 	} else {
 		v.no(env, "caddy validate FAILED")
 	}
 
 	// reverse_proxy backend matches the declared backend.
-	site := dexecShAll(caddyContainer, "cat /etc/caddy/sites/*.caddy 2>/dev/null")
+	site := dexecShAll(env, caddyContainer, "cat /etc/caddy/sites/*.caddy 2>/dev/null")
 	if strings.Contains(site, backend) {
 		v.ok(env, "reverse_proxy uses %s", backend)
 	} else {
@@ -205,7 +204,7 @@ func (v *verifier) caddy(env *Env, fqdn, backend string) {
 	// Live HTTPS from local Caddy (fresh connection). This is the running-state
 	// proof: it hits the in-memory Caddy and the real backend, so it can't pass
 	// on a stale/unreloaded config that doesn't actually serve the host.
-	code := dexecSh(caddyContainer, fmt.Sprintf("curl -sk -o /dev/null -w '%%{http_code}' --resolve %s:443:127.0.0.1 https://%s/ 2>/dev/null", fqdn, fqdn))
+	code := dexecSh(env, caddyContainer, fmt.Sprintf("curl -sk -o /dev/null -w '%%{http_code}' --resolve %s:443:127.0.0.1 https://%s/ 2>/dev/null", fqdn, fqdn))
 	if code != "" && code != "000" {
 		v.ok(env, "local Caddy answered HTTPS (%s)", code)
 	} else {
@@ -243,8 +242,8 @@ func serviceByFQDN(cfg *config.Config, fqdn string) string {
 
 // dexec runs `docker exec <container> <args...>` and returns the first
 // non-empty output line, trimmed ("" on error).
-func dexec(container string, args ...string) string {
-	out, err := exec.Command("docker", append([]string{"exec", container}, args...)...).Output()
+func dexec(env *Env, container string, args ...string) string {
+	out, err := env.command("docker", append([]string{"exec", container}, args...)...).Output()
 	if err != nil {
 		return ""
 	}
@@ -253,8 +252,8 @@ func dexec(container string, args ...string) string {
 
 // dexecSh runs a shell command inside the container, returns the first
 // non-empty line (for single-value output like a line number or http_code).
-func dexecSh(container, sh string) string {
-	out, err := exec.Command("docker", "exec", container, "sh", "-c", sh).Output()
+func dexecSh(env *Env, container, sh string) string {
+	out, err := env.command("docker", "exec", container, "sh", "-c", sh).Output()
 	if err != nil {
 		return ""
 	}
@@ -264,8 +263,8 @@ func dexecSh(container, sh string) string {
 // dexecShAll runs a shell command inside the container, returns the FULL
 // output (for searching multi-line output: adapted config, running config,
 // site files).
-func dexecShAll(container, sh string) string {
-	out, err := exec.Command("docker", "exec", container, "sh", "-c", sh).Output()
+func dexecShAll(env *Env, container, sh string) string {
+	out, err := env.command("docker", "exec", container, "sh", "-c", sh).Output()
 	if err != nil {
 		return ""
 	}
@@ -273,8 +272,8 @@ func dexecShAll(container, sh string) string {
 }
 
 // dexecOK runs a shell command inside the container, returns success.
-func dexecOK(container, sh string) bool {
-	return exec.Command("docker", "exec", container, "sh", "-c", sh).Run() == nil
+func dexecOK(env *Env, container, sh string) bool {
+	return env.command("docker", "exec", container, "sh", "-c", sh).Run() == nil
 }
 
 func firstLine(s string) string {

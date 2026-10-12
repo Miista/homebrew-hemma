@@ -2,10 +2,12 @@ package kernel
 
 import (
 	"bytes"
+	"context"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // A command run with a custom Env prints into that Env's writers and nowhere
@@ -61,6 +63,23 @@ func TestEnv_NoTerminalRefusesInteractiveEditors(t *testing.T) {
 	}
 	if code, _ := Route(env, dir, filepath.Join(dir, configName), "create", []string{"user", "bob"}); code == 0 {
 		t.Error("create user: want refusal when NoTerminal")
+	}
+}
+
+// Cancelling Env.Ctx kills the external command a kernel helper started, so a
+// hung docker/ssh cannot hold a front end's lock forever.
+func TestEnv_ContextKillsExternalCommands(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	var out, errw bytes.Buffer
+	env := &Env{Out: &out, Err: &errw, Ctx: ctx}
+	start := time.Now()
+	ok := runQuiet(env, "sleep", "30")
+	if ok {
+		t.Error("a killed command must report failure")
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("command was not cancelled: took %s", d)
 	}
 }
 

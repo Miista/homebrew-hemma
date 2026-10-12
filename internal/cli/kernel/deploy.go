@@ -3,7 +3,6 @@ package kernel
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"sort"
 	"strings"
 
@@ -87,12 +86,12 @@ func cmdDeploy(env *Env, repoRoot, cfgPath string, args []string) int {
 		fmt.Fprintln(env.Out, "Nothing to deploy: no host runs a service or is the dns_host.")
 		return 0
 	}
-	if err := deployPreflight(repoRoot); err != nil {
+	if err := deployPreflight(env, repoRoot); err != nil {
 		errf(env, "%v", err)
 		hint(env, "Deploy means \"make the fleet match origin\" — origin must already carry the change.")
 		return 1
 	}
-	return runDeploy(env, execRunner{}, targets, repoRoot)
+	return runDeploy(env, execRunner{env}, targets, repoRoot)
 }
 
 // deployTarget is one host the deploy fans out to.
@@ -110,15 +109,15 @@ type deployRunner interface {
 
 // execRunner is the real runner: local exec, or ssh with BatchMode (no
 // interactive prompts from inside a fan-out).
-type execRunner struct{}
+type execRunner struct{ env *Env }
 
-func (execRunner) run(t deployTarget, argv []string) (string, error) {
+func (r execRunner) run(t deployTarget, argv []string) (string, error) {
 	if !t.Local {
 		// The command is passed as a single string for the remote shell to
 		// parse — that is what lets the literal ~/docker expand remotely.
 		argv = []string{"ssh", "-o", "BatchMode=yes", t.Dest, strings.Join(argv, " ")}
 	}
-	out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
+	out, err := r.env.command(argv[0], argv[1:]...).CombinedOutput()
 	return string(out), err
 }
 
@@ -174,15 +173,15 @@ func resolveDeployTargets(cfg *config.Config, self string, names []string) ([]de
 // deployPreflight refuses a deploy from a dirty or unpushed local repo. The
 // fleet pulls from origin, so a local-only change would deploy a state that
 // does not match what this machine shows — origin carries the intent.
-func deployPreflight(repoRoot string) error {
-	out, err := exec.Command("git", "-C", repoRoot, "status", "--porcelain").CombinedOutput()
+func deployPreflight(env *Env, repoRoot string) error {
+	out, err := env.command("git", "-C", repoRoot, "status", "--porcelain").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("cannot check the repo's git status in %s: %v\n%s", repoRoot, err, strings.TrimSpace(string(out)))
 	}
 	if s := strings.TrimSpace(string(out)); s != "" {
 		return fmt.Errorf("the local repo is dirty — commit and push before deploying:\n%s", s)
 	}
-	out, err = exec.Command("git", "-C", repoRoot, "rev-list", "@{u}..HEAD").CombinedOutput()
+	out, err = env.command("git", "-C", repoRoot, "rev-list", "@{u}..HEAD").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("cannot compare HEAD against its upstream in %s (no upstream configured?): %v\n%s", repoRoot, err, strings.TrimSpace(string(out)))
 	}
