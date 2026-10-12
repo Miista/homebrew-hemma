@@ -1,0 +1,7 @@
+$ hemma enable service
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the <service> name.
+Usage: hemma enable service <name>
+--- files ---

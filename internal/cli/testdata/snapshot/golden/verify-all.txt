@@ -1,0 +1,6 @@
+$ hemma verify --all
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: This machine's IP matches no host in services.yaml — run verify on a managed host (the resolver or a service host).
+--- files ---

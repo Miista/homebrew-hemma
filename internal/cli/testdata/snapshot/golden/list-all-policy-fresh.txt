@@ -1,0 +1,98 @@
+$ hemma list --all --policy
+exit: 0
+--- stdout ---
+== Hosts (2) ==
+  core         192.0.2.10  (dns_host, deploy_host)
+  edge         192.0.2.20
+
+== Domains (1) ==
+  home.example
+
+== Auth ==
+  snippet:  shared/auth.caddy
+  service:  sso
+
+== Services (17) ==
+  NAME       FQDN                    HOST  BACKEND                    AUTH      LOCAL       PUBLIC      TUNNEL
+  chat       chat.home.example       edge  chat:9000                  external  -           -           no
+  dash       dash.home.example       edge  dash:3000                  oidc      -           -           yes
+  downloads  downloads.home.example  edge  vpn:8090                   -         -           -           no
+  home       ha.home.example         core  host.docker.internal:8123  external  -           -           yes
+  homepage   start.home.example      core  homepage:3000              forward   one_factor  one_factor  yes
+  indexer    indexer.home.example    edge  indexer:6767               forward   one_factor  one_factor  yes
+  media      watch.home.example      edge  media:8096                 external  -           -           yes
+  music      music.home.example      edge  music:4533                 forward   one_factor  one_factor  yes
+  panel      panel.home.example      core  host.docker.internal:8080  forward   one_factor  one_factor  no
+  registry   registry.home.example   core  registry:5000              -         -           -           no
+  robot      robot.home.example      edge  robot:8765                 forward   one_factor  one_factor  yes
+  shelf      shelf.home.example      edge  shelf:80                   forward   bypass      one_factor  yes  [disabled]
+  speed      speed.home.example      edge  speed-tracker:80           forward   one_factor  one_factor  no
+  sso        auth.home.example       core  sso:9091                   (portal)  -           -           yes
+  status     status.home.example     core  status:8080                forward   one_factor  one_factor  yes
+  wiki       wiki.home.example       edge  wiki:3000                  forward   bypass      one_factor  yes
+  wikijs     docs.home.example       edge  docs:8000                  oidc      -           -           yes
+  (AUTH: forward = imports the (auth) snippet; oidc = Authelia, app does OIDC itself; external = authenticated outside Authelia (app login / token / edge); (portal) = this service IS the auth provider; change with 'hemma update service <name> --auth-mode <mode>')
+  (LOCAL/PUBLIC: the auth.policy each horizon requires — bypass, one_factor, two_factor or deny; unset = one_factor; - = no policy, since only 'forward' mode carries one. PUBLIC is shown even when TUNNEL is no: the policy is declared, it just never fires from the internet)
+  (TUNNEL: yes = a cloudflared tunnel ingress entry is generated for the FQDN, so the internet can reach it; no = local horizon only)
+
+== Groups (3) ==
+  ⚠ users unknown — users database not found next to the provider config (services-only view)
+  admins
+    users:     (unknown)
+    services:  panel (forward), robot (forward), speed (forward), status (forward), wiki (forward)
+  operators
+    users:     (unknown)
+    services:  indexer (forward)
+  readers
+    users:     (unknown)
+    services:  music (forward), shelf (forward)
+⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
+
+⚠ could not verify OIDC client for wikijs: open core/authelia/data/config/configuration.yml: no such file or directory
+
+⚠ Repo drift: 43 generated files out of sync with services.yaml — run 'hemma doctor --fix'.
+  - missing:  core/authelia/data/config/hemma.access_control.generated.yml
+  - missing:  core/caddy/data/hemma.auth.generated.caddy
+  - missing:  core/caddy/data/hemma.generated.caddy
+  - missing:  core/caddy/data/hemma.trusted_proxies.generated.caddy
+  - missing:  core/caddy/data/sites/home.caddy
+  - missing:  core/caddy/data/sites/homepage.caddy
+  - missing:  core/caddy/data/sites/panel.caddy
+  - missing:  core/caddy/data/sites/registry.caddy
+  - missing:  core/caddy/data/sites/sso.caddy
+  - missing:  core/caddy/data/sites/status.caddy
+  - missing:  core/caddy/data/tls/tls_home_example.caddy
+  - missing:  core/cloudflared/config.yml
+  - missing:  core/pihole/data/dnsmasq.d/chat.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/dash.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/downloads.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/home.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/homepage.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/indexer.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/media.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/music.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/panel.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/registry.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/robot.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/speed.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/sso.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/status.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/wiki.generated.conf
+  - missing:  core/pihole/data/dnsmasq.d/wikijs.generated.conf
+  - missing:  edge/caddy/data/hemma.auth.generated.caddy
+  - missing:  edge/caddy/data/hemma.generated.caddy
+  - missing:  edge/caddy/data/hemma.trusted_proxies.generated.caddy
+  - missing:  edge/caddy/data/sites/chat.caddy
+  - missing:  edge/caddy/data/sites/dash.caddy
+  - missing:  edge/caddy/data/sites/downloads.caddy
+  - missing:  edge/caddy/data/sites/indexer.caddy
+  - missing:  edge/caddy/data/sites/media.caddy
+  - missing:  edge/caddy/data/sites/music.caddy
+  - missing:  edge/caddy/data/sites/robot.caddy
+  - missing:  edge/caddy/data/sites/speed.caddy
+  - missing:  edge/caddy/data/sites/wiki.caddy
+  - missing:  edge/caddy/data/sites/wikijs.caddy
+  - missing:  edge/caddy/data/tls/tls_home_example.caddy
+  - missing:  edge/cloudflared/config.yml
+--- stderr ---
+--- files ---

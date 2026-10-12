@@ -1,0 +1,7 @@
+$ hemma add domain x.example
+# setup: @write services.yaml hosts: [unclosed
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: parse <repo>/services.yaml: yaml: line 1: did not find expected ',' or ']'
+--- files ---

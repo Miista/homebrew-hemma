@@ -1,0 +1,48 @@
+$ hemma completion zsh
+exit: 0
+--- stdout ---
+#compdef hemma splitdns
+# zsh completion for hemma
+
+_hemma() {
+    local -a verbs nouns set_keys flags
+    verbs=(add update remove create enable disable defaults list verify apply deploy doctor measure version help completion)
+    nouns=(service host domain)
+    set_keys=(dns-host deploy-host auth-snippet auth-service tunnel-dir local-networks)
+    flags=(--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --auth-policy-local --auth-policy-public --tunnel --public --ip --ssh --trusted-proxies --all -a --policy --fix --chdir -C --help -h)
+
+    if (( CURRENT == 2 )); then
+        _describe 'command' verbs
+        return
+    fi
+
+    case "${words[2]}" in
+        add|update|remove|enable|disable)
+            if (( CURRENT == 3 )); then
+                _describe 'noun' nouns
+                return
+            fi
+            ;;
+        defaults)
+            if (( CURRENT == 3 )); then
+                _values 'subcommand' set
+                return
+            elif (( CURRENT == 4 )) && [[ "${words[3]}" == "set" ]]; then
+                _describe 'setting' set_keys
+                return
+            fi
+            ;;
+        completion)
+            if (( CURRENT == 3 )); then
+                _values 'shell' bash zsh
+                return
+            fi
+            ;;
+    esac
+
+    _describe 'flag' flags
+}
+
+_hemma "$@"
+--- stderr ---
+--- files ---

@@ -1,0 +1,30 @@
+$ hemma deploy --help
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma deploy — push-based fan-out: pull + apply on every host over ssh
+
+Usage: hemma deploy [<host> ...]
+
+Makes the fleet match origin, in three strictly ordered phases:
+
+  Phase 0 — probe:  'ssh <dest> true' to every REMOTE host. ANY host
+                    unreachable over ssh aborts before anything is pulled —
+                    a clear "unreachable" instead of git-pull noise later.
+  Phase 1 — pull:   'git -C ~/docker pull --ff-only' on every target host.
+                    ANY failure (divergence, dirty remote tree, unreachable
+                    host, ssh auth) aborts the ENTIRE deploy before phase 2 —
+                    no runtime state changed anywhere. After the pulls, every
+                    host must be on the same commit (a racing push aborts too).
+  Phase 2 — apply:  'hemma apply' per host — remotes first, THIS host last,
+                    so a resolver restart can't break DNS-resolved ssh to the
+                    remaining hosts. A failure on one host is reported and the
+                    fan-out continues; exit is non-zero with a per-host summary.
+
+Targets default to every host with a role (runs a service, or is the
+dns_host); pass names to restrict. Hosts are reached with
+'ssh -o BatchMode=yes <dest>' where <dest> is the host's ssh: field
+(default: its name); a host whose IP matches this machine runs locally.
+Refuses up front if the LOCAL repo is dirty or has unpushed commits —
+deploying means "make the fleet match origin", so push first.
+--- files ---

@@ -1,0 +1,17 @@
+$ hemma apply
+# setup: doctor --fix
+# machine: host="edge" tools="fail"
+exit: 1
+--- stdout ---
+Running on host "edge".
+
+== Validate (edge) ==
+  ✓ Caddyfile imports hemma.trusted_proxies.generated.caddy
+  ✗ caddy validate FAILED (missing cert or bad config?)
+
+--- stderr ---
+    fake docker: simulated failure
+Error: Validation failed — nothing was restarted or reloaded.
+--- external commands ---
+docker exec caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+--- files ---

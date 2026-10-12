@@ -1,0 +1,15 @@
+$ hemma defaults --help
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma defaults — show or set repo-wide default values
+
+Usage: hemma defaults              Show every default and its current value ('(unset)' if none)
+       hemma defaults set <key> <value>   Set one (see 'hemma help defaults set <key>' for each)
+
+Every value 'defaults set' touches is a field of services.yaml's top-level
+defaults: block (dns_host, deploy_host, auth_snippet, auth_service,
+tunnel_dir) — one repo-wide role or path, not a per-service or per-host
+setting. 'hemma defaults' with no arguments is the inventory of that block,
+the same way 'hemma list' is the inventory of services.
+--- files ---

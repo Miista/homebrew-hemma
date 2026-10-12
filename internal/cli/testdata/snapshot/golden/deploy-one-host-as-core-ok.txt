@@ -1,0 +1,31 @@
+$ hemma deploy edge
+# setup: doctor --fix
+# machine: host="core" tools="ok"
+exit: 0
+--- stdout ---
+Deploying to 1 host: edge.
+
+== Phase 0: probe ==
+  ✓ edge: reachable
+
+== Phase 1: pull ==
+  ✓ edge: pulled
+  all hosts at 
+
+== Phase 2: apply ==
+
+== edge ==
+
+== Summary ==
+  ✓ edge: applied
+
+Deployed.
+--- stderr ---
+--- external commands ---
+git -C <repo> status --porcelain
+git -C <repo> rev-list @{u}..HEAD
+ssh -o BatchMode=yes ops@192.0.2.20 true
+ssh -o BatchMode=yes ops@192.0.2.20 git -C ~/docker pull --ff-only
+ssh -o BatchMode=yes ops@192.0.2.20 git -C ~/docker rev-parse HEAD
+ssh -o BatchMode=yes ops@192.0.2.20 hemma apply
+--- files ---

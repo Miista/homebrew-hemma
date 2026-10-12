@@ -1,0 +1,7 @@
+$ hemma update
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the noun for "update" — expected service, host, or domain.
+Usage: hemma update service|host|domain ...
+--- files ---

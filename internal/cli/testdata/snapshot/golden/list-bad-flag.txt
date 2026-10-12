@@ -1,0 +1,14 @@
+$ hemma list --bogus
+exit: 2
+--- stdout ---
+--- stderr ---
+flag provided but not defined: -bogus
+Usage of list:
+  -a	alias for --all
+  -all
+    	show services on every host, not just this one
+  -json
+    	stable JSON service listing for scripts (implies --all)
+  -policy
+    	add LOCAL and PUBLIC columns: the per-horizon auth policy (design §4.8)
+--- files ---

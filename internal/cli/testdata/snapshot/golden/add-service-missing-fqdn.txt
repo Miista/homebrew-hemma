@@ -1,0 +1,7 @@
+$ hemma add service newsvc --host edge --backend newsvc:8080
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing required flag: --fqdn.
+Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port>
+--- files ---

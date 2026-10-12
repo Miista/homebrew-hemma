@@ -1,0 +1,6 @@
+$ hemma update host edge
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: no flags given and stdin is not a terminal — pass flags (see hemma help update)
+--- files ---

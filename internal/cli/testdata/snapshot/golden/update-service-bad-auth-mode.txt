@@ -1,0 +1,6 @@
+$ hemma update service dash --auth-mode magic
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Invalid --auth-mode "magic" — expected forward, oidc, external, or none.
+--- files ---

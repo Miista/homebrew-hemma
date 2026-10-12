@@ -1,0 +1,41 @@
+$ hemma list --help
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma list — overview: hosts, domains, services, and auth groups
+
+Usage: hemma list [--all] [--policy] [--json]
+
+By default the services list is filtered to those running on THIS host
+(matched by local IP).
+
+The PUBLIC column echoes the service's declared 'public' field: 'yes' means
+hemma generates a tunnel ingress entry for the FQDN in this host's cloudflared
+config.yml (alongside the internal horizon — Pi-hole record + Caddy block);
+'no' means internal horizon only. This is a direct echo of the declaration,
+not an observation of foreign state — hemma is the sole author of config.yml,
+so there is nothing else to reconcile against. If defaults.tunnel-dir isn't
+set, a 'public: true' service has no config.yml entry generated for it yet;
+'hemma doctor' flags that drift.
+
+When any auth group exists, a Groups section follows the services table: the
+union of the auth provider's users database (user -> groups, read-only) and
+services.yaml (service -> auth groups), one block per group, showing its users
+and the services restricted to it. One-sided groups still list (services but
+no users = nobody can access; users but no services). If the users database is
+missing or unreadable, a services-only view is shown with a note. Usernames
+only; never password hashes or emails.
+
+Flags:
+  -a, --all      Show services on every host, not just this one.
+      --policy   Add LOCAL and PUBLIC columns: the auth.policy each horizon
+                 requires (bypass, one_factor, two_factor, deny; unset =
+                 one_factor). '-' when the auth mode carries no policy —
+                 only 'forward' does. PUBLIC is shown even when TUNNEL is
+                 'no': the policy is declared, it just never fires from the
+                 internet.
+      --json     Print a JSON array of {name, fqdn, host, backend, auth_mode,
+                 policy_local, policy_public, tunnel} objects (every service,
+                 regardless of host) for scripts; suppresses everything else.
+                 The policy fields are omitted unless auth_mode is 'forward'.
+--- files ---

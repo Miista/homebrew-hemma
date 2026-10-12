@@ -1,0 +1,22 @@
+$ hemma verify dash.home.example
+# setup: doctor --fix
+# machine: host="edge" tools="ok"
+exit: 1
+--- stdout ---
+Running on host "edge".
+
+== dash · dash.home.example ==
+  ✗ dash.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use dash:3000 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+--- stderr ---
+Error: 3 checks failed.
+--- external commands ---
+git -C <repo> check-ignore --stdin
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve dash.home.example:443:127.0.0.1 https://dash.home.example/ 2>/dev/null
+--- files ---

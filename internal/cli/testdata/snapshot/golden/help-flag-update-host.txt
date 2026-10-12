@@ -1,0 +1,17 @@
+$ hemma update host --help
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma update host — change a host's ip or ssh destination
+
+Usage: hemma update host <name> [--ip <ip>] [--ssh <dest>]
+
+Only the given flags change. Changing the ip regenerates every DNS record
+pointing at the host; changing the ssh destination touches nothing generated.
+
+Flags:
+      --ip <ip>      New IP address (must be valid and unique across hosts).
+      --ssh <dest>   New verbatim ssh(1) destination for 'hemma deploy'.
+                     Pass '-' (or '') to clear it back to the default (the
+                     host's name).
+--- files ---

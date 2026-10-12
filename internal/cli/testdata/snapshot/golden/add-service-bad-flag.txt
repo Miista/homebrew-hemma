@@ -1,0 +1,35 @@
+$ hemma add service newsvc --bogus
+exit: 2
+--- stdout ---
+--- stderr ---
+flag provided but not defined: -bogus
+Usage of add:
+  -H string
+    	alias for --host
+  -auth
+    	shorthand for --auth-mode forward
+  -auth-groups string
+    	comma-separated auth provider groups allowed access
+  -auth-mode string
+    	auth mode: forward|oidc|external|none
+  -auth-policy-local string
+    	auth requirement for local-horizon requests: bypass|one_factor|two_factor|deny
+  -auth-policy-public string
+    	auth requirement for public-horizon requests: bypass|one_factor|two_factor|deny
+  -b string
+    	alias for --backend
+  -backend string
+    	reverse_proxy upstream name:port
+  -bypass-paths string
+    	comma-separated request paths exempted from the auth gate (forward mode only)
+  -f string
+    	alias for --fqdn
+  -fqdn string
+    	service fqdn
+  -host string
+    	host that runs the service
+  -public
+    	pre-rename alias for --tunnel
+  -tunnel
+    	generate a cloudflared tunnel ingress entry (reachable from the internet)
+--- files ---

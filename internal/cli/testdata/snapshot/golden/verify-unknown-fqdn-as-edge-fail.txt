@@ -1,0 +1,11 @@
+$ hemma verify nowhere.example
+# setup: doctor --fix
+# machine: host="edge" tools="fail"
+exit: 1
+--- stdout ---
+Running on host "edge".
+--- stderr ---
+Error: No service with fqdn "nowhere.example" in services.yaml.
+--- external commands ---
+git -C <repo> check-ignore --stdin
+--- files ---

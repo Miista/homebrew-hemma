@@ -1,0 +1,10 @@
+$ hemma verify --bogus
+exit: 2
+--- stdout ---
+--- stderr ---
+flag provided but not defined: -bogus
+Usage of verify:
+  -a	alias for --all
+  -all
+    	check every service, including those with nothing to verify on this host
+--- files ---

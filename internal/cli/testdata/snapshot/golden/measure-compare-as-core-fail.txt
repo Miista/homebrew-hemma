@@ -1,0 +1,10 @@
+$ hemma measure --compare dash
+# setup: doctor --fix
+# machine: host="core" tools="fail"
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: could not look up the public IP for dash.home.example via DoH: exit status 1
+--- external commands ---
+curl -s --max-time 8 -H accept: application/dns-json https://cloudflare-dns.com/dns-query?name=dash.home.example&type=A
+--- files ---

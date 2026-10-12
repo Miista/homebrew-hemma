@@ -1,0 +1,7 @@
+$ hemma defaults set auth-snippet shared/other.caddy
+# setup: doctor --fix
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: auth_snippet "shared/other.caddy" is not readable: stat <repo>/shared/other.caddy: no such file or directory
+--- files ---

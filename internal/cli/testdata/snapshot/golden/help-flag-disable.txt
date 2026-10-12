@@ -1,0 +1,65 @@
+$ hemma disable --help
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma — Split-Horizon DNS (Manager)
+
+Generates split-horizon DNS records and Caddy site blocks from a declarative
+services.yaml. Operates on ~/docker by default; -C <dir> overrides.
+
+Commands are verb-first: <verb> <noun> <args>.
+
+Services (an app reached at an fqdn, on a host, under a domain):
+  hemma add     service <name> --fqdn <f> --host <h> --backend <b> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>]
+                                 With no flags: an interactive editor (terminal only) collects the fields.
+  hemma update  service <name> [--fqdn ...] [--host ...] [--backend ...] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>]
+                                 With no flags: an interactive editor (terminal only), pre-filled with current values.
+  hemma remove  service <name>
+  hemma disable service <name>   Stop generating DNS/Caddy config for a service (keeps it in services.yaml).
+  hemma enable  service <name>   Re-enable a disabled service (regenerates its files).
+  hemma rename  service <old> <new>   Rename a service; regenerates its files under the new name. Refused if <new>
+                                 already exists, or if <old> is the configured auth_service (see 'defaults set auth-service').
+
+Building blocks (a service references a host and a domain):
+  hemma add    host   <name> <ip> [--ssh <dest>] [--trusted-proxies <ip,cidr,...>]
+  hemma update host   <name> [--ip <ip>] [--ssh <dest>] [--trusted-proxies <ip,cidr,...>]
+                                 With no flags: an interactive editor (terminal only), pre-filled with current values.
+                                 --trusted-proxies lists EXTRA trusted proxies (e.g. this host's cloudflared
+                                 container); every declared host's ip is trusted automatically. '' clears.
+  hemma remove host   <name>
+  hemma add    domain <name>
+  hemma remove domain <name>
+  hemma defaults                     Show every repo-wide default and its current value ('(unset)' if none).
+  hemma defaults set dns-host <name>       Set the default resolver host for DNS records.
+  hemma defaults set deploy-host <name>    Name the one host 'hemma deploy' may run from ('-' clears); doctor audits deploy readiness only there.
+  hemma defaults set auth-snippet <path>   Set the (auth) snippet source ('-' clears). Services opt in with --auth.
+  hemma defaults set auth-service <name>   Name the forward-auth backend service ('-' clears); preserves X-Forwarded-Host.
+  hemma defaults set local-networks <cidr,...>  Set the CIDRs that count as the local horizon for per-horizon auth policies ('-' clears).
+  hemma defaults set tunnel-dir <dir>      Set where every host's cloudflared config.yml is written ('-' clears; a tunnel: true service becomes unreachable from the internet until it's set — its DNS/Caddy config is unaffected).
+
+Credentials (print-only; the auth provider's config and users database are never written):
+  hemma create app oidc <app_name> [callback_path]   Generate OIDC client credentials + a config snippet to paste in.
+  hemma create user <username>                       Interactively hash a new user's password + print the users-database snippet.
+
+Other:
+  hemma apply                    Make config live on THIS host: validate caddy + auth config first, then restart pihole / reload caddy / restart the auth provider. Run on each host. Refuses if the repo has drift.
+  hemma deploy [<host> ...]      Push-based fan-out over ssh: 'git pull --ff-only' on every target host (any failure aborts everything), then 'hemma apply' per host, remotes first and this host last. Targets default to all hosts with a role. Requires a clean, pushed local repo.
+  hemma list [--all] [--policy] [--json]  Overview: hosts, domains, services (with TUNNEL: internet-reachable or local-only, echoing each service's declared 'tunnel' field), and auth groups (users + restricted services). Services default to THIS host; --all shows every host. --policy adds LOCAL and PUBLIC columns with the per-horizon auth policy. --json prints a JSON array of {name, fqdn, host, backend, auth_mode, policy_local, policy_public, tunnel} objects (every service, regardless of host) for scripts; suppresses everything else.
+  hemma verify [--all] [<fqdn>]  Check live DNS/Caddy per service. Defaults to services this host can check; --all includes the rest. Run on each host; needs docker.
+  hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>  Time the request breakdown (dns/connect/tls/ttfb) for a service or any URL. --compare A/Bs split-horizon vs public read-only (dns-host only, services only).
+  hemma doctor [--fix]           Audit the repo (gitignored files, Caddyfile imports — including trusted_proxies, generated-file drift — including cloudflared config.yml, auth wiring); --fix reconciles files and .gitignore.
+  hemma version
+  hemma completion <bash|zsh>    Print a shell completion script to stdout (see 'hemma help completion' to install).
+  hemma help [<command>]         Show this text, or a command's help (same as <command> --help).
+
+Global flags:
+  -C, --chdir <dir>   Operate on <dir> instead of the default ~/docker.
+
+Notes:
+  - A host's name is its repo directory (e.g. host "pi" -> ./pi/), which must already exist.
+  - Each domain gets a TLS snippet generated on every host, deriving cert paths from
+    the convention caddy/data/certs/<domain>/{fullchain.cer,privkey.key}.
+  - Config edits (add/update/remove/enable/disable/rename) regenerate files automatically, then
+    print which hosts to run 'hemma apply' on to make the change live.
+  - Removing a host or domain is refused while any service still references it.
+--- files ---

@@ -1,0 +1,7 @@
+$ hemma measure
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the <service>, <fqdn>, or <url> to measure.
+Usage: hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>
+--- files ---

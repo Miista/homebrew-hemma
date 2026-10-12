@@ -1,0 +1,6 @@
+$ hemma defaults frob
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Unknown 'defaults' subcommand "frob" — expected 'set', or no subcommand to show current values.
+--- files ---

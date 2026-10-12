@@ -1,0 +1,52 @@
+$ hemma help update service
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma update service — change a service's fqdn, host, backend, or auth
+
+Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel]
+
+With no flags (and stdin a terminal) an interactive editor opens instead:
+EVERY field is pre-filled with the service's current values and editable
+(Enter keeps them): fqdn, host, backend, tunnel, disabled, auth mode, auth
+groups, and auth bypass paths. The host and auth mode are pickers, tunnel and
+disabled are confirms, auth groups are a multi-select built from the groups
+that actually exist — on users in the auth provider's users database (members
+shown per group) and on other services — plus a 'new group…' escape hatch, and
+bypass paths are one per line. Turning 'disabled' on removes the service's
+generated files, exactly as 'hemma disable service' does. On submit it prints
+the changed fields (old → new) and runs the same validation and sync path as
+the flags form; 'no changes' or Ctrl-C touches nothing. Non-interactive callers
+must pass flags.
+
+Flags:
+  -f, --fqdn <fqdn>       New public name (must match a declared domain).
+  -H, --host <host>       New host (repo directory).
+  -b, --backend <n:port>  New reverse_proxy upstream.
+      --auth-mode <mode>  Set the auth mode: forward (Authelia gate via the (auth)
+                          snippet), oidc (Authelia, app speaks OIDC itself — no gate),
+                          external (authenticated outside Authelia — app login / token /
+                          edge; no gate, nothing verified), or none (clear). oidc and
+                          external render identically but mean opposites — oidc IS
+                          Authelia, external is explicitly not.
+      --auth-groups <gs>  Set the comma-separated auth provider groups (OR'd in the
+                          generated access-control rules). '' clears them. Requires an
+                          auth mode (forward or oidc).
+      --bypass-paths <p>  Set the comma-separated request paths exempted from the auth
+                          gate. '' clears them. Requires an auth mode that uses hemma's
+                          provider (forward or oidc). See 'hemma help add service' for
+                          why (native API clients that can't complete a browser login).
+      --auth[=false]      Back-compat shorthand: --auth = forward, --auth=false = none.
+      --auth-policy-local <p>
+      --auth-policy-public <p>
+                          Per-horizon auth requirement: bypass|one_factor|two_factor|deny;
+                          '' clears one back to the default (one_factor). See 'hemma help
+                          add service' for the full semantics. Forward mode only.
+      --tunnel            Generate a cloudflared tunnel ingress entry (so the internet
+                          can reach it); --tunnel=false opts back out. Accepts --public
+                          as a pre-rename alias. Writes into this host's cloudflared config.yml
+                          (needs defaults.tunnel-dir set — otherwise the entry is
+                          skipped and 'hemma doctor' flags the drift).
+
+Only the given flags change; regenerated files and apply-hints follow.
+--- files ---

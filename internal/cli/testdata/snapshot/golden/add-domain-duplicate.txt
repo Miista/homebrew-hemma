@@ -1,0 +1,6 @@
+$ hemma add domain home.example
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Domain "home.example" already exists.
+--- files ---

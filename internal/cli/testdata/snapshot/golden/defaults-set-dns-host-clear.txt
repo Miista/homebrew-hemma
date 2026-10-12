@@ -1,0 +1,6 @@
+$ hemma defaults set dns-host -
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Host "-" does not exist — add it first with: hemma add host - <ip>
+--- files ---

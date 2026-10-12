@@ -1,0 +1,11 @@
+$ hemma defaults
+exit: 0
+--- stdout ---
+  dns-host        core
+  deploy-host     core
+  auth-snippet    shared/auth.caddy
+  auth-service    sso
+  tunnel-dir      cloudflared
+  local-networks  192.0.2.0/24
+--- stderr ---
+--- files ---

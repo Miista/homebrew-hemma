@@ -1,0 +1,6 @@
+$ hemma defaults set local-networks not-a-cidr
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: "not-a-cidr" is not a valid IP address or CIDR.
+--- files ---

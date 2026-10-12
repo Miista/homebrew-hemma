@@ -1,0 +1,7 @@
+$ hemma remove service
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the <service> name.
+Usage: hemma remove service <name>
+--- files ---

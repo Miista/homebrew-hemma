@@ -1,0 +1,6 @@
+$ hemma defaults set auth-service nowhere
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Service "nowhere" does not exist — add it first with: hemma add service nowhere ...
+--- files ---

@@ -1,0 +1,7 @@
+$ hemma measure nowhere
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: No service named "nowhere" in services.yaml, and it does not look like a hostname or URL.
+Usage: hemma measure [--compare] <service|fqdn|url>
+--- files ---

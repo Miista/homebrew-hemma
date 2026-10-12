@@ -1,0 +1,6 @@
+$ hemma add service newsvc --fqdn newsvc.home.example --host edge --backend newsvc:8080 --auth-mode magic
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Invalid --auth-mode "magic" — expected forward, oidc, external, or none.
+--- files ---

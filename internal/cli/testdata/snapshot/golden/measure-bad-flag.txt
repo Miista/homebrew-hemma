@@ -1,0 +1,20 @@
+$ hemma measure --bogus
+exit: 2
+--- stdout ---
+--- stderr ---
+flag provided but not defined: -bogus
+Usage of measure:
+  -ab
+    	alias for --compare
+  -c	alias for --compare
+  -compare
+    	A/B split-horizon vs public via --resolve (dns-host only; read-only)
+  -n int
+    	alias for --runs (default 5)
+  -runs int
+    	number of timed requests per leg (default 5)
+  -w int
+    	alias for --warmup (default 3)
+  -warmup int
+    	untimed warm-up requests before measuring (default 3)
+--- files ---

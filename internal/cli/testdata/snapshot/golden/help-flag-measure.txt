@@ -1,0 +1,18 @@
+$ hemma measure --help
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma measure — time the HTTPS request breakdown (dns/connect/tls/ttfb)
+
+Usage: hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>
+
+Flags:
+  -c, --compare        A/B the split-horizon path vs the public path, both pinned
+                       by IP (read-only; dns-host only, configured services only).
+  -n, --runs <n>       Timed requests per leg (default 5).
+  -w, --warmup <n>     Untimed warm-up requests first (default 3; 0 skips the
+                       warm-up, so run 1 pays cold-start costs).
+
+The target may be a configured service, a bare hostname, or any http(s) URL —
+the latter two need no services.yaml. Requires bash, curl, awk.
+--- files ---

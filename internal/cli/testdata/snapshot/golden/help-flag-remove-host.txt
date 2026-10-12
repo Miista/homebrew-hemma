@@ -1,0 +1,8 @@
+$ hemma remove host --help
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma remove host — remove a host (refused while services reference it)
+
+Usage: hemma remove host <name>
+--- files ---

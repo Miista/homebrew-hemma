@@ -1,0 +1,6 @@
+$ hemma update service nowhere --backend x:1
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Service "nowhere" does not exist.
+--- files ---

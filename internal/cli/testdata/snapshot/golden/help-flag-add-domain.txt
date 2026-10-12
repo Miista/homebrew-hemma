@@ -1,0 +1,10 @@
+$ hemma add domain --help
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma add domain — declare a domain (generates a TLS snippet per host)
+
+Usage: hemma add domain <name>
+
+Cert paths derive from caddy/data/certs/<domain>/{fullchain.cer,privkey.key}.
+--- files ---

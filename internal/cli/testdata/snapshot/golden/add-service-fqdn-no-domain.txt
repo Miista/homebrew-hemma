@@ -1,0 +1,7 @@
+$ hemma add service newsvc --fqdn newsvc.other.example --host edge --backend newsvc:8080
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: The fqdn "newsvc.other.example" matches no defined domain.
+Defined domains: home.example. Add one with 'hemma add domain <name>' or fix the fqdn.
+--- files ---

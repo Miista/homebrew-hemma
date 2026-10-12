@@ -219,10 +219,14 @@ func headArgv(t deployTarget, localRepo string) []string {
 	return []string{"git", "-C", repo, "rev-parse", "HEAD"}
 }
 
+// selfExecutable is the path of the running binary; a variable so tests can
+// stand in a fake rather than re-executing the test binary.
+var selfExecutable = os.Executable
+
 func applyArgv(t deployTarget, localRepo string) []string {
 	if t.Local {
 		// Re-invoke this same binary (hemma may not be on PATH in a dev build).
-		exe, err := os.Executable()
+		exe, err := selfExecutable()
 		if err != nil {
 			exe = "hemma"
 		}

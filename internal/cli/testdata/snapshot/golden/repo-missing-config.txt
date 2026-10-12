@@ -1,0 +1,12 @@
+$ hemma list
+# setup: @rm services.yaml
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: No services.yaml in this directory — nothing to list.
+
+To create your first service:
+  hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port>
+
+Or run from the repo root, or pass -C <dir>.
+--- files ---

@@ -1,0 +1,6 @@
+$ hemma completion fish
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Unsupported shell "fish" — expected bash or zsh.
+--- files ---

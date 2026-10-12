@@ -1,0 +1,7 @@
+$ hemma deploy edge
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: deploy_host is "core" — refusing to deploy from this machine (it matches no declared host).
+Run 'hemma deploy' on core, or drop the restriction with 'hemma defaults set deploy-host -'.
+--- files ---

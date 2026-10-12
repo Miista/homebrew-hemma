@@ -1,0 +1,12 @@
+$ hemma deploy
+# setup: defaults set deploy-host - ; doctor --fix
+# machine: host="" tools="fail"
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: cannot check the repo's git status in <repo>: exit status 1
+fake git: simulated failure
+Deploy means "make the fleet match origin" — origin must already carry the change.
+--- external commands ---
+git -C <repo> status --porcelain
+--- files ---

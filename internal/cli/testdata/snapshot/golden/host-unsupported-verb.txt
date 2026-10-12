@@ -1,0 +1,6 @@
+$ hemma enable host edge
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Cannot "enable" a host — hosts support add, update, and remove.
+--- files ---

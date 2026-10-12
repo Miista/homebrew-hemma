@@ -1,0 +1,7 @@
+$ hemma create app saml foo
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Unknown app type — expected oidc.
+Usage: hemma create app oidc <app_name> [callback_path]
+--- files ---

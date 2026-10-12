@@ -1,0 +1,220 @@
+$ hemma verify --all
+# setup: doctor --fix
+# machine: host="core" tools="ok"
+exit: 1
+--- stdout ---
+Running on host "core".
+
+== chat · chat.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+
+== dash · dash.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+
+== downloads · downloads.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+
+== home · ha.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.10) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+  ✗ ha.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use host.docker.internal:8123 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== homepage · start.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.10) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+  ✗ start.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use homepage:3000 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== indexer · indexer.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+
+== media · watch.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+
+== music · music.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+
+== panel · panel.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.10) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+  ✗ panel.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use host.docker.internal:8080 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== registry · registry.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.10) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+  ✗ registry.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use registry:5000 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== robot · robot.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+
+== speed · speed.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+
+== sso · auth.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.10) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+  ✗ auth.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use sso:9091 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== status · status.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.10) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+  ✗ status.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use status:8080 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== wiki · wiki.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+
+== wikijs · docs.home.example ==
+  ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
+  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
+
+--- stderr ---
+Error: 50 checks failed.
+--- external commands ---
+git -C <repo> check-ignore --stdin
+docker exec pihole dig +short A chat.home.example @127.0.0.1
+docker exec pihole dig chat.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA chat.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 chat.home.example @127.0.0.1
+docker exec pihole dig +short A dash.home.example @127.0.0.1
+docker exec pihole dig dash.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA dash.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 dash.home.example @127.0.0.1
+docker exec pihole dig +short A downloads.home.example @127.0.0.1
+docker exec pihole dig downloads.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA downloads.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 downloads.home.example @127.0.0.1
+docker exec pihole dig +short A ha.home.example @127.0.0.1
+docker exec pihole dig ha.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA ha.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 ha.home.example @127.0.0.1
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve ha.home.example:443:127.0.0.1 https://ha.home.example/ 2>/dev/null
+docker exec pihole dig +short A start.home.example @127.0.0.1
+docker exec pihole dig start.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA start.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 start.home.example @127.0.0.1
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve start.home.example:443:127.0.0.1 https://start.home.example/ 2>/dev/null
+docker exec pihole dig +short A indexer.home.example @127.0.0.1
+docker exec pihole dig indexer.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA indexer.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 indexer.home.example @127.0.0.1
+docker exec pihole dig +short A watch.home.example @127.0.0.1
+docker exec pihole dig watch.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA watch.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 watch.home.example @127.0.0.1
+docker exec pihole dig +short A music.home.example @127.0.0.1
+docker exec pihole dig music.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA music.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 music.home.example @127.0.0.1
+docker exec pihole dig +short A panel.home.example @127.0.0.1
+docker exec pihole dig panel.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA panel.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 panel.home.example @127.0.0.1
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve panel.home.example:443:127.0.0.1 https://panel.home.example/ 2>/dev/null
+docker exec pihole dig +short A registry.home.example @127.0.0.1
+docker exec pihole dig registry.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA registry.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 registry.home.example @127.0.0.1
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve registry.home.example:443:127.0.0.1 https://registry.home.example/ 2>/dev/null
+docker exec pihole dig +short A robot.home.example @127.0.0.1
+docker exec pihole dig robot.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA robot.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 robot.home.example @127.0.0.1
+docker exec pihole dig +short A speed.home.example @127.0.0.1
+docker exec pihole dig speed.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA speed.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 speed.home.example @127.0.0.1
+docker exec pihole dig +short A auth.home.example @127.0.0.1
+docker exec pihole dig auth.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA auth.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 auth.home.example @127.0.0.1
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve auth.home.example:443:127.0.0.1 https://auth.home.example/ 2>/dev/null
+docker exec pihole dig +short A status.home.example @127.0.0.1
+docker exec pihole dig status.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA status.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 status.home.example @127.0.0.1
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve status.home.example:443:127.0.0.1 https://status.home.example/ 2>/dev/null
+docker exec pihole dig +short A wiki.home.example @127.0.0.1
+docker exec pihole dig wiki.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA wiki.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 wiki.home.example @127.0.0.1
+docker exec pihole dig +short A docs.home.example @127.0.0.1
+docker exec pihole dig docs.home.example @127.0.0.1
+docker exec pihole sh -c tail -n 30 /var/log/pihole/pihole.log 2>/dev/null
+docker exec pihole dig +short AAAA docs.home.example @127.0.0.1
+docker exec pihole dig +short -t TYPE65 docs.home.example @127.0.0.1
+--- files ---

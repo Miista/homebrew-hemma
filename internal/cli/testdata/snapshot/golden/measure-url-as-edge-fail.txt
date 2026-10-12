@@ -1,0 +1,11 @@
+$ hemma measure -n 2 -w 0 https://example.com/
+# setup: doctor --fix
+# machine: host="edge" tools="fail"
+exit: 1
+--- stdout ---
+--- stderr ---
+fake bash: simulated failure
+Error: measure script failed for https://example.com/: exit status 1
+--- external commands ---
+bash -s https://example.com/  2 0
+--- files ---
