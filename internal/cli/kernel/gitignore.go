@@ -36,7 +36,7 @@ func planPaths(p *plan.Plan) []string {
 // fires every run while the problem persists — a standing deploy hazard should
 // stay visible — and points at `hemma doctor` for the full file list + fix.
 // Silent when nothing is ignored or the check can't run (git absent / no repo).
-func warnIfIgnored(repoRoot string, p *plan.Plan) {
+func warnIfIgnored(env *Env, repoRoot string, p *plan.Plan) {
 	ignored, ok := ignoredPaths(repoRoot, planPaths(p))
 	if !ok || len(ignored) == 0 {
 		return
@@ -46,29 +46,29 @@ func warnIfIgnored(repoRoot string, p *plan.Plan) {
 	if len(ignored) != 1 {
 		verb = "are"
 	}
-	fmt.Fprintf(os.Stderr,
+	fmt.Fprintf(env.Err,
 		warn+" %d generated %s %s gitignored and won't deploy. Run 'hemma doctor --fix'.\n",
 		len(ignored), noun, verb)
 }
 
 // printIgnoreDetail prints the full report: the ignored paths and the per-host
 // .gitignore negation lines to add. Used by `hemma doctor`.
-func printIgnoreDetail(ignored []string) {
-	fmt.Printf("%d generated %s ignored by git — they won't be committed or deployed:\n",
+func printIgnoreDetail(env *Env, ignored []string) {
+	fmt.Fprintf(env.Out, "%d generated %s ignored by git — they won't be committed or deployed:\n",
 		len(ignored), plural(len(ignored), "file"))
 	for _, p := range ignored {
-		fmt.Printf("  %s\n", p)
+		fmt.Fprintf(env.Out, "  %s\n", p)
 	}
-	fmt.Println("\nAdd to .gitignore to un-ignore them (or run 'hemma doctor --fix'):")
+	fmt.Fprintln(env.Out, "\nAdd to .gitignore to un-ignore them (or run 'hemma doctor --fix'):")
 	for _, rule := range unignoreRules() {
-		fmt.Printf("  %s\n", rule)
+		fmt.Fprintf(env.Out, "  %s\n", rule)
 	}
 }
 
 // cmdDoctor audits the repo for problems hemma can detect. Read-only by default;
 // `hemma doctor --fix` applies the .gitignore negations (the one fix hemma can make
 // safely). Exits non-zero if problems remain.
-func cmdDoctor(cfgPath string, args []string) int {
+func cmdDoctor(env *Env, cfgPath string, args []string) int {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	fixFlag := fs.Bool("fix", false, "apply fixes (write .gitignore entries)")
 	fs.BoolVar(fixFlag, "f", false, "alias for --fix")
@@ -78,7 +78,7 @@ func cmdDoctor(cfgPath string, args []string) int {
 	fix := *fixFlag
 
 	repoRoot := filepath.Dir(cfgPath)
-	cfg, code := loadExisting(cfgPath, "check")
+	cfg, code := loadExisting(env, cfgPath, "check")
 	if cfg == nil {
 		return code
 	}
@@ -91,7 +91,7 @@ func cmdDoctor(cfgPath string, args []string) int {
 	// affects the top-level plan used for the gitignore check.
 	problems := 0
 	if authErr := cfg.LoadAuthSnippet(repoRoot); authErr != nil {
-		errf("auth_snippet unreadable — keeping the existing generated auth snippet: %v", authErr)
+		errf(env, "auth_snippet unreadable — keeping the existing generated auth snippet: %v", authErr)
 		problems++
 	}
 	p := plan.Build(cfg)
@@ -99,52 +99,52 @@ func cmdDoctor(cfgPath string, args []string) int {
 	// --- gitignore check ---
 	ignored, ok := ignoredPaths(repoRoot, planPaths(p))
 	if !ok {
-		fmt.Println("Skipped gitignore check (git not available or not a repository).")
+		fmt.Fprintln(env.Out, "Skipped gitignore check (git not available or not a repository).")
 	} else if len(ignored) == 0 {
-		fmt.Println(tick + " No generated files are gitignored.")
+		fmt.Fprintln(env.Out, tick+" No generated files are gitignored.")
 	} else {
 		problems++
 		if fix {
 			// fix: write the negation block to the repo-root .gitignore, then re-verify.
 			gi := filepath.Join(repoRoot, ".gitignore")
 			if err := writeManagedBlock(gi, unignoreRules()); err != nil {
-				errf("%v", err)
+				errf(env, "%v", err)
 				return 1
 			}
-			fmt.Println(tick + " Updated .gitignore")
+			fmt.Fprintln(env.Out, tick+" Updated .gitignore")
 			still, ok := ignoredPaths(repoRoot, planPaths(p))
 			if !ok {
 				// can't re-check; assume the write was enough
 			} else if len(still) == 0 {
-				fmt.Println(tick + " All generated files are now tracked by git.")
+				fmt.Fprintln(env.Out, tick+" All generated files are now tracked by git.")
 				problems--
 			} else {
-				errf("%d %s still gitignored after fix:", len(still), plural(len(still), "file"))
+				errf(env, "%d %s still gitignored after fix:", len(still), plural(len(still), "file"))
 				for _, p := range still {
-					fmt.Fprintf(os.Stderr, "  %s\n", p)
+					fmt.Fprintf(env.Err, "  %s\n", p)
 				}
 			}
 		} else {
-			printIgnoreDetail(ignored)
-			fmt.Println("\nRun 'hemma doctor --fix' to add these entries automatically.")
+			printIgnoreDetail(env, ignored)
+			fmt.Fprintln(env.Out, "\nRun 'hemma doctor --fix' to add these entries automatically.")
 		}
 	}
 
 	// --- Caddyfile import line check ---
-	problems += checkCaddyfileImports(repoRoot, cfg, fix)
+	problems += checkCaddyfileImports(env, repoRoot, cfg, fix)
 	// Advisory, NOT counted toward problems: hemma cannot fix this one (the
 	// global options block it belongs in is hand-maintained, §4.7), so
 	// counting it would make `doctor --fix` permanently unable to exit 0 —
 	// the same reasoning that keeps the access-control wiring check advisory.
 	// Enforcement lives in `apply`, which hard-refuses rather than reload a
 	// Caddy whose generated trust boundary is never loaded.
-	checkTrustedProxiesImport(repoRoot, cfg, fix)
+	checkTrustedProxiesImport(env, repoRoot, cfg, fix)
 
 	// --- generated-file drift check (missing / modified / orphaned) ---
-	problems += checkDrift(repoRoot, cfg, fix)
+	problems += checkDrift(env, repoRoot, cfg, fix)
 
 	// --- deploy ssh readiness (known_hosts + no-op probe per remote host) ---
-	problems += checkDeployReadiness(cfg)
+	problems += checkDeployReadiness(env, cfg)
 
 	// --- instructive advisories (auth config, users database, wiring) ---
 	// Report-but-proceed: these don't corrupt generated files, but the
@@ -164,7 +164,7 @@ func cmdDoctor(cfgPath string, args []string) int {
 			problems++
 		}
 	} else if cfg.Defaults.AuthSnippet != "" {
-		fmt.Println(tick + " Auth config is consistent.")
+		fmt.Fprintln(env.Out, tick+" Auth config is consistent.")
 	}
 	advs = append(advs, usersDBWarnings(repoRoot, cfg)...)
 	advs = append(advs, authWiringWarnings(repoRoot, cfg)...)
@@ -174,9 +174,9 @@ func cmdDoctor(cfgPath string, args []string) int {
 	// drift is exactly what checkDrift (above) already catches generically,
 	// the same as any other generated file.
 	if len(advs) > 0 {
-		fmt.Println()
-		printAdvisories(repoRoot, advs)
-		fmt.Printf("\n%sThese advisories require manual edits (see their fix: lines) — 'hemma doctor --fix' does not resolve them.%s\n", dimOn, dimOff)
+		fmt.Fprintln(env.Out)
+		printAdvisories(env, repoRoot, advs)
+		fmt.Fprintf(env.Out, "\n%sThese advisories require manual edits (see their fix: lines) — 'hemma doctor --fix' does not resolve them.%s\n", dimOn, dimOff)
 	}
 
 	if problems > 0 {
@@ -219,18 +219,18 @@ func authWiringWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 // generated files on disk. Repair is a full Complete reconcile: it rewrites
 // missing/modified files and GCs orphaned tracked files — subsuming what the old
 // `sync --complete` command did.
-func checkDrift(repoRoot string, cfg *config.Config, fix bool) int {
-	mf := loadManifest(repoRoot, cfg)
+func checkDrift(env *Env, repoRoot string, cfg *config.Config, fix bool) int {
+	mf := loadManifest(env, repoRoot, cfg)
 	d := detectDrift(repoRoot, cfg, mf)
 	if !d.Any() {
-		fmt.Println(tick + " Generated files are in sync with services.yaml.")
+		fmt.Fprintln(env.Out, tick+" Generated files are in sync with services.yaml.")
 		return 0
 	}
 
 	if !fix {
-		fmt.Printf(cross+" %d generated %s out of sync with services.yaml:\n", d.Count(), plural(d.Count(), "file"))
-		printDriftDetail(d)
-		fmt.Println("\nRun 'hemma doctor --fix' to reconcile (regenerate missing/modified, remove orphaned).")
+		fmt.Fprintf(env.Out, cross+" %d generated %s out of sync with services.yaml:\n", d.Count(), plural(d.Count(), "file"))
+		printDriftDetail(env, d)
+		fmt.Fprintln(env.Out, "\nRun 'hemma doctor --fix' to reconcile (regenerate missing/modified, remove orphaned).")
 		return 1
 	}
 
@@ -238,17 +238,17 @@ func checkDrift(repoRoot string, cfg *config.Config, fix bool) int {
 	eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: mf}
 	res, err := eng.Reconcile(plan.Build(cfg), syncpkg.Complete)
 	if err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 	n := len(res.Created) + len(res.Updated) + len(res.Deleted)
-	fmt.Printf(tick+" Reconciled %d generated %s (%d created, %d updated, %d removed).\n",
+	fmt.Fprintf(env.Out, tick+" Reconciled %d generated %s (%d created, %d updated, %d removed).\n",
 		n, plural(n, "file"), len(res.Created), len(res.Updated), len(res.Deleted))
 
 	// Re-check to confirm the repo is now clean.
 	if still := detectDrift(repoRoot, cfg, mf); still.Any() {
-		errf("Drift remains after fix (%d %s):", still.Count(), plural(still.Count(), "file"))
-		printDriftDetail(still)
+		errf(env, "Drift remains after fix (%d %s):", still.Count(), plural(still.Count(), "file"))
+		printDriftDetail(env, still)
 		return 1
 	}
 	return 0
@@ -259,7 +259,7 @@ func checkDrift(repoRoot string, cfg *config.Config, fix bool) int {
 // missing — or rewrites a pre-rename import line (`import splitdns.generated.caddy`
 // or `import sd.generated.caddy`) in place, since leaving it would break caddy
 // once GC removes the old file.
-func checkCaddyfileImports(repoRoot string, cfg *config.Config, fix bool) int {
+func checkCaddyfileImports(env *Env, repoRoot string, cfg *config.Config, fix bool) int {
 	const importLine = "import " + render.CaddyImportFilename
 	// Pre-rename import lines, newest first (splitdns era, then sd era).
 	legacyImportLines := []string{"import splitdns.generated.caddy", "import sd.generated.caddy"}
@@ -272,12 +272,12 @@ func checkCaddyfileImports(repoRoot string, cfg *config.Config, fix bool) int {
 			continue
 		}
 		if err != nil {
-			fmt.Printf(cross+" %s: cannot read Caddyfile: %v\n", hostName, err)
+			fmt.Fprintf(env.Out, cross+" %s: cannot read Caddyfile: %v\n", hostName, err)
 			problems++
 			continue
 		}
 		if strings.Contains(string(data), importLine) {
-			fmt.Printf(tick+" %s: Caddyfile imports %s\n", hostName, render.CaddyImportFilename)
+			fmt.Fprintf(env.Out, tick+" %s: Caddyfile imports %s\n", hostName, render.CaddyImportFilename)
 			continue
 		}
 		problems++
@@ -290,9 +290,9 @@ func checkCaddyfileImports(repoRoot string, cfg *config.Config, fix bool) int {
 		}
 		if !fix {
 			if legacy != "" {
-				fmt.Printf(cross+" %s: Caddyfile has outdated `%s`\n", hostName, legacy)
+				fmt.Fprintf(env.Out, cross+" %s: Caddyfile has outdated `%s`\n", hostName, legacy)
 			} else {
-				fmt.Printf(cross+" %s: Caddyfile missing `%s`\n", hostName, importLine)
+				fmt.Fprintf(env.Out, cross+" %s: Caddyfile missing `%s`\n", hostName, importLine)
 			}
 			continue
 		}
@@ -307,13 +307,13 @@ func checkCaddyfileImports(repoRoot string, cfg *config.Config, fix bool) int {
 			content += "\n" + importLine + "\n"
 		}
 		if err := config.AtomicWrite(cfPath, []byte(content)); err != nil {
-			fmt.Printf(cross+" %s: could not fix Caddyfile: %v\n", hostName, err)
+			fmt.Fprintf(env.Out, cross+" %s: could not fix Caddyfile: %v\n", hostName, err)
 			continue
 		}
 		if legacy != "" {
-			fmt.Printf(tick+" %s: rewrote `%s` -> `%s`\n", hostName, legacy, importLine)
+			fmt.Fprintf(env.Out, tick+" %s: rewrote `%s` -> `%s`\n", hostName, legacy, importLine)
 		} else {
-			fmt.Printf(tick+" %s: added `%s` to Caddyfile\n", hostName, importLine)
+			fmt.Fprintf(env.Out, tick+" %s: added `%s` to Caddyfile\n", hostName, importLine)
 		}
 		problems--
 	}
@@ -332,7 +332,7 @@ func checkCaddyfileImports(repoRoot string, cfg *config.Config, fix bool) int {
 // block, which Caddy refuses to load. A one-time manual line per host is the
 // cheaper, safer contract, so this check states what to add and stops there
 // (an instructive advisory in the §6.4 two-tier sense, not a mechanical fix).
-func checkTrustedProxiesImport(repoRoot string, cfg *config.Config, fix bool) int {
+func checkTrustedProxiesImport(env *Env, repoRoot string, cfg *config.Config, fix bool) int {
 	const importLine = "import " + render.TrustedProxiesFilename
 	problems := 0
 	for hostName, h := range cfg.Hosts {
@@ -342,18 +342,18 @@ func checkTrustedProxiesImport(repoRoot string, cfg *config.Config, fix bool) in
 			continue
 		}
 		if err != nil {
-			fmt.Printf(cross+" %s: cannot read Caddyfile: %v\n", hostName, err)
+			fmt.Fprintf(env.Out, cross+" %s: cannot read Caddyfile: %v\n", hostName, err)
 			problems++
 			continue
 		}
 		if strings.Contains(string(data), importLine) {
-			fmt.Printf(tick+" %s: Caddyfile imports %s\n", hostName, render.TrustedProxiesFilename)
+			fmt.Fprintf(env.Out, tick+" %s: Caddyfile imports %s\n", hostName, render.TrustedProxiesFilename)
 			continue
 		}
 		problems++
-		fmt.Printf(cross+" %s: Caddyfile missing `%s`\n", hostName, importLine)
-		fmt.Printf("    add it inside your global options block (hemma does not edit that block):\n")
-		fmt.Printf("      {\n          servers {\n              %s\n          }\n      }\n", importLine)
+		fmt.Fprintf(env.Out, cross+" %s: Caddyfile missing `%s`\n", hostName, importLine)
+		fmt.Fprintf(env.Out, "    add it inside your global options block (hemma does not edit that block):\n")
+		fmt.Fprintf(env.Out, "      {\n          servers {\n              %s\n          }\n      }\n", importLine)
 	}
 	return problems
 }

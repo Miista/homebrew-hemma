@@ -477,8 +477,8 @@ func applySetup(t *testing.T, dir, step string) {
 	}
 }
 
-// tokens splits a command line on spaces, treating '' as an empty argument
-// (needed for `--trusted-proxies ''`).
+// tokens splits a command line on spaces, treating ” as an empty argument
+// (needed for `--trusted-proxies ”`).
 func tokens(line string) []string {
 	var out []string
 	for _, f := range strings.Fields(line) {

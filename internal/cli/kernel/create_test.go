@@ -162,7 +162,7 @@ func TestUsersDBWarnings_WiredThroughRepoLayout(t *testing.T) {
 	seedWithAuth(t, dir)
 	writeAutheliaFixture(t, dir, "users:\n  alice:\n    groups: [editors]\n")
 
-	cfg, code := loadExisting(filepath.Join(dir, configName), "test")
+	cfg, code := loadExisting(stdEnv(), filepath.Join(dir, configName), "test")
 	if cfg == nil {
 		t.Fatalf("load: %d", code)
 	}
@@ -183,7 +183,7 @@ func TestUsersDBWarnings_GatedOnFileExisting(t *testing.T) {
 	seedWithAuth(t, dir)
 	writeAutheliaFixture(t, dir, "") // config present, users db absent
 
-	cfg, _ := loadExisting(filepath.Join(dir, configName), "test")
+	cfg, _ := loadExisting(stdEnv(), filepath.Join(dir, configName), "test")
 	if w := usersDBWarnings(dir, cfg); w != nil {
 		t.Errorf("no users db -> check must be silent, got %v", w)
 	}

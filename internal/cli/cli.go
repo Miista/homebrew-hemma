@@ -20,6 +20,7 @@ var Version = "dev"
 // Run executes the CLI. Returns a process exit code (design §8: non-zero if
 // any entry was skipped or an error occurred).
 func Run(args []string) int {
+	env := kernel.StdEnv()
 	if len(args) < 1 {
 		usage()
 		return 2
@@ -31,7 +32,7 @@ func Run(args []string) int {
 	}
 	if args[0] == "-C" || args[0] == "--chdir" {
 		if len(args) < 2 {
-			kernel.Errf("The %s flag requires a directory argument.", args[0])
+			kernel.Errf(env, "The %s flag requires a directory argument.", args[0])
 			return 2
 		}
 		repoRoot = args[1]
@@ -56,15 +57,15 @@ func Run(args []string) int {
 		fmt.Println("hemma", Version)
 		return 0
 	case "completion":
-		return cmdCompletion(rest)
+		return cmdCompletion(env, rest)
 	case "-h", "--help", "help":
 		usage()
 		return 0
 	default:
-		if code, ok := kernel.Route(repoRoot, cfgPath, cmd, rest); ok {
+		if code, ok := kernel.Route(env, repoRoot, cfgPath, cmd, rest); ok {
 			return code
 		}
-		kernel.Errf("Unknown command %q.", cmd)
+		kernel.Errf(env, "Unknown command %q.", cmd)
 		fmt.Fprintln(os.Stderr)
 		usage()
 		return 2

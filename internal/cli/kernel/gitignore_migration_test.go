@@ -25,7 +25,7 @@ func TestCheckCaddyfileImports_RewritesLegacyLine(t *testing.T) {
 			}
 			cfg := &config.Config{Hosts: map[string]config.Host{"web": {IP: "192.0.2.1"}}}
 
-			if problems := checkCaddyfileImports(root, cfg, true); problems != 0 {
+			if problems := checkCaddyfileImports(stdEnv(), root, cfg, true); problems != 0 {
 				t.Errorf("problems = %d, want 0", problems)
 			}
 			got, _ := os.ReadFile(cf)

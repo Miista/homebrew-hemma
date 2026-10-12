@@ -87,7 +87,7 @@ func TestUserGroups_ProviderReadsFixture(t *testing.T) {
 	dir := t.TempDir()
 	seedWithAuth(t, dir)
 	writeAutheliaFixture(t, dir, "users:\n  alice:\n    groups: [admins]\n")
-	cfg, _ := loadExisting(filepath.Join(dir, configName), "test")
+	cfg, _ := loadExisting(stdEnv(), filepath.Join(dir, configName), "test")
 	users, note := loadUserGroups(dir, cfg)
 	if note != "" {
 		t.Fatalf("unexpected note %q", note)

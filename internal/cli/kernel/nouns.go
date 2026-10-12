@@ -20,17 +20,17 @@ import (
 // the `host` noun. Routing of the verb/noun grammar lives in dispatchNoun
 // (cli.go); these are the leaf handlers.
 
-func hostAdd(cfgPath string, args []string) int {
+func hostAdd(env *Env, cfgPath string, args []string) int {
 	// Two positionals: <name> <ip>. The IP is the one piece of required data
 	// and isn't derivable from anything else.
 	if len(args) < 1 {
-		errf("Missing the <name>.")
-		hint("Usage: hemma add host <name> <ip> [--ssh <dest>]")
+		errf(env, "Missing the <name>.")
+		hint(env, "Usage: hemma add host <name> <ip> [--ssh <dest>]")
 		return 2
 	}
 	if len(args) < 2 || strings.HasPrefix(args[1], "-") {
-		errf("Missing the <ip> for host %q.", args[0])
-		hint("Usage: hemma add host <name> <ip> [--ssh <dest>]")
+		errf(env, "Missing the <ip> for host %q.", args[0])
+		hint(env, "Usage: hemma add host <name> <ip> [--ssh <dest>]")
 		return 2
 	}
 	name, ip := args[0], args[1]
@@ -42,10 +42,10 @@ func hostAdd(cfgPath string, args []string) int {
 	}
 
 	if net.ParseIP(ip) == nil {
-		errf("%q is not a valid IP address.", ip)
+		errf(env, "%q is not a valid IP address.", ip)
 		return 2
 	}
-	proxies, ok := parseTrustedProxies(*trusted)
+	proxies, ok := parseTrustedProxies(env, *trusted)
 	if !ok {
 		return 2
 	}
@@ -55,24 +55,24 @@ func hostAdd(cfgPath string, args []string) int {
 	// so a name with no matching directory is a typo — refuse it.
 	repoRoot := filepath.Dir(cfgPath)
 	if info, err := os.Stat(filepath.Join(repoRoot, name)); err != nil || !info.IsDir() {
-		errf("No directory %q in the repo.", name)
-		hint("A host's name is its repo directory, which must already exist. Check the name for a typo.")
+		errf(env, "No directory %q in the repo.", name)
+		hint(env, "A host's name is its repo directory, which must already exist. Check the name for a typo.")
 		return 1
 	}
 
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 	if _, exists := cfg.Hosts[name]; exists {
-		errf("Host %q already exists.", name)
+		errf(env, "Host %q already exists.", name)
 		return 1
 	}
 	// A LAN IP identifies exactly one host; two hosts sharing one is a typo.
 	for n, h := range cfg.Hosts {
 		if h.IP == ip {
-			errf("IP %s is already used by host %q.", ip, n)
+			errf(env, "IP %s is already used by host %q.", ip, n)
 			return 1
 		}
 	}
@@ -83,46 +83,46 @@ func hostAdd(cfgPath string, args []string) int {
 	// empty list is the correct default rather than a gap.
 	cfg.Hosts[name] = config.Host{IP: ip, SSH: *sshDest, TrustedProxies: proxies}
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf("Added host %q (%s).\n", name, ip)
+	fmt.Fprintf(env.Out, "Added host %q (%s).\n", name, ip)
 	// Regenerate so the new host gets its per-domain TLS snippets right away,
 	// leaving the repo clean (no drift cliff before `hemma apply`). Complete also
 	// GCs, which is a harmless no-op for a pure add.
-	return runSync(repoRoot, cfg, syncpkg.Complete)
+	return runSync(env, repoRoot, cfg, syncpkg.Complete)
 }
 
-func hostRemove(cfgPath string, args []string) int {
+func hostRemove(env *Env, cfgPath string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing the <name>.")
+		errf(env, "Missing the <name>.")
 		return 2
 	}
 	name := args[0]
 
-	cfg, code := loadExisting(cfgPath, "remove a host from")
+	cfg, code := loadExisting(env, cfgPath, "remove a host from")
 	if cfg == nil {
 		return code
 	}
 	repoRoot := filepath.Dir(cfgPath)
 	if _, exists := cfg.Hosts[name]; !exists {
-		fmt.Printf("Host %q does not exist; nothing to remove.\n", name)
+		fmt.Fprintf(env.Out, "Host %q does not exist; nothing to remove.\n", name)
 		return 0
 	}
 	if users := cfg.ServicesUsingHost(name); len(users) > 0 {
-		errf("Host %q is still referenced by %d %s: %s.", name, len(users), plural(len(users), "service"), strings.Join(users, ", "))
-		hint("Reassign or remove those services first.")
+		errf(env, "Host %q is still referenced by %d %s: %s.", name, len(users), plural(len(users), "service"), strings.Join(users, ", "))
+		hint(env, "Reassign or remove those services first.")
 		return 1
 	}
 	delete(cfg.Hosts, name)
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf("Removed host %q.\n", name)
+	fmt.Fprintf(env.Out, "Removed host %q.\n", name)
 	// Complete reconcile GCs the removed host's now-orphaned TLS snippets so the
 	// repo is left clean.
-	return runSync(repoRoot, cfg, syncpkg.Complete)
+	return runSync(env, repoRoot, cfg, syncpkg.Complete)
 }
 
 // hostUpdate changes a host's ip and/or ssh destination — the update-service
@@ -134,11 +134,11 @@ func hostRemove(cfgPath string, args []string) int {
 // (same as the other host mutations, which can orphan/rewrite generated
 // files); an ssh-only change touches nothing generated, so Incremental (a
 // no-op reconcile) suffices.
-func hostUpdate(cfgPath string, args []string) int {
+func hostUpdate(env *Env, cfgPath string, args []string) int {
 	name, args, ok := leadingName(args)
 	if !ok {
-		errf("Missing the <name>.")
-		hint("Usage: hemma update host <name> [--ip <ip>] [--ssh <dest>] [--trusted-proxies <list>]")
+		errf(env, "Missing the <name>.")
+		hint(env, "Usage: hemma update host <name> [--ip <ip>] [--ssh <dest>] [--trusted-proxies <list>]")
 		return 2
 	}
 	fs := flag.NewFlagSet("update host", flag.ContinueOnError)
@@ -153,7 +153,7 @@ func hostUpdate(cfgPath string, args []string) int {
 	changed := 0
 	fs.Visit(func(*flag.Flag) { changed++ })
 	if changed == 0 {
-		return hostUpdateInteractive(cfgPath, name)
+		return hostUpdateInteractive(env, cfgPath, name)
 	}
 	ipSet, sshSet, trustedSet := false, false, false
 	fs.Visit(func(f *flag.Flag) {
@@ -168,31 +168,31 @@ func hostUpdate(cfgPath string, args []string) int {
 	})
 	// Validate the ip shape BEFORE touching the YAML (validate-before-persist).
 	if ipSet && net.ParseIP(*ip) == nil {
-		errf("%q is not a valid IP address.", *ip)
+		errf(env, "%q is not a valid IP address.", *ip)
 		return 2
 	}
 	var proxies []string
 	if trustedSet {
-		proxies, ok = parseTrustedProxies(*trusted)
+		proxies, ok = parseTrustedProxies(env, *trusted)
 		if !ok {
 			return 2
 		}
 	}
 
-	cfg, code := loadExisting(cfgPath, "update a host in")
+	cfg, code := loadExisting(env, cfgPath, "update a host in")
 	if cfg == nil {
 		return code
 	}
 	h, exists := cfg.Hosts[name]
 	if !exists {
-		errf("Host %q does not exist.", name)
+		errf(env, "Host %q does not exist.", name)
 		return 1
 	}
 	if ipSet {
 		// A LAN IP identifies exactly one host (same rule as add host).
 		for n, other := range cfg.Hosts {
 			if n != name && other.IP == *ip {
-				errf("IP %s is already used by host %q.", *ip, n)
+				errf(env, "IP %s is already used by host %q.", *ip, n)
 				return 1
 			}
 		}
@@ -209,7 +209,7 @@ func hostUpdate(cfgPath string, args []string) int {
 	if trustedSet {
 		h.TrustedProxies = proxies
 	}
-	return persistUpdatedHost(cfgPath, cfg, name, h)
+	return persistUpdatedHost(env, cfgPath, cfg, name, h)
 }
 
 // persistUpdatedHost is the shared tail of `update host`: both the flags form
@@ -221,7 +221,7 @@ func hostUpdate(cfgPath string, args []string) int {
 // trusted_proxies rewrites every host's generated trusted-proxies file (each
 // one embeds every declared host's ip), so both sync Complete; an ssh-only
 // change touches nothing generated, so Incremental (a no-op reconcile).
-func persistUpdatedHost(cfgPath string, cfg *config.Config, name string, updated config.Host) int {
+func persistUpdatedHost(env *Env, cfgPath string, cfg *config.Config, name string, updated config.Host) int {
 	mode := syncpkg.Incremental
 	old := cfg.Hosts[name]
 	if old.IP != updated.IP || !slices.Equal(old.TrustedProxies, updated.TrustedProxies) {
@@ -229,11 +229,11 @@ func persistUpdatedHost(cfgPath string, cfg *config.Config, name string, updated
 	}
 	cfg.Hosts[name] = updated
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf(tick+" Updated host %q\n", name)
-	return runSync(filepath.Dir(cfgPath), cfg, mode)
+	fmt.Fprintf(env.Out, tick+" Updated host %q\n", name)
+	return runSync(env, filepath.Dir(cfgPath), cfg, mode)
 }
 
 // parseTrustedProxies splits and validates a comma-separated trusted-proxies
@@ -241,7 +241,7 @@ func persistUpdatedHost(cfgPath string, cfg *config.Config, name string, updated
 // (design §4.7), so a typo that would silently widen or void it is refused
 // here rather than written into a generated Caddy directive. An empty string
 // clears the list.
-func parseTrustedProxies(s string) ([]string, bool) {
+func parseTrustedProxies(env *Env, s string) ([]string, bool) {
 	var out []string
 	for _, raw := range strings.Split(s, ",") {
 		e := strings.TrimSpace(raw)
@@ -250,11 +250,11 @@ func parseTrustedProxies(s string) ([]string, bool) {
 		}
 		if strings.Contains(e, "/") {
 			if _, _, err := net.ParseCIDR(e); err != nil {
-				errf("%q is not a valid CIDR.", e)
+				errf(env, "%q is not a valid CIDR.", e)
 				return nil, false
 			}
 		} else if net.ParseIP(e) == nil {
-			errf("%q is not a valid IP address or CIDR.", e)
+			errf(env, "%q is not a valid IP address or CIDR.", e)
 			return nil, false
 		}
 		if !slices.Contains(out, e) {
@@ -264,62 +264,62 @@ func parseTrustedProxies(s string) ([]string, bool) {
 	return out, true
 }
 
-func domainAdd(cfgPath string, args []string) int {
+func domainAdd(env *Env, cfgPath string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing the <name>.")
-		hint("Usage: hemma add domain <name>")
+		errf(env, "Missing the <name>.")
+		hint(env, "Usage: hemma add domain <name>")
 		return 2
 	}
 	name := args[0]
 
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 	if _, exists := cfg.Domains[name]; exists {
-		errf("Domain %q already exists.", name)
+		errf(env, "Domain %q already exists.", name)
 		return 1
 	}
 	cfg.Domains[name] = config.Domain{}
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf("Added domain %q.\n", name)
+	fmt.Fprintf(env.Out, "Added domain %q.\n", name)
 	// Regenerate so the new domain's per-host TLS snippets exist right away,
 	// leaving the repo clean (no drift cliff before `hemma apply`).
-	return runSync(filepath.Dir(cfgPath), cfg, syncpkg.Complete)
+	return runSync(env, filepath.Dir(cfgPath), cfg, syncpkg.Complete)
 }
 
-func domainRemove(cfgPath string, args []string) int {
+func domainRemove(env *Env, cfgPath string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing the <name>.")
+		errf(env, "Missing the <name>.")
 		return 2
 	}
 	name := args[0]
 
-	cfg, code := loadExisting(cfgPath, "remove a domain from")
+	cfg, code := loadExisting(env, cfgPath, "remove a domain from")
 	if cfg == nil {
 		return code
 	}
 	if _, exists := cfg.Domains[name]; !exists {
-		fmt.Printf("Domain %q does not exist; nothing to remove.\n", name)
+		fmt.Fprintf(env.Out, "Domain %q does not exist; nothing to remove.\n", name)
 		return 0
 	}
 	if users := cfg.ServicesUsingDomain(name); len(users) > 0 {
-		errf("Domain %q is still referenced by %d %s: %s.", name, len(users), plural(len(users), "service"), strings.Join(users, ", "))
-		hint("Reassign or remove those services first.")
+		errf(env, "Domain %q is still referenced by %d %s: %s.", name, len(users), plural(len(users), "service"), strings.Join(users, ", "))
+		hint(env, "Reassign or remove those services first.")
 		return 1
 	}
 	delete(cfg.Domains, name)
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf("Removed domain %q.\n", name)
+	fmt.Fprintf(env.Out, "Removed domain %q.\n", name)
 	// Complete reconcile GCs the removed domain's TLS snippets across all hosts.
-	return runSync(filepath.Dir(cfgPath), cfg, syncpkg.Complete)
+	return runSync(env, filepath.Dir(cfgPath), cfg, syncpkg.Complete)
 }
 
 // SetKey is one `hemma defaults set <key> ...` setting. A typed constant rather than a
@@ -353,7 +353,7 @@ type setSpec struct {
 	usage string
 	// summary is the one-line description in the top-level usage listing.
 	summary string
-	run     func(cfgPath string, args []string) int
+	run     func(env *Env, cfgPath string, args []string) int
 	// get returns the CURRENT value for `hemma defaults` (bare) to print, or
 	// "" if unset. Every setSpec's key is a repo-wide config.Defaults field
 	// today, so this only needs cfg, not a host/service name.
@@ -407,15 +407,15 @@ func setKeyStrings() []string {
 //
 // Syncs Complete: the access-control artifact embeds these CIDRs for every
 // service with a differing local policy, so all of them are rewritten.
-func cmdSetLocalNetworks(cfgPath string, args []string) int {
+func cmdSetLocalNetworks(env *Env, cfgPath string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing the <cidr,...>.")
-		hint("Usage: hemma defaults set local-networks <cidr,...>   (use '-' to clear)")
+		errf(env, "Missing the <cidr,...>.")
+		hint(env, "Usage: hemma defaults set local-networks <cidr,...>   (use '-' to clear)")
 		return 2
 	}
 	raw := args[0]
 
-	cfg, code := loadExisting(cfgPath, "set the local-networks in")
+	cfg, code := loadExisting(env, cfgPath, "set the local-networks in")
 	if cfg == nil {
 		return code
 	}
@@ -423,90 +423,90 @@ func cmdSetLocalNetworks(cfgPath string, args []string) int {
 	if raw == "-" || raw == "" {
 		cfg.Defaults.LocalNetworks = nil
 		if err := cfg.Save(); err != nil {
-			errf("%v", err)
+			errf(env, "%v", err)
 			return 1
 		}
-		fmt.Println("Cleared local_networks — services with a per-horizon auth policy apply their public policy to every request until it's set again.")
-		return runSync(repoRoot, cfg, syncpkg.Complete)
+		fmt.Fprintln(env.Out, "Cleared local_networks — services with a per-horizon auth policy apply their public policy to every request until it's set again.")
+		return runSync(env, repoRoot, cfg, syncpkg.Complete)
 	}
-	nets, ok := parseTrustedProxies(raw) // same ip/cidr validation and dedupe
+	nets, ok := parseTrustedProxies(env, raw) // same ip/cidr validation and dedupe
 	if !ok {
 		return 2
 	}
 	cfg.Defaults.LocalNetworks = nets
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf("Set local_networks to %s.\n", strings.Join(nets, ", "))
-	return runSync(repoRoot, cfg, syncpkg.Complete)
+	fmt.Fprintf(env.Out, "Set local_networks to %s.\n", strings.Join(nets, ", "))
+	return runSync(env, repoRoot, cfg, syncpkg.Complete)
 }
 
 // cmdSetDNSHost handles `set dns-host <name>` — sets defaults.dns_host, the
 // host whose dnsmasq receives address= records unless a service overrides it.
 // Without this, a CLI-only bootstrap leaves dns_host unset and sync refuses.
-func cmdSetDNSHost(cfgPath string, args []string) int {
+func cmdSetDNSHost(env *Env, cfgPath string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing the <name>.")
-		hint("Usage: hemma defaults set dns-host <name>")
+		errf(env, "Missing the <name>.")
+		hint(env, "Usage: hemma defaults set dns-host <name>")
 		return 2
 	}
 	name := args[0]
 
-	cfg, code := loadExisting(cfgPath, "set the dns-host in")
+	cfg, code := loadExisting(env, cfgPath, "set the dns-host in")
 	if cfg == nil {
 		return code
 	}
 	if _, exists := cfg.Hosts[name]; !exists {
-		errf("Host %q does not exist — add it first with: hemma add host %s <ip>", name, name)
+		errf(env, "Host %q does not exist — add it first with: hemma add host %s <ip>", name, name)
 		return 1
 	}
 	cfg.Defaults.DNSHost = name
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf("Set default dns_host to %q.\n", name)
+	fmt.Fprintf(env.Out, "Set default dns_host to %q.\n", name)
 	// The resolver changed, so every DNS record regenerates. Complete also GCs
 	// records from a previously-set resolver host, leaving the repo clean.
-	return runSync(filepath.Dir(cfgPath), cfg, syncpkg.Complete)
+	return runSync(env, filepath.Dir(cfgPath), cfg, syncpkg.Complete)
 }
 
 // cmdSetDeployHost sets (or clears) defaults.deploy_host — the single host
 // `hemma deploy` fans out from, and therefore the only host whose
 // deploy-readiness doctor audits. Nothing is generated from it, so unlike
 // set dns-host there is no re-sync: it only scopes a check.
-func cmdSetDeployHost(cfgPath string, args []string) int {
+func cmdSetDeployHost(env *Env, cfgPath string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing the <name>.")
-		hint("Usage: hemma defaults set deploy-host <name>   (use '-' to clear)")
+		errf(env, "Missing the <name>.")
+		hint(env, "Usage: hemma defaults set deploy-host <name>   (use '-' to clear)")
 		return 2
 	}
 	name := args[0]
 
-	cfg, code := loadExisting(cfgPath, "set the deploy-host in")
+	cfg, code := loadExisting(env, cfgPath, "set the deploy-host in")
 	if cfg == nil {
 		return code
 	}
 	if name == "-" || name == "" {
 		cfg.Defaults.DeployHost = ""
 		if err := cfg.Save(); err != nil {
-			errf("%v", err)
+			errf(env, "%v", err)
 			return 1
 		}
-		fmt.Println("Cleared deploy_host — doctor audits deploy readiness on every host again.")
+		fmt.Fprintln(env.Out, "Cleared deploy_host — doctor audits deploy readiness on every host again.")
 		return 0
 	}
 	if _, exists := cfg.Hosts[name]; !exists {
-		errf("Host %q does not exist — add it first with: hemma add host %s <ip>", name, name)
+		errf(env, "Host %q does not exist — add it first with: hemma add host %s <ip>", name, name)
 		return 1
 	}
 	cfg.Defaults.DeployHost = name
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf("Set deploy_host to %q — only that host audits deploy readiness.\n", name)
+	fmt.Fprintf(env.Out, "Set deploy_host to %q — only that host audits deploy readiness.\n", name)
 	return 0
 }
 
@@ -514,15 +514,15 @@ func cmdSetDeployHost(cfgPath string, args []string) int {
 // path to the Caddy file whose contents become the body of the (auth) snippet
 // on every host. Pass an empty path (or "-") to clear it, which regenerates the
 // empty (auth) {} stub everywhere (services stay valid but unprotected).
-func cmdSetAuthSnippet(cfgPath string, args []string) int {
+func cmdSetAuthSnippet(env *Env, cfgPath string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing the <path>.")
-		hint("Usage: hemma defaults set auth-snippet <path>   (use '-' to clear)")
+		errf(env, "Missing the <path>.")
+		hint(env, "Usage: hemma defaults set auth-snippet <path>   (use '-' to clear)")
 		return 2
 	}
 	path := args[0]
 
-	cfg, code := loadExisting(cfgPath, "set the auth-snippet in")
+	cfg, code := loadExisting(env, cfgPath, "set the auth-snippet in")
 	if cfg == nil {
 		return code
 	}
@@ -530,11 +530,11 @@ func cmdSetAuthSnippet(cfgPath string, args []string) int {
 	if path == "-" || path == "" {
 		cfg.Defaults.AuthSnippet = ""
 		if err := cfg.Save(); err != nil {
-			errf("%v", err)
+			errf(env, "%v", err)
 			return 1
 		}
-		fmt.Println("Cleared auth_snippet — the generated (auth) snippet is now an empty no-op stub.")
-		return runSync(repoRoot, cfg, syncpkg.Complete)
+		fmt.Fprintln(env.Out, "Cleared auth_snippet — the generated (auth) snippet is now an empty no-op stub.")
+		return runSync(env, repoRoot, cfg, syncpkg.Complete)
 	}
 	// Validate the source exists before persisting, so a typo is caught here
 	// rather than as a keep-last-good warning at every future sync.
@@ -543,17 +543,17 @@ func cmdSetAuthSnippet(cfgPath string, args []string) int {
 		abs = filepath.Join(repoRoot, abs)
 	}
 	if _, err := os.Stat(abs); err != nil {
-		errf("auth_snippet %q is not readable: %v", path, err)
+		errf(env, "auth_snippet %q is not readable: %v", path, err)
 		return 1
 	}
 	cfg.Defaults.AuthSnippet = path
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf("Set auth_snippet to %q.\n", path)
+	fmt.Fprintf(env.Out, "Set auth_snippet to %q.\n", path)
 	// The snippet content changed for every host, so regenerate all auth files.
-	return runSync(repoRoot, cfg, syncpkg.Complete)
+	return runSync(env, repoRoot, cfg, syncpkg.Complete)
 }
 
 // cmdSetAuthService names the service that is the forward-auth backend (e.g. an
@@ -561,15 +561,15 @@ func cmdSetAuthSnippet(cfgPath string, args []string) int {
 // X-Forwarded-Host, so post-login redirects target the original service rather
 // than looping back to the portal. Parallels set dns-host: names one repo-wide
 // role by service name; '-' clears it.
-func cmdSetAuthService(cfgPath string, args []string) int {
+func cmdSetAuthService(env *Env, cfgPath string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing the <name>.")
-		hint("Usage: hemma defaults set auth-service <name>   (use '-' to clear)")
+		errf(env, "Missing the <name>.")
+		hint(env, "Usage: hemma defaults set auth-service <name>   (use '-' to clear)")
 		return 2
 	}
 	name := args[0]
 
-	cfg, code := loadExisting(cfgPath, "set the auth-service in")
+	cfg, code := loadExisting(env, cfgPath, "set the auth-service in")
 	if cfg == nil {
 		return code
 	}
@@ -577,26 +577,26 @@ func cmdSetAuthService(cfgPath string, args []string) int {
 	if name == "-" || name == "" {
 		cfg.Defaults.AuthService = ""
 		if err := cfg.Save(); err != nil {
-			errf("%v", err)
+			errf(env, "%v", err)
 			return 1
 		}
-		fmt.Println("Cleared auth_service — the auth backend's site block no longer preserves X-Forwarded-Host.")
-		return runSync(repoRoot, cfg, syncpkg.Complete)
+		fmt.Fprintln(env.Out, "Cleared auth_service — the auth backend's site block no longer preserves X-Forwarded-Host.")
+		return runSync(env, repoRoot, cfg, syncpkg.Complete)
 	}
 	// The named service must exist, else its block can't be rendered specially
 	// (mirrors set dns-host refusing an unknown host).
 	if _, exists := cfg.Services[name]; !exists {
-		errf("Service %q does not exist — add it first with: hemma add service %s ...", name, name)
+		errf(env, "Service %q does not exist — add it first with: hemma add service %s ...", name, name)
 		return 1
 	}
 	cfg.Defaults.AuthService = name
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf("Set auth_service to %q.\n", name)
+	fmt.Fprintf(env.Out, "Set auth_service to %q.\n", name)
 	// Its site block changes (gains the header_up), so regenerate.
-	return runSync(repoRoot, cfg, syncpkg.Complete)
+	return runSync(env, repoRoot, cfg, syncpkg.Complete)
 }
 
 // cmdSetTunnelDir sets (or clears) defaults.tunnel_dir — the ONE repo-wide
@@ -613,15 +613,15 @@ func cmdSetAuthService(cfgPath string, args []string) int {
 // tunnel_dir is unset (plan.Plan.UnresolvedTunnels) — but its DNS record and
 // Caddy site (the internal horizon) are unaffected, deliberately, since a
 // missing tunnel_dir says nothing about whether the service itself is valid.
-func cmdSetTunnelDir(cfgPath string, args []string) int {
+func cmdSetTunnelDir(env *Env, cfgPath string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing the <dir>.")
-		hint("Usage: hemma defaults set tunnel-dir <dir>   (use '-' to clear)")
+		errf(env, "Missing the <dir>.")
+		hint(env, "Usage: hemma defaults set tunnel-dir <dir>   (use '-' to clear)")
 		return 2
 	}
 	dir := args[0]
 
-	cfg, code := loadExisting(cfgPath, "set the tunnel-dir in")
+	cfg, code := loadExisting(env, cfgPath, "set the tunnel-dir in")
 	if cfg == nil {
 		return code
 	}
@@ -629,18 +629,18 @@ func cmdSetTunnelDir(cfgPath string, args []string) int {
 	if dir == "-" || dir == "" {
 		cfg.Defaults.TunnelDir = ""
 		if err := cfg.Save(); err != nil {
-			errf("%v", err)
+			errf(env, "%v", err)
 			return 1
 		}
-		fmt.Println("Cleared tunnel_dir — any public: true service becomes publicly unreachable until it's set again (its DNS/Caddy config is unaffected).")
+		fmt.Fprintln(env.Out, "Cleared tunnel_dir — any public: true service becomes publicly unreachable until it's set again (its DNS/Caddy config is unaffected).")
 		// The path is now unset, so every host's config.yml becomes an orphan.
-		return runSync(repoRoot, cfg, syncpkg.Complete)
+		return runSync(env, repoRoot, cfg, syncpkg.Complete)
 	}
 	cfg.Defaults.TunnelDir = dir
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf("Set tunnel_dir to %q.\n", dir)
-	return runSync(repoRoot, cfg, syncpkg.Complete)
+	fmt.Fprintf(env.Out, "Set tunnel_dir to %q.\n", dir)
+	return runSync(env, repoRoot, cfg, syncpkg.Complete)
 }

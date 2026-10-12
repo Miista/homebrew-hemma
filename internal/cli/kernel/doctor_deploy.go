@@ -26,7 +26,7 @@ import (
 // The target set mirrors deploy's default (every host with a role); self is
 // skipped (deploy runs locally there, no ssh). Returns the number of hosts
 // missing a known_hosts entry.
-func checkDeployReadiness(cfg *config.Config) int {
+func checkDeployReadiness(env *Env, cfg *config.Config) int {
 	self := localHost(cfg)
 	// Readiness is a question about the deploy ORIGIN, not about every host.
 	// When defaults.deploy_host names one, only that host is audited: elsewhere
@@ -53,14 +53,14 @@ func checkDeployReadiness(cfg *config.Config) int {
 			continue
 		}
 		problems++
-		fmt.Printf("%s %s: no known_hosts entry for its deploy destination (%s)\n", warn, t.Name, t.Dest)
-		fmt.Printf("  'hemma deploy' uses 'ssh -o BatchMode=yes' and will fail host-key verification.\n")
-		fmt.Printf("  fix: connect once interactively to accept and record the host key —\n")
-		fmt.Printf("       ssh %s\n", t.Dest)
-		fmt.Printf("       (verify the fingerprint before accepting.)\n")
+		fmt.Fprintf(env.Out, "%s %s: no known_hosts entry for its deploy destination (%s)\n", warn, t.Name, t.Dest)
+		fmt.Fprintf(env.Out, "  'hemma deploy' uses 'ssh -o BatchMode=yes' and will fail host-key verification.\n")
+		fmt.Fprintf(env.Out, "  fix: connect once interactively to accept and record the host key —\n")
+		fmt.Fprintf(env.Out, "       ssh %s\n", t.Dest)
+		fmt.Fprintf(env.Out, "       (verify the fingerprint before accepting.)\n")
 	}
 	if remotes > 0 && problems == 0 {
-		fmt.Printf(tick+" Deploy readiness: %d remote %s in known_hosts.\n", remotes, plural(remotes, "host"))
+		fmt.Fprintf(env.Out, tick+" Deploy readiness: %d remote %s in known_hosts.\n", remotes, plural(remotes, "host"))
 	}
 	return problems
 }

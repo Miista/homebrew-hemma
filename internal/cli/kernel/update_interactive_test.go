@@ -177,7 +177,7 @@ func TestPersistUpdatedService_DisablingRemovesGeneratedFiles(t *testing.T) {
 	svc := cfg.Services["docs"]
 	svc.Disabled = true
 	captureStdout(t, func() {
-		if code := persistUpdatedService(dir, cfg, "docs", svc); code != 0 {
+		if code := persistUpdatedService(stdEnv(), dir, cfg, "docs", svc); code != 0 {
 			t.Errorf("persistUpdatedService exit %d", code)
 		}
 	})
@@ -218,7 +218,7 @@ func TestPersistUpdatedService_ReEnablingRegenerates(t *testing.T) {
 		}
 		svc := cfg.Services["docs"]
 		svc.Disabled = disabled
-		captureStdout(t, func() { persistUpdatedService(dir, cfg, "docs", svc) })
+		captureStdout(t, func() { persistUpdatedService(stdEnv(), dir, cfg, "docs", svc) })
 	}
 	set(true)
 	set(false)
@@ -250,7 +250,7 @@ func TestPersistUpdatedService_OrdinaryEditKeepsFiles(t *testing.T) {
 	svc := cfg.Services["docs"]
 	svc.Tunnel = true // the kind of edit the editor now allows
 	captureStdout(t, func() {
-		if code := persistUpdatedService(dir, cfg, "docs", svc); code != 0 {
+		if code := persistUpdatedService(stdEnv(), dir, cfg, "docs", svc); code != 0 {
 			t.Errorf("exit %d", code)
 		}
 	})

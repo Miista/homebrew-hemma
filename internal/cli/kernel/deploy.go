@@ -54,8 +54,8 @@ import (
 // Deploying means "make the fleet match origin", so origin must already carry
 // the intent: deploy refuses up front if the LOCAL repo is dirty or has
 // unpushed commits.
-func cmdDeploy(repoRoot, cfgPath string, args []string) int {
-	cfg, code := loadExisting(cfgPath, "deploy")
+func cmdDeploy(env *Env, repoRoot, cfgPath string, args []string) int {
+	cfg, code := loadExisting(env, cfgPath, "deploy")
 	if cfg == nil {
 		return code
 	}
@@ -74,25 +74,25 @@ func cmdDeploy(repoRoot, cfgPath string, args []string) int {
 		if self != "" {
 			where = fmt.Sprintf("%q", self)
 		}
-		errf("deploy_host is %q — refusing to deploy from %s.", dh, where)
-		hint("Run 'hemma deploy' on %s, or drop the restriction with 'hemma defaults set deploy-host -'.", dh)
+		errf(env, "deploy_host is %q — refusing to deploy from %s.", dh, where)
+		hint(env, "Run 'hemma deploy' on %s, or drop the restriction with 'hemma defaults set deploy-host -'.", dh)
 		return 1
 	}
 	targets, err := resolveDeployTargets(cfg, self, args)
 	if err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 	if len(targets) == 0 {
-		fmt.Println("Nothing to deploy: no host runs a service or is the dns_host.")
+		fmt.Fprintln(env.Out, "Nothing to deploy: no host runs a service or is the dns_host.")
 		return 0
 	}
 	if err := deployPreflight(repoRoot); err != nil {
-		errf("%v", err)
-		hint("Deploy means \"make the fleet match origin\" — origin must already carry the change.")
+		errf(env, "%v", err)
+		hint(env, "Deploy means \"make the fleet match origin\" — origin must already carry the change.")
 		return 1
 	}
-	return runDeploy(execRunner{}, targets, repoRoot)
+	return runDeploy(env, execRunner{}, targets, repoRoot)
 }
 
 // deployTarget is one host the deploy fans out to.
@@ -268,29 +268,29 @@ func summarizePull(out string) string {
 // deployProbe is Phase 0: ssh a no-op to every remote target and abort the
 // whole deploy if any is unreachable, before Phase 1 pulls anything. Returns 0
 // to proceed, 1 to abort. Local targets are skipped (they never ssh).
-func deployProbe(r deployRunner, targets []deployTarget) int {
-	fmt.Printf("\n%s== Phase 0: probe ==%s\n", boldOn, boldOff)
+func deployProbe(env *Env, r deployRunner, targets []deployTarget) int {
+	fmt.Fprintf(env.Out, "\n%s== Phase 0: probe ==%s\n", boldOn, boldOff)
 	unreachable := false
 	for _, t := range targets {
 		if t.Local {
-			fmt.Printf("  "+tick+" %s: local (no ssh)\n", t.Name)
+			fmt.Fprintf(env.Out, "  "+tick+" %s: local (no ssh)\n", t.Name)
 			continue
 		}
 		out, err := r.run(t, probeArgv(t, ""))
 		if err == nil {
-			fmt.Printf("  "+tick+" %s: reachable\n", t.Name)
+			fmt.Fprintf(env.Out, "  "+tick+" %s: reachable\n", t.Name)
 			continue
 		}
-		fmt.Printf("  "+cross+" %s: unreachable\n", t.Name)
-		printIndented(out)
+		fmt.Fprintf(env.Out, "  "+cross+" %s: unreachable\n", t.Name)
+		printIndented(env, out)
 		unreachable = true
 	}
 	if unreachable {
-		fmt.Println()
-		errf("One or more hosts are unreachable over ssh — deploy aborted, nothing pulled or applied.")
-		hint("deploy uses 'ssh -o BatchMode=yes <dest>' (no interactive prompts), so each host")
-		hint("needs non-interactive key auth from here and an entry in known_hosts. Check the")
-		hint("host's 'ssh:' field in services.yaml, then verify: ssh -o BatchMode=yes <dest> true")
+		fmt.Fprintln(env.Out)
+		errf(env, "One or more hosts are unreachable over ssh — deploy aborted, nothing pulled or applied.")
+		hint(env, "deploy uses 'ssh -o BatchMode=yes <dest>' (no interactive prompts), so each host")
+		hint(env, "needs non-interactive key auth from here and an entry in known_hosts. Check the")
+		hint(env, "host's 'ssh:' field in services.yaml, then verify: ssh -o BatchMode=yes <dest> true")
 		return 1
 	}
 	return 0
@@ -298,8 +298,8 @@ func deployProbe(r deployRunner, targets []deployTarget) int {
 
 // runDeploy executes the two phases against resolved, ordered targets.
 // Factored off cmdDeploy so the phase logic runs under a fake runner in tests.
-func runDeploy(r deployRunner, targets []deployTarget, localRepo string) int {
-	fmt.Printf("Deploying to %d %s: %s.\n", len(targets), plural(len(targets), "host"), joinTargetNames(targets))
+func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo string) int {
+	fmt.Fprintf(env.Out, "Deploying to %d %s: %s.\n", len(targets), plural(len(targets), "host"), joinTargetNames(targets))
 
 	// Phase 0 — probe ssh reachability to every REMOTE target; ANY failure
 	// aborts before a single host pulls. Phase 1's first per-host command
@@ -307,30 +307,30 @@ func runDeploy(r deployRunner, targets []deployTarget, localRepo string) int {
 	// the abort earlier (nothing pulled anywhere, not even the first host) and
 	// turns a transport failure into a clear "unreachable" message instead of
 	// git-pull noise. Self is Local (no ssh), so it is not probed.
-	if code := deployProbe(r, targets); code != 0 {
+	if code := deployProbe(env, r, targets); code != 0 {
 		return code
 	}
 
 	// Phase 1 — pull everywhere; ANY failure aborts the whole deploy.
 	// Success is one tick line per host (apply-style); the raw git output is
 	// shown only on failure, where it is the diagnostic.
-	fmt.Printf("\n%s== Phase 1: pull ==%s\n", boldOn, boldOff)
+	fmt.Fprintf(env.Out, "\n%s== Phase 1: pull ==%s\n", boldOn, boldOff)
 	for _, t := range targets {
 		out, err := r.run(t, pullArgv(t, localRepo))
 		if err == nil {
-			fmt.Printf("  "+tick+" %s: %s\n", t.Name, summarizePull(out))
+			fmt.Fprintf(env.Out, "  "+tick+" %s: %s\n", t.Name, summarizePull(out))
 			continue
 		}
-		fmt.Printf("\n%s== %s ==%s\n", boldOn, t.Name, boldOff)
-		printIndented(out)
+		fmt.Fprintf(env.Out, "\n%s== %s ==%s\n", boldOn, t.Name, boldOff)
+		printIndented(env, out)
 		{
-			fmt.Println()
-			errf("Pull failed on %q — deploy aborted, phase 2 (apply) never started.", t.Name)
-			hint("Either the host is unreachable over ssh, or its checkout has diverged from")
-			hint("origin (local commits or edits origin doesn't have). Hosts must not fork the")
-			hint("repo — reconcile that host manually, then re-run 'hemma deploy'.")
-			hint("No runtime state was changed anywhere: a pulled-but-not-applied checkout is")
-			hint("the normal intermediate state of the manual pull-then-apply workflow.")
+			fmt.Fprintln(env.Out)
+			errf(env, "Pull failed on %q — deploy aborted, phase 2 (apply) never started.", t.Name)
+			hint(env, "Either the host is unreachable over ssh, or its checkout has diverged from")
+			hint(env, "origin (local commits or edits origin doesn't have). Hosts must not fork the")
+			hint(env, "repo — reconcile that host manually, then re-run 'hemma deploy'.")
+			hint(env, "No runtime state was changed anywhere: a pulled-but-not-applied checkout is")
+			hint(env, "the normal intermediate state of the manual pull-then-apply workflow.")
 			return 1
 		}
 	}
@@ -342,40 +342,40 @@ func runDeploy(r deployRunner, targets []deployTarget, localRepo string) int {
 	for i, t := range targets {
 		out, err := r.run(t, headArgv(t, localRepo))
 		if err != nil {
-			fmt.Println()
-			printIndented(out)
-			errf("rev-parse failed on %q — deploy aborted, phase 2 (apply) never started.", t.Name)
-			hint("No runtime state was changed anywhere.")
+			fmt.Fprintln(env.Out)
+			printIndented(env, out)
+			errf(env, "rev-parse failed on %q — deploy aborted, phase 2 (apply) never started.", t.Name)
+			hint(env, "No runtime state was changed anywhere.")
 			return 1
 		}
 		heads[i] = strings.TrimSpace(out)
 	}
 	for i := 1; i < len(heads); i++ {
 		if heads[i] != heads[0] {
-			fmt.Println()
+			fmt.Fprintln(env.Out)
 			for j, t := range targets {
-				fmt.Printf("  %s: %s\n", t.Name, heads[j])
+				fmt.Fprintf(env.Out, "  %s: %s\n", t.Name, heads[j])
 			}
-			fmt.Println()
-			errf("Hosts pulled different commits — a push raced between the pulls. Re-run 'hemma deploy'.")
-			hint("No runtime state was changed anywhere (nothing was applied).")
+			fmt.Fprintln(env.Out)
+			errf(env, "Hosts pulled different commits — a push raced between the pulls. Re-run 'hemma deploy'.")
+			hint(env, "No runtime state was changed anywhere (nothing was applied).")
 			return 1
 		}
 	}
-	fmt.Printf("  all hosts at %s\n", shortCommit(heads[0]))
+	fmt.Fprintf(env.Out, "  all hosts at %s\n", shortCommit(heads[0]))
 
 	// Phase 2 — apply per host, remotes first, self LAST. A failure is
 	// reported and the fan-out continues: each host's apply is internally
 	// consistent, and stopping here would only leave a less converged fleet.
-	fmt.Printf("\n%s== Phase 2: apply ==%s\n", boldOn, boldOff)
+	fmt.Fprintf(env.Out, "\n%s== Phase 2: apply ==%s\n", boldOn, boldOff)
 	status := make(map[string]string, len(targets))
 	failed := 0
 	for _, t := range targets {
-		fmt.Printf("\n%s== %s ==%s\n", boldOn, t.Name, boldOff)
+		fmt.Fprintf(env.Out, "\n%s== %s ==%s\n", boldOn, t.Name, boldOff)
 		out, err := r.run(t, applyArgv(t, localRepo))
-		printIndented(out)
+		printIndented(env, out)
 		if err != nil {
-			fmt.Println("  " + cross + " apply FAILED")
+			fmt.Fprintln(env.Out, "  "+cross+" apply FAILED")
 			status[t.Name] = "failed-apply"
 			failed++
 			continue
@@ -383,32 +383,32 @@ func runDeploy(r deployRunner, targets []deployTarget, localRepo string) int {
 		status[t.Name] = "applied"
 	}
 
-	fmt.Printf("\n%s== Summary ==%s\n", boldOn, boldOff)
+	fmt.Fprintf(env.Out, "\n%s== Summary ==%s\n", boldOn, boldOff)
 	for _, t := range targets {
 		glyph := tick
 		if status[t.Name] != "applied" {
 			glyph = cross
 		}
-		fmt.Printf("  %s %s: %s\n", glyph, t.Name, status[t.Name])
+		fmt.Fprintf(env.Out, "  %s %s: %s\n", glyph, t.Name, status[t.Name])
 	}
-	fmt.Println()
+	fmt.Fprintln(env.Out)
 	if failed > 0 {
-		errf("Apply failed on %d %s — restarts cannot be rolled back; fix and re-run 'hemma deploy' (apply is idempotent).", failed, plural(failed, "host"))
+		errf(env, "Apply failed on %d %s — restarts cannot be rolled back; fix and re-run 'hemma deploy' (apply is idempotent).", failed, plural(failed, "host"))
 		return 1
 	}
-	fmt.Println("Deployed.")
+	fmt.Fprintln(env.Out, "Deployed.")
 	return 0
 }
 
 // printIndented prints a command's captured output, indented under the host
 // header; empty output prints nothing.
-func printIndented(out string) {
+func printIndented(env *Env, out string) {
 	out = strings.TrimRight(out, "\n")
 	if out == "" {
 		return
 	}
 	for _, line := range strings.Split(out, "\n") {
-		fmt.Printf("  %s\n", line)
+		fmt.Fprintf(env.Out, "  %s\n", line)
 	}
 }
 

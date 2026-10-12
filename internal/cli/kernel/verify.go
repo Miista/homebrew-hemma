@@ -34,8 +34,8 @@ const (
 // resolver or the service host); services with nothing checkable here are
 // skipped silently. --all lists every service, noting the ones with nothing to
 // check.
-func cmdVerify(cfgPath string, args []string) int {
-	cfg, code := loadExisting(cfgPath, "verify")
+func cmdVerify(env *Env, cfgPath string, args []string) int {
+	cfg, code := loadExisting(env, cfgPath, "verify")
 	if cfg == nil {
 		return code
 	}
@@ -51,14 +51,14 @@ func cmdVerify(cfgPath string, args []string) int {
 	// Which managed host are we on? (match a local IP against hosts[].ip)
 	self := localHost(cfg)
 	if self == "" {
-		errf("This machine's IP matches no host in services.yaml — run verify on a managed host (the resolver or a service host).")
+		errf(env, "This machine's IP matches no host in services.yaml — run verify on a managed host (the resolver or a service host).")
 		return 1
 	}
-	fmt.Printf("Running on host %q.\n", self)
+	fmt.Fprintf(env.Out, "Running on host %q.\n", self)
 
 	repoRoot := filepath.Dir(cfgPath)
-	warnIfIgnored(repoRoot, plan.Build(cfg))
-	reportDrift(detectDrift(repoRoot, cfg, loadManifest(repoRoot, cfg)))
+	warnIfIgnored(env, repoRoot, plan.Build(cfg))
+	reportDrift(env, detectDrift(repoRoot, cfg, loadManifest(env, repoRoot, cfg)))
 
 	// Which services to check: one fqdn, or all.
 	var services []string
@@ -66,7 +66,7 @@ func cmdVerify(cfgPath string, args []string) int {
 		fqdn := args[0]
 		name := serviceByFQDN(cfg, fqdn)
 		if name == "" {
-			errf("No service with fqdn %q in services.yaml.", fqdn)
+			errf(env, "No service with fqdn %q in services.yaml.", fqdn)
 			return 1
 		}
 		services = []string{name}
@@ -96,47 +96,53 @@ func cmdVerify(cfgPath string, args []string) int {
 			continue
 		}
 		hostIP := cfg.Hosts[svc.Host].IP
-		fmt.Printf("\n%s== %s · %s ==%s\n", boldOn, name, svc.FQDN, boldOff)
+		fmt.Fprintf(env.Out, "\n%s== %s · %s ==%s\n", boldOn, name, svc.FQDN, boldOff)
 
 		if self == resolver {
-			v.dns(svc.FQDN, hostIP)
+			v.dns(env, svc.FQDN, hostIP)
 		}
 		if self == svc.Host {
-			v.caddy(svc.FQDN, svc.Backend)
+			v.caddy(env, svc.FQDN, svc.Backend)
 		}
 		if !checkable {
-			fmt.Printf("  · this host is neither the resolver (%s) nor the service host (%s) for %s — nothing to check here\n",
+			fmt.Fprintf(env.Out, "  · this host is neither the resolver (%s) nor the service host (%s) for %s — nothing to check here\n",
 				resolver, svc.Host, name)
 		}
 	}
 	if skipped > 0 {
-		fmt.Printf("\n%d %s with nothing to check on %q hidden — use --all to show.\n",
+		fmt.Fprintf(env.Out, "\n%d %s with nothing to check on %q hidden — use --all to show.\n",
 			skipped, plural(skipped, "service"), self)
 	}
 
-	fmt.Println()
+	fmt.Fprintln(env.Out)
 	if v.fail > 0 {
-		errf("%d %s failed.", v.fail, plural(v.fail, "check"))
+		errf(env, "%d %s failed.", v.fail, plural(v.fail, "check"))
 		return 1
 	}
-	fmt.Printf("All checks passed (%d).\n", v.pass)
+	fmt.Fprintf(env.Out, "All checks passed (%d).\n", v.pass)
 	return 0
 }
 
 type verifier struct{ pass, fail int }
 
-func (v *verifier) ok(f string, a ...any) { fmt.Printf("  "+tick+" "+f+"\n", a...); v.pass++ }
-func (v *verifier) no(f string, a ...any) { fmt.Printf("  "+cross+" "+f+"\n", a...); v.fail++ }
+func (v *verifier) ok(env *Env, f string, a ...any) {
+	fmt.Fprintf(env.Out, "  "+tick+" "+f+"\n", a...)
+	v.pass++
+}
+func (v *verifier) no(env *Env, f string, a ...any) {
+	fmt.Fprintf(env.Out, "  "+cross+" "+f+"\n", a...)
+	v.fail++
+}
 
 // dns runs the resolver-side checks (in the pihole container).
-func (v *verifier) dns(fqdn, wantIP string) {
+func (v *verifier) dns(env *Env, fqdn, wantIP string) {
 	// A record must be answered LOCALLY with the host IP. If the conf isn't
 	// loaded, pihole forwards upstream and returns the public IP instead.
 	a := dexec(piholeContainer, "dig", "+short", "A", fqdn, "@127.0.0.1")
 	if a == wantIP {
-		v.ok("DNS A = %s (internal)", a)
+		v.ok(env, "DNS A = %s (internal)", a)
 	} else {
-		v.no("DNS A = %s (want %s) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).", orNone(a), wantIP)
+		v.no(env, "DNS A = %s (want %s) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).", orNone(a), wantIP)
 	}
 
 	// Confirm answered locally (dnsmasq 'config'), not forwarded/cached.
@@ -144,56 +150,56 @@ func (v *verifier) dns(fqdn, wantIP string) {
 	log := dexecSh(piholeContainer, "tail -n 30 /var/log/pihole/pihole.log 2>/dev/null")
 	switch {
 	case strings.Contains(log, "config "+fqdn+" is "+wantIP):
-		v.ok("answered locally (dnsmasq 'config')")
+		v.ok(env, "answered locally (dnsmasq 'config')")
 	case strings.Contains(log, "forwarded "+fqdn):
-		v.no("dnsmasq forwarded %s upstream — local record not in effect", fqdn)
+		v.no(env, "dnsmasq forwarded %s upstream — local record not in effect", fqdn)
 	case strings.Contains(log, "cached "+fqdn):
-		v.no("dnsmasq served a cached (stale upstream) answer — restart pihole to flush")
+		v.no(env, "dnsmasq served a cached (stale upstream) answer — restart pihole to flush")
 	}
 
 	// AAAA must be :: (suppression), never ::1.
 	switch aaaa := dexec(piholeContainer, "dig", "+short", "AAAA", fqdn, "@127.0.0.1"); aaaa {
 	case "::":
-		v.ok("DNS AAAA = :: (suppressed)")
+		v.ok(env, "DNS AAAA = :: (suppressed)")
 	case "::1":
-		v.no("DNS AAAA = ::1 (loopback) — must be :: (unspecified)")
+		v.no(env, "DNS AAAA = ::1 (loopback) — must be :: (unspecified)")
 	default:
-		v.no("DNS AAAA = %s (want ::)", orNone(aaaa))
+		v.no(env, "DNS AAAA = %s (want ::)", orNone(aaaa))
 	}
 
 	// HTTPS/SVCB (type 65) must be NODATA, else SVCB-aware clients (Safari) take
 	// the public endpoint hint and bypass split-horizon.
 	if h := dexec(piholeContainer, "dig", "+short", "-t", "TYPE65", fqdn, "@127.0.0.1"); h == "" {
-		v.ok("DNS HTTPS/SVCB = NODATA (no public-endpoint leak)")
+		v.ok(env, "DNS HTTPS/SVCB = NODATA (no public-endpoint leak)")
 	} else {
-		v.no("DNS HTTPS/SVCB record present — leaks public endpoint to SVCB clients")
+		v.no(env, "DNS HTTPS/SVCB record present — leaks public endpoint to SVCB clients")
 	}
 }
 
 // caddy runs the service-host-side checks (in the caddy container).
-func (v *verifier) caddy(fqdn, backend string) {
+func (v *verifier) caddy(env *Env, fqdn, backend string) {
 	const cf = "/etc/caddy/Caddyfile"
 	// Ask Caddy itself: `caddy adapt` expands the effective config (resolving
 	// imports, ignoring comments), so this can't be fooled by commented-out or
 	// mis-ordered import lines the way a text grep can. If the fqdn is in the
 	// adapted config, the imports genuinely loaded the generated site block.
 	if strings.Contains(strings.ToLower(dexecShAll(caddyContainer, "caddy adapt --config "+cf+" --adapter caddyfile 2>/dev/null")), strings.ToLower(fqdn)) {
-		v.ok("%s in adapted config (imports load the generated site)", fqdn)
+		v.ok(env, "%s in adapted config (imports load the generated site)", fqdn)
 	} else {
-		v.no("%s not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)", fqdn)
+		v.no(env, "%s not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)", fqdn)
 	}
 	if dexecOK(caddyContainer, "caddy validate --config "+cf+" --adapter caddyfile") {
-		v.ok("caddy validate passes")
+		v.ok(env, "caddy validate passes")
 	} else {
-		v.no("caddy validate FAILED")
+		v.no(env, "caddy validate FAILED")
 	}
 
 	// reverse_proxy backend matches the declared backend.
 	site := dexecShAll(caddyContainer, "cat /etc/caddy/sites/*.caddy 2>/dev/null")
 	if strings.Contains(site, backend) {
-		v.ok("reverse_proxy uses %s", backend)
+		v.ok(env, "reverse_proxy uses %s", backend)
 	} else {
-		v.no("reverse_proxy does not use %s (declared backend)", backend)
+		v.no(env, "reverse_proxy does not use %s (declared backend)", backend)
 	}
 
 	// Live HTTPS from local Caddy (fresh connection). This is the running-state
@@ -201,9 +207,9 @@ func (v *verifier) caddy(fqdn, backend string) {
 	// on a stale/unreloaded config that doesn't actually serve the host.
 	code := dexecSh(caddyContainer, fmt.Sprintf("curl -sk -o /dev/null -w '%%{http_code}' --resolve %s:443:127.0.0.1 https://%s/ 2>/dev/null", fqdn, fqdn))
 	if code != "" && code != "000" {
-		v.ok("local Caddy answered HTTPS (%s)", code)
+		v.ok(env, "local Caddy answered HTTPS (%s)", code)
 	} else {
-		v.no("no HTTPS response from local Caddy (%s)", orNone(code))
+		v.no(env, "no HTTPS response from local Caddy (%s)", orNone(code))
 	}
 }
 

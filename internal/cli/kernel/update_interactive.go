@@ -3,13 +3,11 @@ package kernel
 import (
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"sort"
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"golang.org/x/term"
 
 	"hemma/internal/config"
 	syncpkg "hemma/internal/sync"
@@ -31,19 +29,19 @@ const newGroupSentinel = "\x00new-group"
 // cmdUpdateInteractive runs the interactive editor for one service. Reached
 // only from cmdUpdate when zero flags were given; TTY-gated so scripts that
 // forgot their flags fail loud instead of hanging on a hidden prompt.
-func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		errf("no flags given and stdin is not a terminal — pass flags (see hemma help update)")
+func cmdUpdateInteractive(env *Env, repoRoot, cfgPath, name string) int {
+	if !env.interactive() {
+		errf(env, "no flags given and stdin is not a terminal — pass flags (see hemma help update)")
 		return 2
 	}
 
-	cfg, code := loadExisting(cfgPath, "update")
+	cfg, code := loadExisting(env, cfgPath, "update")
 	if cfg == nil {
 		return code
 	}
 	svc, exists := cfg.Services[name]
 	if !exists {
-		errf("Service %q does not exist.", name)
+		errf(env, "Service %q does not exist.", name)
 		return 1
 	}
 
@@ -52,7 +50,7 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 	// replaces them.
 	isAuthService := cfg.Defaults.AuthService != "" && name == cfg.Defaults.AuthService
 	if isAuthService {
-		fmt.Fprintf(os.Stderr, "Note: %q is the auth_service (the forward-auth backend) — auth mode/groups are not editable; gating the portal itself would create a redirect loop.\n", name)
+		fmt.Fprintf(env.Err, "Note: %q is the auth_service (the forward-auth backend) — auth mode/groups are not editable; gating the portal itself would create a redirect loop.\n", name)
 	}
 
 	// Editable values, pre-filled with current state (Enter keeps them).
@@ -156,12 +154,12 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 
 	// Render the form on stderr so stdout stays clean for the summary and the
 	// sync report (same contract as the create-user prompts).
-	if err := huh.NewForm(groups...).WithTheme(formTheme()).WithOutput(os.Stderr).Run(); err != nil {
+	if err := huh.NewForm(groups...).WithTheme(formTheme()).WithOutput(env.Err).Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "Aborted — no changes made.")
+			fmt.Fprintln(env.Err, "Aborted — no changes made.")
 			return 0
 		}
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 
@@ -203,13 +201,13 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 
 	lines := summarizeServiceChanges(svc, updated)
 	if len(lines) == 0 {
-		fmt.Println("No changes.")
+		fmt.Fprintln(env.Out, "No changes.")
 		return 0
 	}
 	for _, l := range lines {
-		fmt.Println(l)
+		fmt.Fprintln(env.Out, l)
 	}
-	return persistUpdatedService(repoRoot, cfg, name, updated)
+	return persistUpdatedService(env, repoRoot, cfg, name, updated)
 }
 
 // persistUpdatedService is the shared tail of `update service`: both the
@@ -224,33 +222,33 @@ func cmdUpdateInteractive(repoRoot, cfgPath, name string) int {
 // behind would be drift, which makes `apply` refuse. So a newly-disabled
 // service goes through the targeted RemoveService primitive — the same one
 // `hemma disable service` uses — rather than a plain reconcile.
-func persistUpdatedService(repoRoot string, cfg *config.Config, name string, svc config.Service) int {
+func persistUpdatedService(env *Env, repoRoot string, cfg *config.Config, name string, svc config.Service) int {
 	// Groups only make sense with an auth gate — refuse the resulting combo
 	// before persisting (validate-before-persist), whichever flag caused it.
 	if svc.Auth.Mode == config.AuthNone && len(svc.Auth.Groups) > 0 {
-		errf("Auth groups without an auth mode — pass --auth-mode forward|oidc, or clear the groups with --auth-groups ''.")
+		errf(env, "Auth groups without an auth mode — pass --auth-mode forward|oidc, or clear the groups with --auth-groups ''.")
 		return 2
 	}
 	wasDisabled := cfg.Services[name].Disabled
 	cfg.Services[name] = svc
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf(tick+" Updated service %q\n", name)
+	fmt.Fprintf(env.Out, tick+" Updated service %q\n", name)
 
 	if svc.Disabled && !wasDisabled {
-		mf := loadManifest(repoRoot, cfg)
+		mf := loadManifest(env, repoRoot, cfg)
 		eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: mf}
 		res, err := eng.RemoveService(name)
 		if err != nil {
-			errf("%v", err)
+			errf(env, "%v", err)
 			return 1
 		}
-		fmt.Printf("Disabled — removed %d generated %s.\n", len(res.Deleted), plural(len(res.Deleted), "file"))
+		fmt.Fprintf(env.Out, "Disabled — removed %d generated %s.\n", len(res.Deleted), plural(len(res.Deleted), "file"))
 		return 0
 	}
-	return runSync(repoRoot, cfg, syncpkg.Incremental)
+	return runSync(env, repoRoot, cfg, syncpkg.Incremental)
 }
 
 // groupOption is one entry of the interactive auth-groups multi-select:

@@ -30,7 +30,7 @@ func captureStderr(t *testing.T, f func()) string {
 
 func TestRunQuietSuccessIsSilent(t *testing.T) {
 	out := captureStderr(t, func() {
-		if !runQuiet("sh", "-c", "echo noisy stdout; echo noisy stderr >&2; exit 0") {
+		if !runQuiet(stdEnv(), "sh", "-c", "echo noisy stdout; echo noisy stderr >&2; exit 0") {
 			t.Error("expected success")
 		}
 	})
@@ -41,7 +41,7 @@ func TestRunQuietSuccessIsSilent(t *testing.T) {
 
 func TestRunQuietFailurePrintsCapturedOutput(t *testing.T) {
 	out := captureStderr(t, func() {
-		if runQuiet("sh", "-c", "echo diag line 1; echo diag line 2 >&2; exit 1") {
+		if runQuiet(stdEnv(), "sh", "-c", "echo diag line 1; echo diag line 2 >&2; exit 1") {
 			t.Error("expected failure")
 		}
 	})
@@ -60,10 +60,10 @@ func TestRunQuietIn_UsesGivenDirectory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "marker.txt"), []byte("here"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if !runQuietIn(dir, "sh", "-c", "test -f marker.txt") {
+	if !runQuietIn(stdEnv(), dir, "sh", "-c", "test -f marker.txt") {
 		t.Error("expected the command to find marker.txt in dir")
 	}
-	if runQuietIn(t.TempDir(), "sh", "-c", "test -f marker.txt") {
+	if runQuietIn(stdEnv(), t.TempDir(), "sh", "-c", "test -f marker.txt") {
 		t.Error("a different (empty) directory should not find marker.txt")
 	}
 }
@@ -72,10 +72,10 @@ func TestRunQuietIn_UsesGivenDirectory(t *testing.T) {
 // runQuiet is defined purely as runQuietIn("", ...), so this pins that they
 // stay equivalent rather than silently diverging on a future edit.
 func TestRunQuietIn_EmptyDirMatchesRunQuiet(t *testing.T) {
-	if runQuiet("sh", "-c", "exit 1") != runQuietIn("", "sh", "-c", "exit 1") {
+	if runQuiet(stdEnv(), "sh", "-c", "exit 1") != runQuietIn(stdEnv(), "", "sh", "-c", "exit 1") {
 		t.Error("runQuietIn(\"\", ...) should behave identically to runQuiet")
 	}
-	if runQuiet("sh", "-c", "exit 0") != runQuietIn("", "sh", "-c", "exit 0") {
+	if runQuiet(stdEnv(), "sh", "-c", "exit 0") != runQuietIn(stdEnv(), "", "sh", "-c", "exit 0") {
 		t.Error("runQuietIn(\"\", ...) should behave identically to runQuiet")
 	}
 }

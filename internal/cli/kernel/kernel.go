@@ -70,14 +70,14 @@ func colorEnabled() bool {
 //	Error: <Capitalized message>.
 //
 // Pass the message without a leading "Error:" or trailing newline.
-func errf(format string, a ...any) {
-	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", a...)
+func errf(env *Env, format string, a ...any) {
+	fmt.Fprintf(env.Err, "Error: "+format+"\n", a...)
 }
 
 // hint prints an indented follow-up line to stderr (next-step guidance),
 // after a blank separator line is emitted by the caller.
-func hint(format string, a ...any) {
-	fmt.Fprintf(os.Stderr, format+"\n", a...)
+func hint(env *Env, format string, a ...any) {
+	fmt.Fprintf(env.Err, format+"\n", a...)
 }
 
 // plural returns singular when n == 1, else singular+"s". Avoids the clumsy
@@ -97,79 +97,85 @@ func plural(n int, singular string) string {
 // Route runs the kernel command named cmd with its args (everything after the
 // command word). ok is false when cmd is not a kernel command, so the caller
 // can handle its own (help, version, completion) or report an unknown one.
-func Route(repoRoot, cfgPath, cmd string, args []string) (code int, ok bool) {
+func Route(env *Env, repoRoot, cfgPath, cmd string, args []string) (code int, ok bool) {
 	switch cmd {
 	case "add":
-		return Add(repoRoot, cfgPath, args), true
+		return Add(env, repoRoot, cfgPath, args), true
 	case "update":
-		return Update(repoRoot, cfgPath, args), true
+		return Update(env, repoRoot, cfgPath, args), true
 	case "remove":
-		return Remove(repoRoot, cfgPath, args), true
+		return Remove(env, repoRoot, cfgPath, args), true
 	case "enable":
-		return Enable(repoRoot, cfgPath, args), true
+		return Enable(env, repoRoot, cfgPath, args), true
 	case "disable":
-		return Disable(repoRoot, cfgPath, args), true
+		return Disable(env, repoRoot, cfgPath, args), true
 	case "rename":
-		return Rename(repoRoot, cfgPath, args), true
+		return Rename(env, repoRoot, cfgPath, args), true
 	case "defaults":
-		return Defaults(cfgPath, args), true
+		return Defaults(env, cfgPath, args), true
 	case "create":
-		return Create(cfgPath, args), true
+		return Create(env, cfgPath, args), true
 	case "list":
-		return List(cfgPath, args), true
+		return List(env, cfgPath, args), true
 	case "verify":
-		return Verify(cfgPath, args), true
+		return Verify(env, cfgPath, args), true
 	case "doctor":
-		return Doctor(cfgPath, args), true
+		return Doctor(env, cfgPath, args), true
 	case "apply":
-		return Apply(repoRoot, cfgPath, args), true
+		return Apply(env, repoRoot, cfgPath, args), true
 	case "deploy":
-		return Deploy(repoRoot, cfgPath, args), true
+		return Deploy(env, repoRoot, cfgPath, args), true
 	case "measure":
-		return Measure(cfgPath, args), true
+		return Measure(env, cfgPath, args), true
 	}
 	return 0, false
 }
 
 // Add, Update, Remove, Enable, Disable and Rename take a noun
 // (service|host|domain) as their first arg; see dispatchNoun.
-func Add(repoRoot, cfgPath string, args []string) int {
-	return dispatchNoun(repoRoot, cfgPath, "add", args)
+func Add(env *Env, repoRoot, cfgPath string, args []string) int {
+	return dispatchNoun(env, repoRoot, cfgPath, "add", args)
 }
-func Update(repoRoot, cfgPath string, args []string) int {
-	return dispatchNoun(repoRoot, cfgPath, "update", args)
+func Update(env *Env, repoRoot, cfgPath string, args []string) int {
+	return dispatchNoun(env, repoRoot, cfgPath, "update", args)
 }
-func Remove(repoRoot, cfgPath string, args []string) int {
-	return dispatchNoun(repoRoot, cfgPath, "remove", args)
+func Remove(env *Env, repoRoot, cfgPath string, args []string) int {
+	return dispatchNoun(env, repoRoot, cfgPath, "remove", args)
 }
-func Enable(repoRoot, cfgPath string, args []string) int {
-	return dispatchNoun(repoRoot, cfgPath, "enable", args)
+func Enable(env *Env, repoRoot, cfgPath string, args []string) int {
+	return dispatchNoun(env, repoRoot, cfgPath, "enable", args)
 }
-func Disable(repoRoot, cfgPath string, args []string) int {
-	return dispatchNoun(repoRoot, cfgPath, "disable", args)
+func Disable(env *Env, repoRoot, cfgPath string, args []string) int {
+	return dispatchNoun(env, repoRoot, cfgPath, "disable", args)
 }
-func Rename(repoRoot, cfgPath string, args []string) int {
-	return dispatchNoun(repoRoot, cfgPath, "rename", args)
+func Rename(env *Env, repoRoot, cfgPath string, args []string) int {
+	return dispatchNoun(env, repoRoot, cfgPath, "rename", args)
 }
 
 // Defaults shows the repo-wide defaults, or sets one (`defaults set <key> <v>`).
-func Defaults(cfgPath string, args []string) int { return dispatchDefaults(cfgPath, args) }
+func Defaults(env *Env, cfgPath string, args []string) int {
+	return dispatchDefaults(env, cfgPath, args)
+}
 
 // Create mints credentials (`create app oidc …`, `create user …`).
-func Create(cfgPath string, args []string) int { return dispatchCreate(cfgPath, args) }
+func Create(env *Env, cfgPath string, args []string) int { return dispatchCreate(env, cfgPath, args) }
 
-func List(cfgPath string, args []string) int    { return cmdList(cfgPath, args) }
-func Verify(cfgPath string, args []string) int  { return cmdVerify(cfgPath, args) }
-func Doctor(cfgPath string, args []string) int  { return cmdDoctor(cfgPath, args) }
-func Measure(cfgPath string, args []string) int { return cmdMeasure(cfgPath, args) }
+func List(env *Env, cfgPath string, args []string) int    { return cmdList(env, cfgPath, args) }
+func Verify(env *Env, cfgPath string, args []string) int  { return cmdVerify(env, cfgPath, args) }
+func Doctor(env *Env, cfgPath string, args []string) int  { return cmdDoctor(env, cfgPath, args) }
+func Measure(env *Env, cfgPath string, args []string) int { return cmdMeasure(env, cfgPath, args) }
 
-func Apply(repoRoot, cfgPath string, args []string) int  { return cmdApply(repoRoot, cfgPath, args) }
-func Deploy(repoRoot, cfgPath string, args []string) int { return cmdDeploy(repoRoot, cfgPath, args) }
+func Apply(env *Env, repoRoot, cfgPath string, args []string) int {
+	return cmdApply(env, repoRoot, cfgPath, args)
+}
+func Deploy(env *Env, repoRoot, cfgPath string, args []string) int {
+	return cmdDeploy(env, repoRoot, cfgPath, args)
+}
 
 // Errf and Hint print in the house error style (see errf, hint) for the CLI
 // layer's own messages.
-func Errf(format string, a ...any) { errf(format, a...) }
-func Hint(format string, a ...any) { hint(format, a...) }
+func Errf(env *Env, format string, a ...any) { errf(env, format, a...) }
+func Hint(env *Env, format string, a ...any) { hint(env, format, a...) }
 
 // SetKeys lists the `defaults set` keys, for shell completion.
 func SetKeys() []string { return setKeyStrings() }
@@ -193,10 +199,10 @@ func SetSelfExecutable(f func() (string, error)) (restore func()) {
 // `<verb> <noun> <args...>` (e.g. "add domain x", "remove service y") to the
 // matching handler. One word order across the whole CLI avoids the
 // add-service vs noun-add confusion.
-func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
+func dispatchNoun(env *Env, repoRoot, cfgPath, verb string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing the noun for %q — expected service, host, or domain.", verb)
-		hint("Usage: hemma %s service|host|domain ...", verb)
+		errf(env, "Missing the noun for %q — expected service, host, or domain.", verb)
+		hint(env, "Usage: hemma %s service|host|domain ...", verb)
 		return 2
 	}
 	noun, rest := args[0], args[1:]
@@ -204,47 +210,47 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 	case "service":
 		switch verb {
 		case "add":
-			return cmdAdd(repoRoot, cfgPath, rest)
+			return cmdAdd(env, repoRoot, cfgPath, rest)
 		case "update":
-			return cmdUpdate(repoRoot, cfgPath, rest)
+			return cmdUpdate(env, repoRoot, cfgPath, rest)
 		case "remove":
-			return cmdRemove(repoRoot, cfgPath, rest)
+			return cmdRemove(env, repoRoot, cfgPath, rest)
 		case "enable":
-			return cmdEnableDisable(repoRoot, cfgPath, rest, false)
+			return cmdEnableDisable(env, repoRoot, cfgPath, rest, false)
 		case "disable":
-			return cmdEnableDisable(repoRoot, cfgPath, rest, true)
+			return cmdEnableDisable(env, repoRoot, cfgPath, rest, true)
 		case "rename":
-			return cmdRename(repoRoot, cfgPath, rest)
+			return cmdRename(env, repoRoot, cfgPath, rest)
 		}
 	case "host":
 		switch verb {
 		case "add":
-			return hostAdd(cfgPath, rest)
+			return hostAdd(env, cfgPath, rest)
 		case "update":
-			return hostUpdate(cfgPath, rest)
+			return hostUpdate(env, cfgPath, rest)
 		case "remove":
-			return hostRemove(cfgPath, rest)
+			return hostRemove(env, cfgPath, rest)
 		default:
-			errf("Cannot %q a host — hosts support add, update, and remove.", verb)
+			errf(env, "Cannot %q a host — hosts support add, update, and remove.", verb)
 			return 2
 		}
 	case "domain":
 		switch verb {
 		case "add":
-			return domainAdd(cfgPath, rest)
+			return domainAdd(env, cfgPath, rest)
 		case "remove":
-			return domainRemove(cfgPath, rest)
+			return domainRemove(env, cfgPath, rest)
 		default:
-			errf("Cannot %q a domain — domains support add and remove.", verb)
+			errf(env, "Cannot %q a domain — domains support add and remove.", verb)
 			return 2
 		}
 	default:
-		errf("Unknown noun %q — expected service, host, or domain.", noun)
-		hint("Usage: hemma %s service|host|domain ...", verb)
+		errf(env, "Unknown noun %q — expected service, host, or domain.", noun)
+		hint(env, "Usage: hemma %s service|host|domain ...", verb)
 		return 2
 	}
 	// Reached only if a verb/noun combo fell through (shouldn't happen).
-	errf("Unsupported: %s %s.", verb, noun)
+	errf(env, "Unsupported: %s %s.", verb, noun)
 	return 2
 }
 
@@ -252,27 +258,27 @@ func dispatchNoun(repoRoot, cfgPath, verb string, args []string) int {
 // prints every current default value via cmdDefaultsShow; `set <key>
 // <value>` routes to the matching setSpecs entry — see setSpecs' doc comment
 // for why the latter is table-driven rather than a hand-written switch.
-func dispatchDefaults(cfgPath string, args []string) int {
+func dispatchDefaults(env *Env, cfgPath string, args []string) int {
 	if len(args) == 0 {
-		return cmdDefaultsShow(cfgPath)
+		return cmdDefaultsShow(env, cfgPath)
 	}
 	if args[0] != "set" {
-		errf("Unknown 'defaults' subcommand %q — expected 'set', or no subcommand to show current values.", args[0])
+		errf(env, "Unknown 'defaults' subcommand %q — expected 'set', or no subcommand to show current values.", args[0])
 		return 2
 	}
 	args = args[1:]
 	keys := setKeyStrings()
 	if len(args) < 1 {
-		errf("Missing what to set — expected %s.", oxfordOr(keys))
-		hint("Usage: " + strings.Join(setUsages(), "  |  "))
+		errf(env, "Missing what to set — expected %s.", oxfordOr(keys))
+		hint(env, "Usage: "+strings.Join(setUsages(), "  |  "))
 		return 2
 	}
 	for _, s := range setSpecs {
 		if string(s.key) == args[0] {
-			return s.run(cfgPath, args[1:])
+			return s.run(env, cfgPath, args[1:])
 		}
 	}
-	errf("Unknown setting %q — expected %s.", args[0], oxfordOr(keys))
+	errf(env, "Unknown setting %q — expected %s.", args[0], oxfordOr(keys))
 	return 2
 }
 
@@ -282,8 +288,8 @@ func dispatchDefaults(cfgPath string, args []string) int {
 // rather than staying named `set`: every value it touches genuinely is one
 // of config.Defaults' fields, so the noun should say so and double as a
 // listing, the same way `hemma list` is to services.yaml's services.
-func cmdDefaultsShow(cfgPath string) int {
-	cfg, code := loadExisting(cfgPath, "show the defaults in")
+func cmdDefaultsShow(env *Env, cfgPath string) int {
+	cfg, code := loadExisting(env, cfgPath, "show the defaults in")
 	if cfg == nil {
 		return code
 	}
@@ -298,7 +304,7 @@ func cmdDefaultsShow(cfgPath string) int {
 		if v == "" {
 			v = "(unset)"
 		}
-		fmt.Printf("  %-*s  %s\n", wKey, s.key, v)
+		fmt.Fprintf(env.Out, "  %-*s  %s\n", wKey, s.key, v)
 	}
 	return 0
 }
@@ -329,13 +335,13 @@ func setUsages() []string {
 	return out
 }
 
-func cmdAdd(repoRoot, cfgPath string, args []string) int {
+func cmdAdd(env *Env, repoRoot, cfgPath string, args []string) int {
 	// Usage puts <service> before flags; Go's flag pkg stops at the first
 	// positional, so split it off first.
 	name, args, ok := leadingName(args)
 	if !ok {
-		errf("Missing the <service> name.")
-		hint("Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
+		errf(env, "Missing the <service> name.")
+		hint(env, "Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		return 2
 	}
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
@@ -361,9 +367,9 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	given := 0
 	fs.Visit(func(*flag.Flag) { given++ })
 	if given == 0 {
-		return cmdAddInteractive(repoRoot, cfgPath, name)
+		return cmdAddInteractive(env, repoRoot, cfgPath, name)
 	}
-	mode, ok := resolveAuthMode(fs, *authFlag, *authMode)
+	mode, ok := resolveAuthMode(env, fs, *authFlag, *authMode)
 	if !ok {
 		return 2
 	}
@@ -371,7 +377,7 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 	paths := splitGroups(*bypassPaths)
 	// Groups only make sense with an auth gate — refuse before persisting.
 	if len(groups) > 0 && !mode.UsesProvider() {
-		errf("--auth-groups requires a provider-backed auth mode — pass --auth-mode forward or --auth-mode oidc (external is authenticated outside hemma, so groups have nothing to apply to).")
+		errf(env, "--auth-groups requires a provider-backed auth mode — pass --auth-mode forward or --auth-mode oidc (external is authenticated outside hemma, so groups have nothing to apply to).")
 		return 2
 	}
 	// Validate required flags BEFORE touching the YAML, so a mistyped command
@@ -387,26 +393,26 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 		missing = append(missing, "--backend")
 	}
 	if len(missing) > 0 {
-		errf("Missing required %s: %s.", plural(len(missing), "flag"), strings.Join(missing, ", "))
-		hint("Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
+		errf(env, "Missing required %s: %s.", plural(len(missing), "flag"), strings.Join(missing, ", "))
+		hint(env, "Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
 		return 2
 	}
 
-	addLocal, ok := resolvePolicyLevel("auth-policy-local", *policyLocal)
+	addLocal, ok := resolvePolicyLevel(env, "auth-policy-local", *policyLocal)
 	if !ok {
 		return 2
 	}
-	addPublic, ok := resolvePolicyLevel("auth-policy-public", *policyPublic)
+	addPublic, ok := resolvePolicyLevel(env, "auth-policy-public", *policyPublic)
 	if !ok {
 		return 2
 	}
 
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	return persistNewService(repoRoot, cfg, name,
+	return persistNewService(env, repoRoot, cfg, name,
 		config.Service{FQDN: *fqdn, Host: *host, Backend: *backend,
 			Auth: config.Auth{Mode: mode, Groups: groups, BypassPaths: paths,
 				Policy: config.AuthPolicy{Local: addLocal, Public: addPublic}},
@@ -417,40 +423,40 @@ func cmdAdd(repoRoot, cfgPath string, args []string) int {
 // (cmdAdd) and the interactive editor (cmdAddInteractive) funnel through it —
 // validate the entry, persist, and run the single sync path (Incremental,
 // design §6.1). Zero mutation logic lives in the editor.
-func persistNewService(repoRoot string, cfg *config.Config, name string, svc config.Service) int {
+func persistNewService(env *Env, repoRoot string, cfg *config.Config, name string, svc config.Service) int {
 	if _, exists := cfg.Services[name]; exists {
-		errf("Service %q already exists.", name)
+		errf(env, "Service %q already exists.", name)
 		return 1
 	}
 	for n, s := range cfg.Services {
 		if s.FQDN == svc.FQDN {
-			errf("The fqdn %q is already used by service %q.", svc.FQDN, n)
+			errf(env, "The fqdn %q is already used by service %q.", svc.FQDN, n)
 			return 1
 		}
 	}
 	// fqdn must fall under a defined domain — catch typos (e.g. .dl for .dk)
 	// before persisting, not as a skip at sync time.
 	if _, ok := cfg.MatchDomain(svc.FQDN); !ok {
-		errf("The fqdn %q matches no defined domain.", svc.FQDN)
+		errf(env, "The fqdn %q matches no defined domain.", svc.FQDN)
 		if doms := cfg.DomainNames(); len(doms) > 0 {
-			hint("Defined domains: %s. Add one with 'hemma add domain <name>' or fix the fqdn.", strings.Join(doms, ", "))
+			hint(env, "Defined domains: %s. Add one with 'hemma add domain <name>' or fix the fqdn.", strings.Join(doms, ", "))
 		} else {
-			hint("No domains defined yet — run 'hemma add domain <name>' first.")
+			hint(env, "No domains defined yet — run 'hemma add domain <name>' first.")
 		}
 		return 1
 	}
 	// Host must exist too (else it'd persist then skip at sync).
 	if _, ok := cfg.Hosts[svc.Host]; !ok {
-		errf("Unknown host %q — defined hosts: %s.", svc.Host, strings.Join(sortedKeysOf(cfg.Hosts), ", "))
+		errf(env, "Unknown host %q — defined hosts: %s.", svc.Host, strings.Join(sortedKeysOf(cfg.Hosts), ", "))
 		return 1
 	}
 	cfg.Services[name] = svc
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf(tick+" Added service %q\n", name)
-	return runSync(repoRoot, cfg, syncpkg.Incremental)
+	fmt.Fprintf(env.Out, tick+" Added service %q\n", name)
+	return runSync(env, repoRoot, cfg, syncpkg.Incremental)
 }
 
 // syncBlockedReason returns a human-readable reason a sync cannot run at all
@@ -542,27 +548,27 @@ func authConfigWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 // and rewrites absolute paths under repoRoot to repo-relative ones (container
 // paths like /config/... are untouched). Dimming follows the same TTY /
 // NO_COLOR gate as the glyphs; piped output stays plain.
-func printAdvisories(repoRoot string, advs []auth.Advisory) {
+func printAdvisories(env *Env, repoRoot string, advs []auth.Advisory) {
 	rel := func(s string) string {
 		return strings.ReplaceAll(s, repoRoot+string(filepath.Separator), "")
 	}
 	for i, a := range advs {
 		if i > 0 {
-			fmt.Println()
+			fmt.Fprintln(env.Out)
 		}
-		fmt.Printf("%s %s\n", warn, rel(a.Headline))
+		fmt.Fprintf(env.Out, "%s %s\n", warn, rel(a.Headline))
 		for _, b := range a.Body {
-			fmt.Printf("    %s%s%s\n", dimOn, rel(b), dimOff)
+			fmt.Fprintf(env.Out, "    %s%s%s\n", dimOn, rel(b), dimOff)
 		}
 		for j, f := range a.Fix {
 			if j == 0 {
-				fmt.Printf("    %sfix:  %s%s\n", dimOn, rel(f), dimOff)
+				fmt.Fprintf(env.Out, "    %sfix:  %s%s\n", dimOn, rel(f), dimOff)
 			} else {
-				fmt.Printf("          %s%s%s\n", dimOn, rel(f), dimOff)
+				fmt.Fprintf(env.Out, "          %s%s%s\n", dimOn, rel(f), dimOff)
 			}
 		}
 		if a.Then != "" {
-			fmt.Printf("    %sthen: %s%s\n", dimOn, a.Then, dimOff)
+			fmt.Fprintf(env.Out, "    %sthen: %s%s\n", dimOn, a.Then, dimOff)
 		}
 	}
 }
@@ -610,7 +616,7 @@ func oidcClientWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 // to the default gate), which is how the update flags clear the field. A typo
 // is a usage error rather than something that reaches a generated
 // access-control rule, where it would be a silent security statement.
-func resolvePolicyLevel(flagName, raw string) (config.PolicyLevel, bool) {
+func resolvePolicyLevel(env *Env, flagName, raw string) (config.PolicyLevel, bool) {
 	if raw == "" {
 		return "", true
 	}
@@ -618,11 +624,11 @@ func resolvePolicyLevel(flagName, raw string) (config.PolicyLevel, bool) {
 	case config.PolicyBypass, config.PolicyOneFactor, config.PolicyTwoFactor, config.PolicyDeny:
 		return config.PolicyLevel(raw), true
 	}
-	errf("%q is not a valid --%s — expected bypass, one_factor, two_factor, or deny.", raw, flagName)
+	errf(env, "%q is not a valid --%s — expected bypass, one_factor, two_factor, or deny.", raw, flagName)
 	return "", false
 }
 
-func resolveAuthMode(fs *flag.FlagSet, auth bool, authMode string) (config.AuthMode, bool) {
+func resolveAuthMode(env *Env, fs *flag.FlagSet, auth bool, authMode string) (config.AuthMode, bool) {
 	authSet, modeSet := false, false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
@@ -644,7 +650,7 @@ func resolveAuthMode(fs *flag.FlagSet, auth bool, authMode string) (config.AuthM
 		case "none", "":
 			mode = config.AuthNone
 		default:
-			errf("Invalid --auth-mode %q — expected forward, oidc, external, or none.", authMode)
+			errf(env, "Invalid --auth-mode %q — expected forward, oidc, external, or none.", authMode)
 			return "", false
 		}
 	}
@@ -654,7 +660,7 @@ func resolveAuthMode(fs *flag.FlagSet, auth bool, authMode string) (config.AuthM
 			shorthand = config.AuthForward
 		}
 		if modeSet && mode != shorthand {
-			errf("Conflicting flags: --auth and --auth-mode disagree.")
+			errf(env, "Conflicting flags: --auth and --auth-mode disagree.")
 			return "", false
 		}
 		mode = shorthand
@@ -675,11 +681,11 @@ func splitGroups(s string) []string {
 	return out
 }
 
-func cmdUpdate(repoRoot, cfgPath string, args []string) int {
+func cmdUpdate(env *Env, repoRoot, cfgPath string, args []string) int {
 	name, args, ok := leadingName(args)
 	if !ok {
-		errf("Missing the <service> name.")
-		hint("Usage: hemma update service <name> [--fqdn ...] [--host ...] [--backend ...]")
+		errf(env, "Missing the <service> name.")
+		hint(env, "Usage: hemma update service <name> [--fqdn ...] [--host ...] [--backend ...]")
 		return 2
 	}
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
@@ -705,29 +711,29 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	changed := 0
 	fs.Visit(func(*flag.Flag) { changed++ })
 	if changed == 0 {
-		return cmdUpdateInteractive(repoRoot, cfgPath, name)
+		return cmdUpdateInteractive(env, repoRoot, cfgPath, name)
 	}
 	// Validate --auth/--auth-mode up front (usage error before touching YAML).
-	newMode, ok := resolveAuthMode(fs, *authFlag, *authMode)
+	newMode, ok := resolveAuthMode(env, fs, *authFlag, *authMode)
 	if !ok {
 		return 2
 	}
-	newLocal, ok := resolvePolicyLevel("auth-policy-local", *policyLocal)
+	newLocal, ok := resolvePolicyLevel(env, "auth-policy-local", *policyLocal)
 	if !ok {
 		return 2
 	}
-	newPublic, ok := resolvePolicyLevel("auth-policy-public", *policyPublic)
+	newPublic, ok := resolvePolicyLevel(env, "auth-policy-public", *policyPublic)
 	if !ok {
 		return 2
 	}
 
-	cfg, code := loadExisting(cfgPath, "update")
+	cfg, code := loadExisting(env, cfgPath, "update")
 	if cfg == nil {
 		return code
 	}
 	svc, exists := cfg.Services[name]
 	if !exists {
-		errf("Service %q does not exist.", name)
+		errf(env, "Service %q does not exist.", name)
 		return 1
 	}
 	// Only override fields that were explicitly set on the command line.
@@ -760,106 +766,106 @@ func cmdUpdate(repoRoot, cfgPath string, args []string) int {
 	})
 	// Shared tail with the interactive editor: validate-before-persist, save,
 	// single sync path.
-	return persistUpdatedService(repoRoot, cfg, name, svc)
+	return persistUpdatedService(env, repoRoot, cfg, name, svc)
 }
 
-func cmdRemove(repoRoot, cfgPath string, args []string) int {
+func cmdRemove(env *Env, repoRoot, cfgPath string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing the <service> name.")
-		hint("Usage: hemma remove service <name>")
+		errf(env, "Missing the <service> name.")
+		hint(env, "Usage: hemma remove service <name>")
 		return 2
 	}
 	name := args[0]
 
-	cfg, code := loadExisting(cfgPath, "remove")
+	cfg, code := loadExisting(env, cfgPath, "remove")
 	if cfg == nil {
 		return code
 	}
 	if _, exists := cfg.Services[name]; !exists {
-		fmt.Printf("Service %q does not exist; nothing to remove.\n", name)
+		fmt.Fprintf(env.Out, "Service %q does not exist; nothing to remove.\n", name)
 		return 0
 	}
 	delete(cfg.Services, name)
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 
-	mf := loadManifest(repoRoot, cfg)
+	mf := loadManifest(env, repoRoot, cfg)
 	eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: mf}
 	res, err := eng.RemoveService(name)
 	if err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf(tick+" Removed service %q\n", name)
+	fmt.Fprintf(env.Out, tick+" Removed service %q\n", name)
 	if n := len(res.Deleted); n > 0 {
-		fmt.Printf(tick+" Deleted %d generated %s\n", n, plural(n, "file"))
+		fmt.Fprintf(env.Out, tick+" Deleted %d generated %s\n", n, plural(n, "file"))
 	} else {
-		fmt.Println(tick + " No generated files to delete")
+		fmt.Fprintln(env.Out, tick+" No generated files to delete")
 	}
 
 	// Deletions still need an apply (drop the vhost/record from running daemons).
-	printNextSteps(cfg, res)
-	reportDrift(detectDrift(repoRoot, cfg, mf))
+	printNextSteps(env, cfg, res)
+	reportDrift(env, detectDrift(repoRoot, cfg, mf))
 	return 0
 }
 
-func cmdEnableDisable(repoRoot, cfgPath string, args []string, disable bool) int {
+func cmdEnableDisable(env *Env, repoRoot, cfgPath string, args []string, disable bool) int {
 	verb := "enable"
 	if disable {
 		verb = "disable"
 	}
 	if len(args) < 1 {
-		errf("Missing the <service> name.")
-		hint("Usage: hemma %s service <name>", verb)
+		errf(env, "Missing the <service> name.")
+		hint(env, "Usage: hemma %s service <name>", verb)
 		return 2
 	}
 	name := args[0]
 
-	cfg, code := loadExisting(cfgPath, verb)
+	cfg, code := loadExisting(env, cfgPath, verb)
 	if cfg == nil {
 		return code
 	}
 	svc, exists := cfg.Services[name]
 	if !exists {
-		errf("Service %q does not exist.", name)
+		errf(env, "Service %q does not exist.", name)
 		return 1
 	}
 	if disable && svc.Disabled {
-		fmt.Printf("Service %q is already disabled.\n", name)
+		fmt.Fprintf(env.Out, "Service %q is already disabled.\n", name)
 		return 0
 	}
 	if !disable && !svc.Disabled {
-		fmt.Printf("Service %q is already enabled.\n", name)
+		fmt.Fprintf(env.Out, "Service %q is already enabled.\n", name)
 		return 0
 	}
 	svc.Disabled = disable
 	cfg.Services[name] = svc
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 
 	if disable {
 		// Delete generated files immediately — same as remove but the service
 		// stays in services.yaml so it can be re-enabled later.
-		mf := loadManifest(repoRoot, cfg)
+		mf := loadManifest(env, repoRoot, cfg)
 		eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: mf}
 		res, err := eng.RemoveService(name)
 		if err != nil {
-			errf("%v", err)
+			errf(env, "%v", err)
 			return 1
 		}
-		fmt.Printf(tick+" Disabled service %q\n", name)
+		fmt.Fprintf(env.Out, tick+" Disabled service %q\n", name)
 		if n := len(res.Deleted); n > 0 {
-			fmt.Printf(tick+" Deleted %d generated %s\n", n, plural(n, "file"))
+			fmt.Fprintf(env.Out, tick+" Deleted %d generated %s\n", n, plural(n, "file"))
 		}
 		return 0
 	}
 
-	fmt.Printf(tick+" Enabled service %q\n", name)
-	return runSync(repoRoot, cfg, syncpkg.Incremental)
+	fmt.Fprintf(env.Out, tick+" Enabled service %q\n", name)
+	return runSync(env, repoRoot, cfg, syncpkg.Incremental)
 }
 
 // cmdRename renames a service's key in services.yaml. Generated filenames
@@ -872,54 +878,54 @@ func cmdEnableDisable(repoRoot, cfgPath string, args []string, disable bool) int
 // container or any hand-pasted Authelia OIDC client registration that also
 // refer to the old name, so that follow-up must stay a manual, deliberate
 // step rather than something this command papers over).
-func cmdRename(repoRoot, cfgPath string, args []string) int {
+func cmdRename(env *Env, repoRoot, cfgPath string, args []string) int {
 	if len(args) < 2 {
-		errf("Missing <old> and/or <new> service name.")
-		hint("Usage: hemma rename service <old> <new>")
+		errf(env, "Missing <old> and/or <new> service name.")
+		hint(env, "Usage: hemma rename service <old> <new>")
 		return 2
 	}
 	oldName, newName := args[0], args[1]
 
-	cfg, code := loadExisting(cfgPath, "rename")
+	cfg, code := loadExisting(env, cfgPath, "rename")
 	if cfg == nil {
 		return code
 	}
 	svc, exists := cfg.Services[oldName]
 	if !exists {
-		errf("Service %q does not exist.", oldName)
+		errf(env, "Service %q does not exist.", oldName)
 		return 1
 	}
 	if _, collide := cfg.Services[newName]; collide {
-		errf("Service %q already exists.", newName)
+		errf(env, "Service %q already exists.", newName)
 		return 1
 	}
 	if cfg.Defaults.AuthService == oldName {
-		errf("Service %q is the configured auth_service — rename refused.", oldName)
-		hint("Renaming it would leave the docker-compose container name and any hand-pasted")
-		hint("Authelia OIDC client registration pointed at the old name. Rename those by hand")
-		hint("first, then 'hemma defaults set auth-service " + newName + "', then retry.")
+		errf(env, "Service %q is the configured auth_service — rename refused.", oldName)
+		hint(env, "Renaming it would leave the docker-compose container name and any hand-pasted")
+		hint(env, "Authelia OIDC client registration pointed at the old name. Rename those by hand")
+		hint(env, "first, then 'hemma defaults set auth-service "+newName+"', then retry.")
 		return 1
 	}
 
 	delete(cfg.Services, oldName)
 	cfg.Services[newName] = svc
 	if err := cfg.Save(); err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 
-	mf := loadManifest(repoRoot, cfg)
+	mf := loadManifest(env, repoRoot, cfg)
 	eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: mf}
 	res, err := eng.RemoveService(oldName)
 	if err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
-	fmt.Printf(tick+" Renamed service %q to %q\n", oldName, newName)
+	fmt.Fprintf(env.Out, tick+" Renamed service %q to %q\n", oldName, newName)
 	if n := len(res.Deleted); n > 0 {
-		fmt.Printf(tick+" Deleted %d old generated %s\n", n, plural(n, "file"))
+		fmt.Fprintf(env.Out, tick+" Deleted %d old generated %s\n", n, plural(n, "file"))
 	}
-	return runSync(repoRoot, cfg, syncpkg.Incremental)
+	return runSync(env, repoRoot, cfg, syncpkg.Incremental)
 }
 
 // runSync builds the plan, reconciles, reports, and returns an exit code
@@ -935,11 +941,11 @@ func cmdRename(repoRoot, cfgPath string, args []string) int {
 // records, or a host/domain's now-dead cross-product of TLS snippets) that
 // must be GC'd so the repo is left clean and `hemma apply` won't refuse on
 // drift.
-func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
+func runSync(env *Env, repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 	// Pre-flight: refuse before writing when a repo-wide precondition isn't met.
 	if reason := syncBlockedReason(cfg); reason != "" {
-		fmt.Fprintf(os.Stderr, cross+" Not synced: %s\n", reason)
-		hint("  The change is saved in services.yaml. Run 'hemma doctor --fix' once that's resolved.")
+		fmt.Fprintf(env.Err, cross+" Not synced: %s\n", reason)
+		hint(env, "  The change is saved in services.yaml. Run 'hemma doctor --fix' once that's resolved.")
 		return 1
 	}
 
@@ -953,36 +959,36 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 
 	p := plan.Build(cfg)
 	if authErr != nil {
-		errf("auth_snippet unreadable — keeping the existing generated auth snippet: %v", authErr)
+		errf(env, "auth_snippet unreadable — keeping the existing generated auth snippet: %v", authErr)
 		plan.PinAuthSnippetToDisk(p, repoRoot)
 	}
 
 	// Before writing, warn if any output path would be gitignored — those
 	// files would generate fine but never commit/deploy (the repo's
 	// **/data/** rule swallows them).
-	warnIfIgnored(repoRoot, p)
+	warnIfIgnored(env, repoRoot, p)
 
-	mf := loadManifest(repoRoot, cfg)
+	mf := loadManifest(env, repoRoot, cfg)
 	eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: mf}
 
 	res, err := eng.Reconcile(p, mode)
 	if err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 
 	synced, total := len(res.Synced), res.Total
-	fmt.Printf("Synced %d/%d services.\n", synced, total)
+	fmt.Fprintf(env.Out, "Synced %d/%d services.\n", synced, total)
 
 	// Surface an incomplete bootstrap so a no-op/partial sync explains itself,
 	// rather than leaving the user wondering why nothing happened.
 	if cfg.Defaults.DNSHost == "" {
-		fmt.Println("Note: no dns_host set — run 'hemma defaults set dns-host <name>' (records can't be routed without it).")
+		fmt.Fprintln(env.Out, "Note: no dns_host set — run 'hemma defaults set dns-host <name>' (records can't be routed without it).")
 	}
 	if len(cfg.Domains) == 0 {
-		fmt.Println("Note: no domains defined — run 'hemma add domain <name>' (a service's fqdn must match a domain).")
+		fmt.Fprintln(env.Out, "Note: no domains defined — run 'hemma add domain <name>' (a service's fqdn must match a domain).")
 	}
-	printAdvisories(repoRoot, authConfigWarnings(repoRoot, cfg))
+	printAdvisories(env, repoRoot, authConfigWarnings(repoRoot, cfg))
 
 	{
 		// List only services whose files actually changed this run. A no-op
@@ -990,14 +996,14 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 		// (plus any other service that incidentally changed — which is the
 		// truth of what happened).
 		for _, name := range changedServices(p, res) {
-			fmt.Printf("  • %s\n", name)
+			fmt.Fprintf(env.Out, "  • %s\n", name)
 		}
 	}
 	disabled, errored := splitSkipped(res.Skipped)
 	if len(disabled) > 0 {
-		fmt.Printf("%d disabled:\n", len(disabled))
+		fmt.Fprintf(env.Out, "%d disabled:\n", len(disabled))
 		for _, name := range disabled {
-			fmt.Printf("  • %s\n", name)
+			fmt.Fprintf(env.Out, "  • %s\n", name)
 		}
 	}
 	// A tunnel: true service with no tunnel_dir configured still gets its
@@ -1008,11 +1014,11 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 	// skip, rather than reporting a clean "Synced" while public reach is
 	// silently broken.
 	if len(p.UnresolvedTunnels) > 0 {
-		fmt.Printf("%d publicly unreachable (tunnel_dir not set):\n", len(p.UnresolvedTunnels))
+		fmt.Fprintf(env.Out, "%d publicly unreachable (tunnel_dir not set):\n", len(p.UnresolvedTunnels))
 		for _, name := range p.UnresolvedTunnels {
-			fmt.Printf("  • %s\n", name)
+			fmt.Fprintf(env.Out, "  • %s\n", name)
 		}
-		hint("Run 'hemma defaults set tunnel-dir <dir>' to fix, or 'hemma update service <name> --tunnel=false' if it was not meant to be reachable.")
+		hint(env, "Run 'hemma defaults set tunnel-dir <dir>' to fix, or 'hemma update service <name> --tunnel=false' if it was not meant to be reachable.")
 	}
 	// A service asking for a differing local policy with no local_networks
 	// configured still generates everything, including its public policy as the
@@ -1022,11 +1028,11 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 	// asked for, so nothing is exposed and nothing is broken — it is a
 	// did-you-mean, not a misconfiguration.
 	if len(p.UnresolvedLocalPolicy) > 0 {
-		fmt.Printf("%d with no local horizon (local_networks not set):\n", len(p.UnresolvedLocalPolicy))
+		fmt.Fprintf(env.Out, "%d with no local horizon (local_networks not set):\n", len(p.UnresolvedLocalPolicy))
 		for _, name := range p.UnresolvedLocalPolicy {
-			fmt.Printf("  • %s\n", name)
+			fmt.Fprintf(env.Out, "  • %s\n", name)
 		}
-		hint("Set the home network with 'hemma defaults set local-networks <cidr,...>' — until then these services apply their public policy to every request, including from the LAN.")
+		hint(env, "Set the home network with 'hemma defaults set local-networks <cidr,...>' — until then these services apply their public policy to every request, including from the LAN.")
 	}
 	// The auth snippet asked for a forward-auth target that could not be
 	// resolved, so every host got the empty (auth) stub instead
@@ -1034,13 +1040,13 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 	// LESS auth — `import auth` still parses and still validates, it just gates
 	// nothing — so it is reported loudly and forces a non-zero exit below.
 	if p.UnresolvedAuthTarget {
-		fmt.Printf("%s auth_snippet needs a %s target but defaults.auth_service does not resolve to a service with a backend or fqdn.\n", warn, render.AuthServiceToken)
-		hint("Every host got an empty (auth) stub: services that 'import auth' are NOT protected. Set it with 'hemma defaults set auth-service <name>'.")
+		fmt.Fprintf(env.Out, "%s auth_snippet needs a %s target but defaults.auth_service does not resolve to a service with a backend or fqdn.\n", warn, render.AuthServiceToken)
+		hint(env, "Every host got an empty (auth) stub: services that 'import auth' are NOT protected. Set it with 'hemma defaults set auth-service <name>'.")
 	}
 	if len(errored) > 0 {
-		fmt.Printf("%d skipped:\n", len(errored))
+		fmt.Fprintf(env.Out, "%d skipped:\n", len(errored))
 		for _, name := range sortedSkip(errored) {
-			fmt.Printf("  • %s: %s\n", name, errored[name])
+			fmt.Fprintf(env.Out, "  • %s: %s\n", name, errored[name])
 		}
 		return 1
 	}
@@ -1048,12 +1054,12 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 		return 1
 	}
 
-	printNextSteps(cfg, res)
+	printNextSteps(env, cfg, res)
 
 	// Report (but don't fix) any residual drift — chiefly orphaned files, since
 	// the incremental reconcile above never deletes. Points the user at
 	// 'hemma doctor --fix'. add/update/remove proceed regardless (report-but-proceed).
-	reportDrift(detectDrift(repoRoot, cfg, mf))
+	reportDrift(env, detectDrift(repoRoot, cfg, mf))
 
 	// An unreadable auth_snippet source is an error even though the sync
 	// proceeded around it (keep-last-good above): exit non-zero (design §8).
@@ -1069,7 +1075,7 @@ func runSync(repoRoot string, cfg *config.Config, mode syncpkg.Mode) int {
 // when files were created, updated, OR deleted — a deletion (e.g. a removed
 // service or host) also needs an apply to drop the vhost/record from the
 // running daemons.
-func printNextSteps(cfg *config.Config, res *syncpkg.Result) {
+func printNextSteps(env *Env, cfg *config.Config, res *syncpkg.Result) {
 	changed := append(append([]string{}, res.Created...), res.Updated...)
 	changed = append(changed, res.Deleted...)
 	if len(changed) == 0 {
@@ -1108,12 +1114,12 @@ func printNextSteps(cfg *config.Config, res *syncpkg.Result) {
 		needApply[name] = true
 	}
 
-	fmt.Println("\nTo make changes live, run 'hemma apply' on each host:")
+	fmt.Fprintln(env.Out, "\nTo make changes live, run 'hemma apply' on each host:")
 	for _, name := range sortedKeysOf(needApply) {
 		if name == self {
-			fmt.Println("  hemma apply  # here")
+			fmt.Fprintln(env.Out, "  hemma apply  # here")
 		} else {
-			fmt.Printf("  on %s:  hemma apply\n", name)
+			fmt.Fprintf(env.Out, "  on %s:  hemma apply\n", name)
 		}
 	}
 }
@@ -1142,7 +1148,7 @@ func changedServices(p *plan.Plan, res *syncpkg.Result) []string {
 }
 
 // loadManifest loads the manifest, rebuilding it if unparseable (design §5/§7).
-func loadManifest(repoRoot string, cfg *config.Config) *manifest.Manifest {
+func loadManifest(env *Env, repoRoot string, cfg *config.Config) *manifest.Manifest {
 	mfPath := filepath.Join(repoRoot, manifestName)
 	// Migrate a pre-rename manifest so its tracked-file history (the GC
 	// authority) survives the sd -> splitdns -> hemma renames. Rebuild would
@@ -1151,13 +1157,13 @@ func loadManifest(repoRoot string, cfg *config.Config) *manifest.Manifest {
 		legacy := filepath.Join(repoRoot, name)
 		if fileExists(legacy) && !fileExists(mfPath) {
 			if err := os.Rename(legacy, mfPath); err == nil {
-				fmt.Fprintf(os.Stderr, "Migrated %s -> %s (commit the rename).\n", name, manifestName)
+				fmt.Fprintf(env.Err, "Migrated %s -> %s (commit the rename).\n", name, manifestName)
 			}
 		}
 	}
 	mf, ok := manifest.Load(mfPath)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "Warning: %s is unreadable — rebuilding it from %s.\n", manifestName, configName)
+		fmt.Fprintf(env.Err, "Warning: %s is unreadable — rebuilding it from %s.\n", manifestName, configName)
 		mf = manifest.Rebuild(mfPath, repoRoot, plan.Build(cfg))
 	}
 	return mf
@@ -1202,19 +1208,19 @@ func sortedSkip(m map[string]string) []string {
 // guiding message rather than an empty config, so a new user in the wrong
 // directory — or one who hasn't created any service yet — is told what to do.
 // add does NOT use this: it is allowed to create services.yaml.
-func loadExisting(cfgPath, command string) (*config.Config, int) {
+func loadExisting(env *Env, cfgPath, command string) (*config.Config, int) {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return nil, 1
 	}
 	if !cfg.Exists {
-		errf("No %s in this directory — nothing to %s.", configName, command)
-		fmt.Fprintln(os.Stderr)
-		hint("To create your first service:")
-		hint("  hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
-		fmt.Fprintln(os.Stderr)
-		hint("Or run from the repo root, or pass -C <dir>.")
+		errf(env, "No %s in this directory — nothing to %s.", configName, command)
+		fmt.Fprintln(env.Err)
+		hint(env, "To create your first service:")
+		hint(env, "  hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port>")
+		fmt.Fprintln(env.Err)
+		hint(env, "Or run from the repo root, or pass -C <dir>.")
 		return nil, 1
 	}
 	return cfg, 0
@@ -1228,4 +1234,3 @@ func leadingName(args []string) (name string, rest []string, ok bool) {
 	}
 	return args[0], args[1:], true
 }
-

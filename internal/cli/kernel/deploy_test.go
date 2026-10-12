@@ -143,7 +143,7 @@ var deployTestTargets = []deployTarget{
 
 func TestRunDeploy_HappyPath(t *testing.T) {
 	f := &fakeRunner{}
-	if code := runDeploy(f, deployTestTargets, "/repo"); code != 0 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo"); code != 0 {
 		t.Fatalf("happy path should exit 0, got %d (calls: %v)", code, f.calls)
 	}
 	// Phase 0 probes the remote first, then remote pulls the convention path
@@ -177,7 +177,7 @@ func TestRunDeploy_HappyPath(t *testing.T) {
 // pull.
 func TestRunDeploy_Phase0ProbesRemotesOnly(t *testing.T) {
 	f := &fakeRunner{}
-	if code := runDeploy(f, deployTestTargets, "/repo"); code != 0 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo"); code != 0 {
 		t.Fatalf("happy path should exit 0, got %d (calls: %v)", code, f.calls)
 	}
 	// Exactly one probe, for the remote; self (resolver) is never probed.
@@ -193,7 +193,7 @@ func TestRunDeploy_Phase0ProbesRemotesOnly(t *testing.T) {
 // apply.
 func TestRunDeploy_Phase0AbortOnUnreachable(t *testing.T) {
 	f := &fakeRunner{probeErr: map[string]bool{"appbox": true}}
-	if code := runDeploy(f, deployTestTargets, "/repo"); code != 1 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo"); code != 1 {
 		t.Fatalf("unreachable host should exit 1, got %d", code)
 	}
 	if f.count("pull") != 0 {
@@ -208,7 +208,7 @@ func TestRunDeploy_Phase0AbortOnUnreachable(t *testing.T) {
 // are not pulled and NOTHING is applied.
 func TestRunDeploy_Phase1AbortOnPullFailure(t *testing.T) {
 	f := &fakeRunner{failOn: map[string]bool{"appbox": true}}
-	if code := runDeploy(f, deployTestTargets, "/repo"); code != 1 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo"); code != 1 {
 		t.Fatalf("pull failure should exit 1, got %d", code)
 	}
 	if f.count("pull") != 1 {
@@ -223,7 +223,7 @@ func TestRunDeploy_Phase1AbortOnPullFailure(t *testing.T) {
 // aborts before anything is applied.
 func TestRunDeploy_Phase1AbortOnHeadMismatch(t *testing.T) {
 	f := &fakeRunner{heads: map[string]string{"appbox": "aaa", "resolver": "bbb"}}
-	if code := runDeploy(f, deployTestTargets, "/repo"); code != 1 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo"); code != 1 {
 		t.Fatalf("head mismatch should exit 1, got %d", code)
 	}
 	if f.count("apply") != 0 {
@@ -235,7 +235,7 @@ func TestRunDeploy_Phase1AbortOnHeadMismatch(t *testing.T) {
 // remaining hosts still apply, and the exit code is non-zero.
 func TestRunDeploy_ApplyFailureContinues(t *testing.T) {
 	f := &fakeRunner{applyErr: map[string]bool{"appbox": true}}
-	if code := runDeploy(f, deployTestTargets, "/repo"); code != 1 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo"); code != 1 {
 		t.Fatalf("apply failure should exit 1, got %d", code)
 	}
 	if f.count("apply") != 2 {

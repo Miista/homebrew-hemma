@@ -3,13 +3,11 @@ package kernel
 import (
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"sort"
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"golang.org/x/term"
 
 	"hemma/internal/config"
 )
@@ -24,33 +22,33 @@ import (
 // cmdAddInteractive runs the interactive editor for a new service. Reached
 // only from cmdAdd when zero flags were given; TTY-gated so scripts that
 // forgot their flags fail loud instead of hanging on a hidden prompt.
-func cmdAddInteractive(repoRoot, cfgPath, name string) int {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		errf("no flags given and stdin is not a terminal — pass flags (see hemma help add)")
+func cmdAddInteractive(env *Env, repoRoot, cfgPath, name string) int {
+	if !env.interactive() {
+		errf(env, "no flags given and stdin is not a terminal — pass flags (see hemma help add)")
 		return 2
 	}
 
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 	if _, exists := cfg.Services[name]; exists {
-		errf("Service %q already exists.", name)
-		hint("Edit it with: hemma update service %s", name)
+		errf(env, "Service %q already exists.", name)
+		hint(env, "Edit it with: hemma update service %s", name)
 		return 1
 	}
 	// The pickers need something to pick from — refuse up front instead of
 	// rendering a form that cannot validate (same preconditions the flags
 	// form enforces, just before the editor rather than after).
 	if len(cfg.DomainNames()) == 0 {
-		errf("No domains defined yet — the fqdn could not match anything.")
-		hint("Run 'hemma add domain <name>' first.")
+		errf(env, "No domains defined yet — the fqdn could not match anything.")
+		hint(env, "Run 'hemma add domain <name>' first.")
 		return 1
 	}
 	if len(cfg.Hosts) == 0 {
-		errf("No hosts defined yet — the service needs a host to run on.")
-		hint("Run 'hemma add host <name> <ip>' first.")
+		errf(env, "No hosts defined yet — the service needs a host to run on.")
+		hint(env, "Run 'hemma add host <name> <ip>' first.")
 		return 1
 	}
 
@@ -59,7 +57,7 @@ func cmdAddInteractive(repoRoot, cfgPath, name string) int {
 	// replaces them.
 	isAuthService := cfg.Defaults.AuthService != "" && name == cfg.Defaults.AuthService
 	if isAuthService {
-		fmt.Fprintf(os.Stderr, "Note: %q is the configured auth_service (the forward-auth backend) — auth mode/groups are not offered; gating the portal itself would create a redirect loop.\n", name)
+		fmt.Fprintf(env.Err, "Note: %q is the configured auth_service (the forward-auth backend) — auth mode/groups are not offered; gating the portal itself would create a redirect loop.\n", name)
 	}
 
 	// Field values the form collects. With a single domain the fqdn is
@@ -169,12 +167,12 @@ func cmdAddInteractive(repoRoot, cfgPath, name string) int {
 
 	// Render the form on stderr so stdout stays clean for the summary and the
 	// sync report (same contract as the update editor).
-	if err := huh.NewForm(groups...).WithTheme(formTheme()).WithOutput(os.Stderr).Run(); err != nil {
+	if err := huh.NewForm(groups...).WithTheme(formTheme()).WithOutput(env.Err).Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "Aborted — nothing added.")
+			fmt.Fprintln(env.Err, "Aborted — nothing added.")
 			return 0
 		}
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 
@@ -210,9 +208,9 @@ func cmdAddInteractive(repoRoot, cfgPath, name string) int {
 	}
 
 	for _, l := range summarizeNewService(svc) {
-		fmt.Println(l)
+		fmt.Fprintln(env.Out, l)
 	}
-	return persistNewService(repoRoot, cfg, name, svc)
+	return persistNewService(env, repoRoot, cfg, name, svc)
 }
 
 // summarizeNewService renders the "field: value" lines the add editor prints

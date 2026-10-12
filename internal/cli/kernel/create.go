@@ -3,12 +3,10 @@ package kernel
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"golang.org/x/term"
 
 	"hemma/internal/auth"
 	"hemma/internal/config"
@@ -22,26 +20,26 @@ import (
 
 // dispatchCreate routes `create app oidc <name> [callback]` and
 // `create user <name>`.
-func dispatchCreate(cfgPath string, args []string) int {
+func dispatchCreate(env *Env, cfgPath string, args []string) int {
 	if len(args) < 1 {
-		errf("Missing what to create — expected app or user.")
-		hint("Usage: hemma create app oidc <app_name> [callback_path]  |  hemma create user <username>")
+		errf(env, "Missing what to create — expected app or user.")
+		hint(env, "Usage: hemma create app oidc <app_name> [callback_path]  |  hemma create user <username>")
 		return 2
 	}
 	switch args[0] {
 	case "app":
 		rest := args[1:]
 		if len(rest) < 1 || rest[0] != "oidc" {
-			errf("Unknown app type — expected oidc.")
-			hint("Usage: hemma create app oidc <app_name> [callback_path]")
+			errf(env, "Unknown app type — expected oidc.")
+			hint(env, "Usage: hemma create app oidc <app_name> [callback_path]")
 			return 2
 		}
-		return cmdCreateAppOIDC(cfgPath, rest[1:])
+		return cmdCreateAppOIDC(env, cfgPath, rest[1:])
 	case "user":
-		return cmdCreateUser(args[1:])
+		return cmdCreateUser(env, args[1:])
 	default:
-		errf("Unknown noun %q for create — expected app or user.", args[0])
-		hint("Usage: hemma create app oidc <app_name> [callback_path]  |  hemma create user <username>")
+		errf(env, "Unknown noun %q for create — expected app or user.", args[0])
+		hint(env, "Usage: hemma create app oidc <app_name> [callback_path]  |  hemma create user <username>")
 		return 2
 	}
 }
@@ -54,14 +52,14 @@ func dispatchCreate(cfgPath string, args []string) int {
 // configured service, the redirect host is derived from the repo's configured
 // domains (<app>.<first domain alphabetically>); with no domains configured
 // there is nothing to derive a host from, so the command refuses with a hint.
-func cmdCreateAppOIDC(cfgPath string, args []string) int {
+func cmdCreateAppOIDC(env *Env, cfgPath string, args []string) int {
 	if len(args) < 1 || strings.HasPrefix(args[0], "-") {
-		errf("Missing the <app_name>.")
-		hint("Usage: hemma create app oidc <app_name> [callback_path]")
+		errf(env, "Missing the <app_name>.")
+		hint(env, "Usage: hemma create app oidc <app_name> [callback_path]")
 		return 2
 	}
 	if len(args) > 2 {
-		errf("Too many arguments — expected <app_name> [callback_path].")
+		errf(env, "Too many arguments — expected <app_name> [callback_path].")
 		return 2
 	}
 	app := args[0]
@@ -87,25 +85,25 @@ func cmdCreateAppOIDC(cfgPath string, args []string) int {
 		}
 	}
 	if fqdn == "" {
-		errf("%q matches no configured service and no domains are configured — the redirect URI's host can't be derived.", app)
-		hint("Add the service ('hemma add service %s ...') or a domain ('hemma add domain <name>') first.", app)
+		errf(env, "%q matches no configured service and no domains are configured — the redirect URI's host can't be derived.", app)
+		hint(env, "Add the service ('hemma add service %s ...') or a domain ('hemma add domain <name>') first.", app)
 		return 1
 	}
 
 	provider := auth.Default()
 	clientID, secret, digest, err := provider.GenerateOIDCClient()
 	if err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 
-	fmt.Printf("Created credentials for client %s\n\n", app)
-	fmt.Printf("Client Name: %s\n", app)
-	fmt.Printf("Client ID: %s\n", clientID)
-	fmt.Printf("Client Secret (%s): %s\n", titleCase(provider.Name()), digest)
-	fmt.Printf("Client Secret (%s): %s\n", app, secret)
-	fmt.Println()
-	fmt.Print(provider.OIDCClientSnippet(auth.OIDCClient{
+	fmt.Fprintf(env.Out, "Created credentials for client %s\n\n", app)
+	fmt.Fprintf(env.Out, "Client Name: %s\n", app)
+	fmt.Fprintf(env.Out, "Client ID: %s\n", clientID)
+	fmt.Fprintf(env.Out, "Client Secret (%s): %s\n", titleCase(provider.Name()), digest)
+	fmt.Fprintf(env.Out, "Client Secret (%s): %s\n", app, secret)
+	fmt.Fprintln(env.Out)
+	fmt.Fprint(env.Out, provider.OIDCClientSnippet(auth.OIDCClient{
 		Name:         app,
 		ClientID:     clientID,
 		SecretDigest: digest,
@@ -118,20 +116,20 @@ func cmdCreateAppOIDC(cfgPath string, args []string) int {
 // cmdCreateUser interactively creates a user: prompts for email (plain) and
 // password (hidden, twice), hashes natively, and prints the users-database
 // snippet. Print-only — users_database.yml is never written.
-func cmdCreateUser(args []string) int {
+func cmdCreateUser(env *Env, args []string) int {
 	if len(args) < 1 || strings.HasPrefix(args[0], "-") {
-		errf("Missing the <username>.")
-		hint("Usage: hemma create user <username>")
+		errf(env, "Missing the <username>.")
+		hint(env, "Usage: hemma create user <username>")
 		return 2
 	}
 	if len(args) > 1 {
-		errf("Too many arguments — expected just <username>.")
+		errf(env, "Too many arguments — expected just <username>.")
 		return 2
 	}
 	username := args[0]
 
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		errf("create user is interactive — run it from a terminal.")
+	if !env.interactive() {
+		errf(env, "create user is interactive — run it from a terminal.")
 		return 1
 	}
 
@@ -161,13 +159,13 @@ func cmdCreateUser(args []string) int {
 			}
 			return nil
 		}),
-	)).WithOutput(os.Stderr)
+	)).WithOutput(env.Err)
 	if err := form.Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "Aborted — no user created.")
+			fmt.Fprintln(env.Err, "Aborted — no user created.")
 			return 0
 		}
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 	email = strings.TrimSpace(email)
@@ -175,12 +173,12 @@ func cmdCreateUser(args []string) int {
 	provider := auth.Default()
 	digest, err := provider.HashUserPassword(password)
 	if err != nil {
-		errf("%v", err)
+		errf(env, "%v", err)
 		return 1
 	}
 
-	fmt.Printf("Created user %s\n\n", username)
-	fmt.Print(provider.UserSnippet(username, email, digest))
+	fmt.Fprintf(env.Out, "Created user %s\n\n", username)
+	fmt.Fprint(env.Out, provider.UserSnippet(username, email, digest))
 	return 0
 }
 

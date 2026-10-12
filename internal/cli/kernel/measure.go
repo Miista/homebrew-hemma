@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -39,7 +38,7 @@ var measureScript string
 // the dns metric (immaterial: ~2ms of an ~80ms request). It is gated to the
 // dns-host because DoH egress is only sanctioned from the resolver on this
 // network — the public-IP lookup must happen there.
-func cmdMeasure(cfgPath string, args []string) int {
+func cmdMeasure(env *Env, cfgPath string, args []string) int {
 	fs := flag.NewFlagSet("measure", flag.ContinueOnError)
 	compare := fs.Bool("compare", false, "A/B split-horizon vs public via --resolve (dns-host only; read-only)")
 	fs.BoolVar(compare, "c", false, "alias for --compare")
@@ -57,8 +56,8 @@ func cmdMeasure(cfgPath string, args []string) int {
 	}
 	if !ok {
 		if fs.NArg() < 1 {
-			errf("Missing the <service>, <fqdn>, or <url> to measure.")
-			hint("Usage: hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>")
+			errf(env, "Missing the <service>, <fqdn>, or <url> to measure.")
+			hint(env, "Usage: hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>")
 			return 2
 		}
 		// flag.Parse stops at the first positional, so `--compare familyscreen
@@ -69,28 +68,28 @@ func cmdMeasure(cfgPath string, args []string) int {
 			return 2
 		}
 		if fs.NArg() > 0 {
-			errf("Unexpected argument %q — measure takes one target.", fs.Arg(0))
+			errf(env, "Unexpected argument %q — measure takes one target.", fs.Arg(0))
 			return 2
 		}
 	}
 	if *runs < 1 {
-		errf("--runs must be at least 1 (got %d).", *runs)
+		errf(env, "--runs must be at least 1 (got %d).", *runs)
 		return 2
 	}
 	if *warmup < 0 {
-		errf("--warmup cannot be negative (got %d).", *warmup)
+		errf(env, "--warmup cannot be negative (got %d).", *warmup)
 		return 2
 	}
 
 	// A full URL is measured as-is — no config involved.
 	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
 		if *compare {
-			errf("--compare needs a configured service: the split-horizon leg's IP comes from services.yaml.")
-			hint("Run 'hemma measure %s' for a plain measurement.", target)
+			errf(env, "--compare needs a configured service: the split-horizon leg's IP comes from services.yaml.")
+			hint(env, "Run 'hemma measure %s' for a plain measurement.", target)
 			return 2
 		}
-		if err := runMeasureScript(target, "", *runs, *warmup); err != nil {
-			errf("%v", err)
+		if err := runMeasureScript(env, target, "", *runs, *warmup); err != nil {
+			errf(env, "%v", err)
 			return 1
 		}
 		return 0
@@ -107,30 +106,30 @@ func cmdMeasure(cfgPath string, args []string) int {
 	}
 	if !resolved {
 		if !strings.Contains(target, ".") {
-			errf("No service named %q in services.yaml, and it does not look like a hostname or URL.", target)
-			hint("Usage: hemma measure [--compare] <service|fqdn|url>")
+			errf(env, "No service named %q in services.yaml, and it does not look like a hostname or URL.", target)
+			hint(env, "Usage: hemma measure [--compare] <service|fqdn|url>")
 			return 1
 		}
 		if *compare {
-			errf("--compare needs a configured service: the split-horizon leg's IP comes from services.yaml.")
-			hint("Run 'hemma measure %s' for a plain measurement.", target)
+			errf(env, "--compare needs a configured service: the split-horizon leg's IP comes from services.yaml.")
+			hint(env, "Run 'hemma measure %s' for a plain measurement.", target)
 			return 2
 		}
-		if err := runMeasureScript("https://"+target+"/", "", *runs, *warmup); err != nil {
-			errf("%v", err)
+		if err := runMeasureScript(env, "https://"+target+"/", "", *runs, *warmup); err != nil {
+			errf(env, "%v", err)
 			return 1
 		}
 		return 0
 	}
 	if svc.Disabled {
-		errf("Service %q is disabled — enable it before measuring.", name)
+		errf(env, "Service %q is disabled — enable it before measuring.", name)
 		return 1
 	}
 	url := "https://" + svc.FQDN + "/"
 
 	if !*compare {
-		if err := runMeasureScript(url, "", *runs, *warmup); err != nil {
-			errf("%v", err)
+		if err := runMeasureScript(env, url, "", *runs, *warmup); err != nil {
+			errf(env, "%v", err)
 			return 1
 		}
 		return 0
@@ -139,44 +138,44 @@ func cmdMeasure(cfgPath string, args []string) int {
 	// --compare: read-only A/B via --resolve. Gate on the dns-host (DoH egress
 	// is only sanctioned from the resolver here).
 	if localHost(cfg) != cfg.DNSHost() {
-		errf("--compare must run on the dns-host (%s): the public-IP lookup uses DoH, which only the resolver may reach on this network.", cfg.DNSHost())
-		hint("Run 'hemma measure %s' here for a single (split-horizon) measurement, or run --compare on %s.", rest[0], cfg.DNSHost())
+		errf(env, "--compare must run on the dns-host (%s): the public-IP lookup uses DoH, which only the resolver may reach on this network.", cfg.DNSHost())
+		hint(env, "Run 'hemma measure %s' here for a single (split-horizon) measurement, or run --compare on %s.", rest[0], cfg.DNSHost())
 		return 1
 	}
 
 	splitIP := cfg.Hosts[svc.Host].IP
 	if splitIP == "" {
-		errf("Service %q host %q has no IP in services.yaml.", name, svc.Host)
+		errf(env, "Service %q host %q has no IP in services.yaml.", name, svc.Host)
 		return 1
 	}
 	publicIP, err := lookupPublicIP(svc.FQDN)
 	if err != nil {
-		errf("could not look up the public IP for %s via DoH: %v", svc.FQDN, err)
+		errf(env, "could not look up the public IP for %s via DoH: %v", svc.FQDN, err)
 		return 1
 	}
 
-	fmt.Printf("%s== A: split-horizon (%s) ==%s\n", boldOn, splitIP, boldOff)
-	if err := runMeasureScript(url, splitIP, *runs, *warmup); err != nil {
-		errf("split-horizon leg failed: %v", err)
+	fmt.Fprintf(env.Out, "%s== A: split-horizon (%s) ==%s\n", boldOn, splitIP, boldOff)
+	if err := runMeasureScript(env, url, splitIP, *runs, *warmup); err != nil {
+		errf(env, "split-horizon leg failed: %v", err)
 		return 1
 	}
-	fmt.Printf("\n%s== B: public (%s) ==%s\n", boldOn, publicIP, boldOff)
-	if err := runMeasureScript(url, publicIP, *runs, *warmup); err != nil {
-		errf("public leg failed: %v", err)
+	fmt.Fprintf(env.Out, "\n%s== B: public (%s) ==%s\n", boldOn, publicIP, boldOff)
+	if err := runMeasureScript(env, url, publicIP, *runs, *warmup); err != nil {
+		errf(env, "public leg failed: %v", err)
 		return 1
 	}
-	fmt.Println("\nCompare the two blocks above: A (split-horizon) vs B (public). DNS excluded (pinned).")
+	fmt.Fprintln(env.Out, "\nCompare the two blocks above: A (split-horizon) vs B (public). DNS excluded (pinned).")
 	return 0
 }
 
 // runMeasureScript runs the embedded measure.sh against url via `bash -s`,
 // passing an optional pin IP (empty = natural resolution) plus the run and
 // warm-up counts. Output streams live.
-func runMeasureScript(url, pinIP string, runs, warmup int) error {
+func runMeasureScript(env *Env, url, pinIP string, runs, warmup int) error {
 	cmd := exec.Command("bash", "-s", url, pinIP, strconv.Itoa(runs), strconv.Itoa(warmup))
 	cmd.Stdin = strings.NewReader(measureScript)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = env.Out
+	cmd.Stderr = env.Err
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("measure script failed for %s: %w", url, err)
 	}
