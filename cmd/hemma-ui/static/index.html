@@ -181,7 +181,7 @@ let changes = { git: false, files: [] };
 let state = { services: [], hosts: [], domains: [], settings: [] };
 let cmds = {};
 let tab = "Services";
-const TABS = ["Services", "Settings", "Issues"];   // Settings = hosts, domains and defaults, together
+const TABS = ["Services", "Issues", "Settings"];   // Settings (hosts, domains, defaults) comes last
 
 async function post(url, body) {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
