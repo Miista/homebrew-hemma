@@ -67,8 +67,17 @@ services.yaml → config → plan → render        (desired state)
   **authority for safe deletion**: only manifest-tracked files are ever deleted. Unparseable → rebuilt from
   config. (`splitdns-manifest.yaml` and `sd-manifest.yaml` are the pre-rename names, auto-migrated
   on first load.)
-- **`internal/cli`** — command parsing and wiring; a thin `main.go` just calls `cli.Run`. add/update/remove
-  mutate the YAML then call the shared sync engine — they contain **no file-writing logic of their own**.
+- **`internal/cli`** — the front end: `Run`, the global `-C` flag, help, version, completion and `UsageText`;
+  everything else is routed to the kernel via `kernel.Route`. A thin `main.go` just calls `cli.Run`.
+- **`internal/cli/kernel`** — the implementation of every command (flags, work, printing, exit codes). It still
+  prints; it is CLI-internal and deliberately not shared with `hemma-ui`. add/update/remove mutate the YAML then
+  call the shared sync engine — they contain **no file-writing logic of their own**.
+
+**Snapshot tests** (`internal/cli/snapshot_test.go`, goldens in `internal/cli/testdata/snapshot/golden/`) run every
+command in-process against an anonymized fixture and pin exit code, stdout, stderr, changed files (hashed) and the
+sequence of external commands (fake docker/caddy/dig/ssh/git on `PATH`). After an intended behaviour change,
+regenerate with `go test ./internal/cli/ -run TestSnapshots -update` and review the diff. The fixture is synthetic
+(RFC 5737 addresses, `home.example`) — never copy a real `services.yaml` into `testdata`.
 
 ### Invariants to preserve when editing
 
