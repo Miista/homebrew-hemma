@@ -289,7 +289,7 @@ func TestDeployPreflight(t *testing.T) {
 	}
 
 	// Clean and pushed → allowed.
-	if err := deployPreflight(clone); err != nil {
+	if err := deployPreflight(stdEnv(), clone); err != nil {
 		t.Errorf("clean pushed repo should pass preflight: %v", err)
 	}
 
@@ -297,25 +297,25 @@ func TestDeployPreflight(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(clone, "f"), []byte("2"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := deployPreflight(clone); err == nil || !strings.Contains(err.Error(), "dirty") {
+	if err := deployPreflight(stdEnv(), clone); err == nil || !strings.Contains(err.Error(), "dirty") {
 		t.Errorf("dirty repo should be refused, got %v", err)
 	}
 
 	// Committed but unpushed → refused.
 	git("add", "f")
 	git("commit", "-m", "local only")
-	if err := deployPreflight(clone); err == nil || !strings.Contains(err.Error(), "unpushed") {
+	if err := deployPreflight(stdEnv(), clone); err == nil || !strings.Contains(err.Error(), "unpushed") {
 		t.Errorf("unpushed commit should be refused, got %v", err)
 	}
 
 	// Pushed → allowed again.
 	git("push")
-	if err := deployPreflight(clone); err != nil {
+	if err := deployPreflight(stdEnv(), clone); err != nil {
 		t.Errorf("pushed repo should pass preflight: %v", err)
 	}
 
 	// Not a git repo at all → refused.
-	if err := deployPreflight(t.TempDir()); err == nil {
+	if err := deployPreflight(stdEnv(), t.TempDir()); err == nil {
 		t.Error("a non-repo should be refused")
 	}
 }

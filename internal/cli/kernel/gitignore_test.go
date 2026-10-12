@@ -30,7 +30,7 @@ func TestIgnoredPaths_DetectsDataRule(t *testing.T) {
 		"optiplex/caddy/data/sites/x.caddy", // ignored
 		"optiplex/README.md",                // not ignored
 	}
-	ignored, ok := ignoredPaths(dir, paths)
+	ignored, ok := ignoredPaths(stdEnv(), dir, paths)
 	if !ok {
 		t.Fatal("check should have run")
 	}
@@ -41,7 +41,7 @@ func TestIgnoredPaths_DetectsDataRule(t *testing.T) {
 
 func TestIgnoredPaths_NotARepo(t *testing.T) {
 	// A bare temp dir is not a git work tree -> check can't run -> ok=false.
-	if _, ok := ignoredPaths(t.TempDir(), []string{"a/b"}); ok {
+	if _, ok := ignoredPaths(stdEnv(), t.TempDir(), []string{"a/b"}); ok {
 		t.Error("expected ok=false outside a git repo")
 	}
 }
@@ -66,7 +66,7 @@ func TestUnignoreRules_RoundTrip(t *testing.T) {
 	for _, f := range append(append([]string{}, tracked...), ignoredStill...) {
 		os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o644)
 	}
-	ig, _ := ignoredPaths(dir, append(append([]string{}, tracked...), ignoredStill...))
+	ig, _ := ignoredPaths(stdEnv(), dir, append(append([]string{}, tracked...), ignoredStill...))
 	set := map[string]bool{}
 	for _, p := range ig {
 		set[p] = true

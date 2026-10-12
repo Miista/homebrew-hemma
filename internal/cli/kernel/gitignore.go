@@ -37,7 +37,7 @@ func planPaths(p *plan.Plan) []string {
 // stay visible — and points at `hemma doctor` for the full file list + fix.
 // Silent when nothing is ignored or the check can't run (git absent / no repo).
 func warnIfIgnored(env *Env, repoRoot string, p *plan.Plan) {
-	ignored, ok := ignoredPaths(repoRoot, planPaths(p))
+	ignored, ok := ignoredPaths(env, repoRoot, planPaths(p))
 	if !ok || len(ignored) == 0 {
 		return
 	}
@@ -97,7 +97,7 @@ func cmdDoctor(env *Env, cfgPath string, args []string) int {
 	p := plan.Build(cfg)
 
 	// --- gitignore check ---
-	ignored, ok := ignoredPaths(repoRoot, planPaths(p))
+	ignored, ok := ignoredPaths(env, repoRoot, planPaths(p))
 	if !ok {
 		fmt.Fprintln(env.Out, "Skipped gitignore check (git not available or not a repository).")
 	} else if len(ignored) == 0 {
@@ -112,7 +112,7 @@ func cmdDoctor(env *Env, cfgPath string, args []string) int {
 				return 1
 			}
 			fmt.Fprintln(env.Out, tick+" Updated .gitignore")
-			still, ok := ignoredPaths(repoRoot, planPaths(p))
+			still, ok := ignoredPaths(env, repoRoot, planPaths(p))
 			if !ok {
 				// can't re-check; assume the write was enough
 			} else if len(still) == 0 {
@@ -415,7 +415,7 @@ func writeManagedBlock(path string, rules []string) error {
 // in repoRoot, using git's own logic (git check-ignore). It returns (nil, false)
 // when the check can't run — git missing, or repoRoot isn't a work tree — so
 // callers can skip the warning rather than guess.
-func ignoredPaths(repoRoot string, relPaths []string) (ignored []string, ok bool) {
+func ignoredPaths(env *Env, repoRoot string, relPaths []string) (ignored []string, ok bool) {
 	if len(relPaths) == 0 {
 		return nil, true
 	}
@@ -423,7 +423,7 @@ func ignoredPaths(repoRoot string, relPaths []string) (ignored []string, ok bool
 		return nil, false
 	}
 	// `git check-ignore --stdin` prints the paths it would ignore, one per line.
-	cmd := exec.Command("git", "-C", repoRoot, "check-ignore", "--stdin")
+	cmd := env.command("git", "-C", repoRoot, "check-ignore", "--stdin")
 	cmd.Stdin = strings.NewReader(strings.Join(relPaths, "\n") + "\n")
 	out, err := cmd.Output()
 	if err != nil {

@@ -1,8 +1,10 @@
 package kernel
 
 import (
+	"context"
 	"io"
 	"os"
+	"os/exec"
 
 	"golang.org/x/term"
 )
@@ -19,6 +21,20 @@ type Env struct {
 	// (add/update with no flags, create user) to refuse instead, whatever the
 	// process's stdin is. A non-terminal front end sets it.
 	NoTerminal bool
+
+	// Ctx, when set, bounds every external command the kernel starts
+	// (docker, caddy, dig, ssh, git, curl, bash): cancelling it kills them.
+	// nil means no bound.
+	Ctx context.Context
+}
+
+// command builds an external command that honours the Env's context.
+func (e *Env) command(name string, args ...string) *exec.Cmd {
+	ctx := e.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return exec.CommandContext(ctx, name, args...)
 }
 
 // interactive reports whether a command may prompt on the process's terminal.

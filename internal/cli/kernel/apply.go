@@ -3,7 +3,6 @@ package kernel
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -264,7 +263,7 @@ func runQuiet(env *Env, name string, args ...string) bool {
 // `docker` command, which finds a container by name regardless of cwd). An
 // empty dir behaves exactly like runQuiet (inherits the caller's cwd).
 func runQuietIn(env *Env, dir, name string, args ...string) bool {
-	cmd := exec.Command(name, args...)
+	cmd := env.command(name, args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err == nil {

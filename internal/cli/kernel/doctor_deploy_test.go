@@ -14,7 +14,7 @@ import (
 // unknown and flip doctor exit codes across unrelated tests. Individual tests
 // override and restore the hook themselves.
 func TestMain(m *testing.M) {
-	hostKnown = func(string) bool { return true }
+	hostKnown = func(*Env, string) bool { return true }
 	os.Exit(m.Run())
 }
 
@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 func stubKnown(t *testing.T, known func(string) bool) {
 	t.Helper()
 	old := hostKnown
-	hostKnown = known
+	hostKnown = func(_ *Env, host string) bool { return known(host) }
 	t.Cleanup(func() { hostKnown = old })
 }
 
