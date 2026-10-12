@@ -10,6 +10,24 @@ docker compose -f compose.yml up -d --build
 docker compose -f compose.yml down -v       # tear down; re-run setup.sh for a fresh repo
 ```
 
+**Reaching it from another device (e.g. a phone on your home network).** By default the UI is
+loopback-only. The UI container has the Docker socket, so whoever can log in controls every
+container on this machine — only widen it with a generated password, and bind to the one LAN
+address rather than all interfaces:
+
+```sh
+# FIXTURE_BIND must be an address that exists where the container runs:
+#   Docker Desktop:  the Mac's LAN IP        ($(ipconfig getifaddr en0))
+#   Colima:          the VM's address        (the ADDRESS column of `colima list`; needs
+#                    `network.address: true` in colima.yaml) — NOT the Mac's own IP
+export FIXTURE_BIND=<that address>
+export FIXTURE_PASSWORD=$(openssl rand -base64 18 | tr -d '/+=')   # keep it out of history/screenshots
+docker compose -f compose.yml up -d --build
+# then browse to http://$FIXTURE_BIND:18080 — plain HTTP, so use only on a trusted network
+```
+
+Once bound to a non-loopback address, the loopback URL stops working; use the same address on the Mac.
+
 To reset to a fresh repo, tear down first (`down -v`), then `./setup.sh` again: the containers
 bind-mount `.work/repo`, so re-creating it underneath running containers leaves them on the old one.
 
