@@ -5,11 +5,25 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>hemma</title>
 <style>
-  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif;
+          --menu-h: 63px;   /* the phone's bottom menu: 6 + 50 + 6 padding + 1 border (the safe-area inset is added where used) */
+          --violet: oklch(0.5 0.2 290); --violet-bg: oklch(0.93 0.04 290); --violet-badge: oklch(0.55 0.2 290); }
+  @media (prefers-color-scheme: dark) { :root { --violet: oklch(0.8 0.15 290); --violet-bg: oklch(0.3 0.07 290 / .6); } }
   body { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
-  nav { display: flex; gap: .3rem; flex-wrap: wrap; border-bottom: 1px solid #8884; margin: 1rem 0; }
-  nav button { border: 0; background: none; padding: .5rem .9rem; font-size: 1rem; border-bottom: 3px solid transparent; }
-  nav button.on { border-color: #36c; font-weight: 600; }
+
+  /* ---- Top bar and menu: the same pattern as albumreq/reaparr (brand tile, inline menu with pill states,
+          count badges; on a phone the menu becomes a bottom tab bar with icons). ---- */
+  .topbar { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid #8884; }
+  .brand { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -.02em; }
+  .brand-icon { flex: none; width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
+                background: linear-gradient(160deg, #f1eef8, #c9c0e4); color: oklch(0.35 0.15 290); box-shadow: 0 0 24px oklch(0.65 0.22 300 / .45); }
+  nav { flex: 1; display: flex; gap: 4px; }
+  nav button { display: inline-flex; align-items: center; border: 0; background: none; color: color-mix(in srgb, CanvasText 62%, transparent);
+               padding: 7px 12px; border-radius: 8px; font-size: .9rem; }
+  nav button:hover { color: CanvasText; background: color-mix(in srgb, CanvasText 8%, transparent); }
+  nav button.on { color: var(--violet); background: var(--violet-bg); font-weight: 600; }
+  .tab-icon { display: none; } .tab-icon svg { display: block; }
+  nav .count { margin-left: 6px; font-size: 11px; font-weight: 600; padding: 0 6px; min-width: 18px; text-align: center; border-radius: 999px; background: var(--violet-badge); color: #fff; }
   table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
   th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #8884; vertical-align: top; }
   tr.off td { opacity: .5; }
@@ -46,11 +60,11 @@
   @media (max-width: 640px) {
     /* sits just above the bottom menu (52px tall + its border + the home-indicator inset), never over it;
        one row: the status, then the two buttons */
-    .save-bar { bottom: calc(53px + 8px + env(safe-area-inset-bottom)); width: calc(100vw - 16px); flex-wrap: nowrap; gap: 8px; padding: 8px 8px 8px 12px; border-radius: 12px; }
+    .save-bar { bottom: calc(var(--menu-h) + 8px + env(safe-area-inset-bottom)); width: calc(100vw - 16px); flex-wrap: nowrap; gap: 8px; padding: 8px 8px 8px 12px; border-radius: 12px; }
     .save-bar .msg { min-width: 0; } .save-bar .msg strong { font-size: .9rem; }
     .save-bar .acts { flex: none; gap: 6px; }
     .save-bar .acts button { padding: .45rem .8rem; font-size: .95rem; white-space: nowrap; }
-    body.with-bar { padding-bottom: calc(53px + 76px + env(safe-area-inset-bottom)); }   /* menu + save bar */
+    body.with-bar { padding-bottom: calc(var(--menu-h) + 76px + env(safe-area-inset-bottom)); }   /* menu + save bar */
   }
   .toast { position: fixed; left: 50%; top: 1rem; transform: translateX(-50%); z-index: 20; max-width: min(92vw, 34rem); display: flex; align-items: center; gap: .8rem;
            padding: .6rem 1rem; border-radius: 8px; background: #222; color: #fff; box-shadow: 0 4px 16px #0005; }
@@ -73,22 +87,29 @@
   .tree button.dir { font-weight: 600; } .tree button.sel { background: #36c3; font-weight: 600; }
   .tree button.gen { opacity: .45; cursor: not-allowed; } .tree .note { padding: .3rem .5rem; }
   footer { margin: 2rem 0 .5rem; text-align: center; }
-  /* title row: "hemma" on the left, Deploy flush right on the same line */
-  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
-  .top h1 { margin: .3rem 0 .1rem; } .top #summary { margin: 0; }
-  #deploy { flex: none; margin-top: .3rem; padding: .5rem 1.1rem; border-radius: 8px; background: #3b5bdb; border: 1px solid #3b5bdb; color: #fff; font-weight: 600; }
+  /* Deploy sits flush right at the end of the top bar, on every page */
+  #summary { margin: .7rem 0 0; }
+  #deploy { flex: none; margin-left: auto; padding: .5rem 1.1rem; border-radius: 8px; background: #3b5bdb; border: 1px solid #3b5bdb; color: #fff; font-weight: 600; }
   #deploy:disabled { opacity: .45; cursor: default; }
   .sec h2 { font-size: 1.1rem; margin: 1.6rem 0 .1rem; } .sec:first-child h2 { margin-top: .6rem; }
   /* ---- phone pass: space is tight, so every pixel and every tap has to count ---- */
   @media (max-width: 640px) {
-    body { margin: .75rem auto; padding: 0 .75rem calc(68px + env(safe-area-inset-bottom)); }   /* room for the bottom menu */
-    h1 { font-size: 1.4rem; margin: .2rem 0; } #summary { margin: .1rem 0 .4rem; }
-    /* the menu lives at the bottom edge, in thumb reach: three items, so each gets a third of the width */
-    nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; margin: 0; gap: 0; flex-wrap: nowrap; border: 0; border-top: 1px solid #8884;
-          padding-bottom: env(safe-area-inset-bottom); background: color-mix(in srgb, Canvas 94%, transparent);
-          -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
-    nav button { flex: 1 1 0; min-height: 52px; padding: .5rem .25rem; font-size: .95rem; border-bottom: 0; border-top: 3px solid transparent; }
-    nav button.on { border-top-color: #3b5bdb; }
+    body { margin: .5rem auto; padding: 0 .75rem calc(var(--menu-h) + 12px + env(safe-area-inset-bottom)); }   /* room for the bottom menu */
+    .topbar { padding: 8px 0; gap: 10px; }
+    .brand { font-size: 1.1rem; } .brand-icon { width: 34px; height: 34px; border-radius: 10px; }
+    #summary { margin: .5rem 0 .2rem; }
+    /* The menu lives at the bottom edge, in thumb reach — albumreq's bottom tab bar: translucent and blurred, items
+       in equal columns, an icon above a small label, the active one in violet, a badge on the icon's corner.
+       (The top bar carries no blur: a backdrop-filter would make it the anchor of this fixed bar.) */
+    nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; flex: none; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0;
+          padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid #8884;
+          background: color-mix(in srgb, Canvas 92%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+    nav button { position: relative; flex-direction: column; justify-content: center; gap: 3px; height: 50px; padding: 6px 2px;
+                 font-size: 11px; font-weight: 500; border-radius: 10px; white-space: nowrap; min-width: 0; background: none; }
+    nav button:hover { background: none; }
+    nav button.on { background: transparent; color: var(--violet); font-weight: 600; }
+    .tab-icon { display: flex; }
+    nav .count { position: absolute; top: 2px; left: calc(50% + 6px); margin: 0; font-size: 10px; padding: 0 5px; min-width: 16px; }
     /* iOS zooms the page into any input under 16px: keep fields at 16px, and taps at a comfortable size */
     input:not([type=checkbox]), select, textarea { font-size: 16px; min-height: 40px; }
     button { min-height: 40px; }
@@ -106,7 +127,7 @@
        the save bar whenever that is showing (--bar-extra is its height, set from the script). */
     .cards.fabwrap { margin: 0; }
     footer { text-align: left; }   /* the floating button sits bottom right, so keep the footer text clear of it */
-    .fab { position: fixed; right: 16px; bottom: calc(53px + 14px + env(safe-area-inset-bottom) + var(--bar-extra, 0px)); z-index: 4;
+    .fab { position: fixed; right: 16px; bottom: calc(var(--menu-h) + 14px + env(safe-area-inset-bottom) + var(--bar-extra, 0px)); z-index: 4;
            flex: none; min-height: 56px; padding: 0 22px 0 18px; border: 0; border-radius: 28px; background: #3b5bdb; color: #fff;
            font-size: 1rem; font-weight: 600; box-shadow: 0 8px 24px -4px #0006; }
     .fab::before { content: "+"; font-size: 1.5rem; line-height: 1; margin-right: .45rem; vertical-align: -.1em; }
@@ -146,12 +167,17 @@
 </style>
 </head>
 <body>
-<header class="top">
-  <div><h1>hemma</h1><p class="meta" id="summary"></p></div>
-  <!-- Deploying is its own step, separate from saving: always here, flush right on the title row, on every page. -->
+<header class="topbar">
+  <h1 class="brand">
+    <!-- "hemma" is Swedish for "at home": the tile carries a house -->
+    <span class="brand-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/><path d="M10 19.5v-5h4v5"/></svg></span>
+    <span>hemma</span>
+  </h1>
+  <nav id="tabs" aria-label="Pages"></nav>
+  <!-- Deploying is its own step, separate from saving: always here, flush right, on every page. -->
   <button id="deploy" class="primary" type="button">Deploy</button>
 </header>
-<nav id="tabs"></nav>
+<p class="meta" id="summary"></p>
 <section id="view"></section>
 <div id="savebar" class="save-bar" hidden></div>
 <footer id="foot" class="meta"></footer>
@@ -196,6 +222,20 @@ let state = { services: [], hosts: [], domains: [], settings: [] };
 let cmds = {};
 let tab = "Services";
 const TABS = ["Services", "Issues", "Settings"];   // Settings (hosts, domains, defaults) comes last
+// Menu icons: the same outline style as albumreq's bottom menu (shown above the label on a phone, hidden on a wide screen).
+const ICON = (inner) => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+const ICONS = {
+  Services: ICON('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path>'),
+  Issues: ICON('<path d="M12 3.5L2.5 20h19L12 3.5z"></path><path d="M12 10v4M12 17h.01"></path>'),
+  Settings: ICON('<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>'),
+};
+// A badge says where the unsaved changes are: services on Services, hosts/domains/defaults on Settings.
+function tabBadge(t) {
+  const es = pending ? pending.entities : [];
+  if (t === "Services") return es.filter(e => e.kind === "Service").length;
+  if (t === "Settings") return es.filter(e => e.kind !== "Service").length;
+  return 0;
+}
 
 async function post(url, body) {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -681,7 +721,15 @@ function render() {
   const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   $("#summary").textContent = `${pl(state.services.length, "service", "services")} · ${pl(state.hosts.length, "host", "hosts")} · ${state.domains.join(", ")}`;
   const nav = $("#tabs"); nav.replaceChildren();
-  TABS.forEach(t => nav.append(btn(t, () => { tab = t; render(); }, t === tab ? "on" : "")));
+  TABS.forEach(t => {
+    const b = el("button", null, { type: "button", className: t === tab ? "on" : "", onclick: () => { tab = t; render(); } });
+    if (t === tab) b.setAttribute("aria-current", "page");
+    const ic = el("span", null, { className: "tab-icon" }); ic.innerHTML = ICONS[t];   // static markup defined above
+    b.append(ic, el("span", t, { className: "tab-label" }));
+    const n = tabBadge(t);
+    if (n) { const c = el("span", String(n), { className: "count" }); c.setAttribute("aria-label", `${n} unsaved`); b.append(c); }
+    nav.append(b);
+  });
   $("#view").replaceChildren(...VIEWS[tab]());
   $("#view").classList.toggle("has-fab", tab === "Services");
   $("#foot").textContent = state.version || "";
