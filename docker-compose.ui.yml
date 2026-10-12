@@ -12,4 +12,8 @@ services:
     volumes:
       - ${HEMMA_REPO_DIR:?set HEMMA_REPO_DIR}:/repo
       - /var/run/docker.sock:/var/run/docker.sock
+      # Multi-host only, opt-in: `hemma deploy` needs ssh keys. Mounting private keys
+      # into this container widens the blast radius — use a dedicated, deploy-only key.
+      # - ./deploy_key:/root/.ssh/id_ed25519:ro
+      # - ./known_hosts:/root/.ssh/known_hosts:ro
     restart: unless-stopped

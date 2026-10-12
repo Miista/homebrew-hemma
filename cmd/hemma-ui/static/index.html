@@ -7,119 +7,187 @@
 <style>
   :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
   body { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
-  header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  nav { display: flex; gap: .3rem; flex-wrap: wrap; border-bottom: 1px solid #8884; margin: 1rem 0; }
+  nav button { border: 0; background: none; padding: .5rem .9rem; font-size: 1rem; border-bottom: 3px solid transparent; }
+  nav button.on { border-color: #36c; font-weight: 600; }
   table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
-  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #8884; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #8884; vertical-align: top; }
   tr.off td { opacity: .5; }
   button { padding: .35rem .8rem; cursor: pointer; }
   button.primary { font-weight: 600; }
-  dialog { min-width: min(480px, 92vw); }
+  td button { margin-right: .3rem; }
+  dialog { min-width: min(520px, 92vw); }
   label { display: block; margin: .6rem 0 .2rem; font-size: .85rem; }
   input:not([type=checkbox]), select { width: 100%; padding: .35rem; box-sizing: border-box; }
-  pre { background: #8882; padding: .8rem; overflow: auto; max-height: 24rem; white-space: pre-wrap; }
+  pre { background: #8882; padding: .8rem; overflow: auto; max-height: 26rem; white-space: pre-wrap; }
   .err { color: #c33; } .meta { opacity: .7; font-size: .85rem; }
   .row { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
+  .cards { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0; }
 </style>
 </head>
 <body>
-<header>
-  <h1>hemma</h1>
-  <div><button id="add">Add service</button> <button id="apply" class="primary">Apply changes</button></div>
-</header>
+<h1>hemma</h1>
 <p class="meta" id="summary"></p>
-<table>
-  <thead><tr><th>Name</th><th>FQDN</th><th>Host</th><th>Backend</th><th>Auth</th><th>Internet</th><th></th></tr></thead>
-  <tbody id="rows"></tbody>
-</table>
+<nav id="tabs"></nav>
+<section id="view"></section>
 <pre id="out" hidden></pre>
 
 <dialog id="dlg">
   <form method="dialog" id="form">
     <h2 id="dtitle"></h2>
-    <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._-]*"></label>
-    <label>FQDN <input name="fqdn" required placeholder="app.example.com"></label>
-    <label>Host <select name="host" required></select></label>
-    <label>Backend <input name="backend" required placeholder="container:port"></label>
-    <label>Auth <select name="auth_mode">
-      <option value="none">none</option><option value="forward">forward</option>
-      <option value="oidc">oidc</option><option value="external">external</option></select></label>
-    <label>Auth groups (comma-separated) <input name="auth_groups"></label>
-    <label><input type="checkbox" name="tunnel"> Reachable from the internet (tunnel)</label>
+    <p class="meta" id="dhelp"></p>
+    <div id="fields"></div>
     <p class="err" id="derr"></p>
-    <div class="row"><button type="button" id="cancel">Cancel</button><button class="primary" id="save">Save</button></div>
+    <div class="row"><button type="button" id="cancel">Cancel</button><button class="primary" id="go">Run</button></div>
   </form>
 </dialog>
 
 <script>
 const $ = s => document.querySelector(s);
-let state = { services: [], hosts: {}, domains: [] };
+let state = { services: [], hosts: [], domains: [], defaults: {} };
+let cmds = {};
+let tab = "Services";
+const TABS = ["Services", "Hosts", "Domains", "Defaults", "Credentials", "Operate", "Diagnose", "About"];
 
-async function api(method, url, body) {
-  const r = await fetch(url, { method, headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined });
-  if (!r.ok && r.status !== 200) throw new Error(await r.text());
-  return r.json();
+async function post(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const text = await r.text();
+  try { return JSON.parse(text); } catch { return { ok: false, output: `HTTP ${r.status}: ${text}` }; }
 }
 function show(res) {
   const o = $("#out"); o.hidden = false; o.className = res.ok ? "" : "err";
   o.textContent = (res.ok ? "OK\n" : "FAILED\n") + (res.output || res.error || "");
+  o.scrollIntoView({ block: "nearest" });
 }
-function td(tr, text) { const c = document.createElement("td"); c.textContent = text; tr.append(c); return c; }
-function btn(label, fn) { const b = document.createElement("button"); b.textContent = label; b.onclick = fn; return b; }
+function el(tag, text, props) { const e = document.createElement(tag); if (text != null) e.textContent = text; return Object.assign(e, props || {}); }
+function btn(label, fn, cls) { const b = el("button", label, { onclick: fn }); if (cls) b.className = cls; return b; }
 
-function render() {
-  $("#summary").textContent = `${state.services.length} services · ${Object.keys(state.hosts).length} hosts · ${state.domains.join(", ")}`;
-  const body = $("#rows"); body.replaceChildren();
-  for (const s of state.services) {
-    const tr = document.createElement("tr"); if (s.disabled) tr.className = "off";
-    td(tr, s.name); td(tr, s.fqdn); td(tr, s.host); td(tr, s.backend);
-    td(tr, s.auth_mode || "none"); td(tr, s.tunnel ? "yes" : "no");
-    const act = td(tr, "");
-    act.append(btn("Edit", () => edit(s)),
-      btn(s.disabled ? "Enable" : "Disable", () => act2(s.name, s.disabled ? "enable" : "disable")),
-      btn("Remove", () => { if (confirm(`Remove ${s.name}?`)) del(s.name); }));
-    body.append(tr);
-  }
+// run executes an allowlisted command directly (no form), then refreshes.
+async function run(key, values, confirmMsg) {
+  if (confirmMsg && !confirm(confirmMsg)) return;
+  const res = await post("/api/run", { command: key, values });
+  show(res); if (!cmds[key].readonly) load();
 }
-async function load() {
-  try { state = await api("GET", "/api/state"); if (state.error) throw new Error(state.error); render(); }
-  catch (e) { show({ ok: false, error: String(e) }); }
-}
-async function act2(name, action) { show(await api("POST", `/api/services/${name}/${action}`)); load(); }
-async function del(name) { show(await api("DELETE", `/api/services/${name}`)); load(); }
 
-function edit(s) {
-  const f = $("#form"); f.reset(); $("#derr").textContent = "";
-  $("#dtitle").textContent = s ? `Edit ${s.name}` : "Add service";
-  f.host.replaceChildren(...Object.keys(state.hosts).map(h => new Option(h, h)));
-  f.name.readOnly = !!s;
-  if (s) {
-    f.name.value = s.name; f.fqdn.value = s.fqdn; f.host.value = s.host; f.backend.value = s.backend;
-    f.auth_mode.value = s.auth_mode || "none"; f.auth_groups.value = (s.auth_groups || []).join(","); f.tunnel.checked = s.tunnel;
+// openCmd renders a form from the command's schema; prefill pre-populates it.
+function openCmd(key, prefill = {}) {
+  const c = cmds[key], f = $("#form");
+  $("#dtitle").textContent = c.title; $("#dhelp").textContent = c.help || ""; $("#derr").textContent = "";
+  const box = $("#fields"); box.replaceChildren();
+  const inputs = {};
+  for (const fd of c.fields) {
+    const lab = el("label", fd.label + (fd.required ? " *" : ""));
+    let inp;
+    if (fd.kind === "select" || fd.options) {
+      inp = el("select");
+      for (const o of fd.options) inp.append(new Option(o === "" ? "(none)" : o, o));
+    } else if (fd.kind === "bool") { inp = el("input", null, { type: "checkbox" }); }
+    else if (fd.kind === "int") { inp = el("input", null, { type: "number", min: 0, max: 1000 }); }
+    else { inp = el("input", null, { type: "text", autocomplete: "off" }); }
+    const v = prefill[fd.name];
+    if (v !== undefined) { if (fd.kind === "bool") inp.checked = !!v; else inp.value = v; }
+    if (prefill.__lock === fd.name) inp.readOnly = true, inp.disabled = fd.kind === "select";
+    if (fd.kind === "bool") { lab.prepend(inp); } else { lab.append(inp); }
+    box.append(lab); inputs[fd.name] = { fd, inp };
   }
-  f._orig = s || null;
+  $("#go").onclick = async e => {
+    e.preventDefault();
+    if (!f.reportValidity()) return;
+    const values = {};
+    for (const [n, { fd, inp }] of Object.entries(inputs)) {
+      if (fd.kind === "bool") values[n] = inp.checked;
+      else if (fd.kind === "int") { if (inp.value !== "") values[n] = Number(inp.value); }
+      else if (inp.value !== "" || c.update) values[n] = inp.value;
+    }
+    if (c.confirm && !confirm(c.confirm)) return;
+    $("#go").disabled = true;
+    try {
+      const res = await post("/api/run", { command: key, values });
+      if (!res.ok) { $("#derr").textContent = res.output; return; }
+      $("#dlg").close(); show(res); if (!c.readonly) load();
+    } finally { $("#go").disabled = false; }
+  };
   $("#dlg").showModal();
 }
-$("#add").onclick = () => edit(null);
 $("#cancel").onclick = () => $("#dlg").close();
-$("#save").onclick = async e => {
-  e.preventDefault();
-  const f = $("#form"); if (!f.reportValidity()) return;
-  const o = f._orig || {};
-  const body = { fqdn: f.fqdn.value.trim(), host: f.host.value, backend: f.backend.value.trim(),
-    auth_mode: f.auth_mode.value, tunnel: f.tunnel.checked,
-    auth_groups: f.auth_groups.value.split(",").map(x => x.trim()).filter(Boolean),
-    // not editable in this MVP — carried over so an edit never drops them
-    bypass_paths: o.bypass_paths || [], policy_local: o.policy_local || "", policy_public: o.policy_public || "" };
-  const res = await api("PUT", `/api/services/${f.name.value}`, body);
-  if (!res.ok) { $("#derr").textContent = res.output || res.error; return; }
-  $("#dlg").close(); show(res); load();
+
+function openCreateUser() {
+  const f = $("#form"); $("#dtitle").textContent = "Create user"; $("#derr").textContent = "";
+  $("#dhelp").textContent = "Prints a users-database entry to paste in. The password is hashed here and never stored or logged.";
+  const box = $("#fields"); box.replaceChildren();
+  const mk = (name, label, type) => { const i = el("input", null, { type, required: true, autocomplete: "off" }); const l = el("label", label); l.append(i); box.append(l); return i; };
+  const u = mk("u", "Username", "text"), m = mk("e", "Email", "email"), p = mk("p", "Password", "password"), c = mk("c", "Retype password", "password");
+  $("#go").onclick = async e => {
+    e.preventDefault(); if (!f.reportValidity()) return;
+    const res = await post("/api/create-user", { Username: u.value, Email: m.value, Password: p.value, Confirm: c.value });
+    p.value = c.value = "";
+    if (!res.ok) { $("#derr").textContent = res.output; return; }
+    $("#dlg").close(); show(res);
+  };
+  $("#dlg").showModal();
+}
+
+function table(headers, rows) {
+  const t = el("table"), h = el("tr"); headers.forEach(x => h.append(el("th", x)));
+  t.append(el("thead")); t.firstChild.append(h);
+  const b = el("tbody"); rows.forEach(r => b.append(r)); t.append(b); return t;
+}
+function row(cells, actions, off) {
+  const tr = el("tr"); if (off) tr.className = "off";
+  cells.forEach(c => tr.append(el("td", c)));
+  const a = el("td"); (actions || []).forEach(x => a.append(x)); tr.append(a); return tr;
+}
+const cards = list => { const d = el("div"); d.className = "cards"; list.forEach(x => d.append(x)); return d; };
+const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, () => openCmd(key, prefill), "");
+
+const VIEWS = {
+  Services() {
+    const rows = state.services.map(s => row(
+      [s.name, s.fqdn, s.host, s.backend, s["auth-mode"] || "none", s.tunnel ? "yes" : "no"],
+      [btn("Edit", () => openCmd("update service", { ...s, __lock: "name" })),
+       btn(s.disabled ? "Enable" : "Disable", () => run(s.disabled ? "enable service" : "disable service", { name: s.name })),
+       btn("Rename", () => openCmd("rename service", { old: s.name, __lock: "old" })),
+       btn("Remove", () => run("remove service", { name: s.name }, cmds["remove service"].confirm))], s.disabled));
+    return [cards([cmdBtn("add service")]), table(["Name", "FQDN", "Host", "Backend", "Auth", "Internet", ""], rows)];
+  },
+  Hosts() {
+    const rows = state.hosts.map(h => row([h.name, h.ip, h.ssh || "—", h["trusted-proxies"] || "—"],
+      [btn("Edit", () => openCmd("update host", { ...h, __lock: "name" })),
+       btn("Remove", () => run("remove host", { name: h.name }, cmds["remove host"].confirm))]));
+    return [cards([cmdBtn("add host")]), table(["Name", "IP", "SSH", "Extra trusted proxies", ""], rows)];
+  },
+  Domains() {
+    const rows = state.domains.map(d => row([d], [btn("Remove", () => run("remove domain", { name: d }, cmds["remove domain"].confirm))]));
+    return [cards([cmdBtn("add domain")]), table(["Domain", ""], rows)];
+  },
+  Defaults() {
+    const rows = Object.entries(state.defaults).map(([k, v]) => row([k, v || "(unset)"], [btn("Change", () => openCmd("defaults set", { key: k, value: v, __lock: "key" }))]));
+    return [table(["Setting", "Value", ""], rows)];
+  },
+  Credentials() { return [cards([cmdBtn("create app oidc"), btn("Create user", openCreateUser)]),
+    el("p", "Print-only: the auth provider's config and users database are never written. Paste the output in yourself.", { className: "meta" })]; },
+  Operate() { return [cards([cmdBtn("apply"), cmdBtn("deploy")]),
+    el("p", "Apply makes the config live on this host. Deploy fans out over ssh to the other hosts and needs ssh set up in the container.", { className: "meta" })]; },
+  Diagnose() { return [cards(["list", "verify", "measure", "doctor"].map(k => cmdBtn(k)))]; },
+  About() { return [cards(["version", "help", "completion", "defaults"].map(k => cmdBtn(k)))]; },
 };
-$("#apply").onclick = async () => {
-  if (!confirm("Apply to this host? This restarts pihole and reloads caddy.")) return;
-  $("#apply").disabled = true; try { show(await api("POST", "/api/apply")); } finally { $("#apply").disabled = false; }
-};
-load();
+
+function render() {
+  $("#summary").textContent = `${state.services.length} services · ${state.hosts.length} hosts · ${state.domains.join(", ")}`;
+  const nav = $("#tabs"); nav.replaceChildren();
+  TABS.forEach(t => nav.append(btn(t, () => { tab = t; render(); }, t === tab ? "on" : "")));
+  $("#view").replaceChildren(...VIEWS[tab]());
+}
+async function load() {
+  const r = await fetch("/api/state"); const s = await r.json();
+  if (s.error) { show({ ok: false, output: s.error }); return; }
+  state = s; render();
+}
+(async () => {
+  const list = await (await fetch("/api/commands")).json();
+  list.forEach(c => cmds[c.key] = c);
+  render(); load();
+})();
 </script>
 </body>
 </html>
