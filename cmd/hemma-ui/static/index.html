@@ -23,21 +23,19 @@
   .err { color: #c33; } .meta { opacity: .7; font-size: .85rem; } .muted { opacity: .55; }
   .row { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
   .cards { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0; }
-  /* Action bar — Reaparr's save-bar pattern, grown into the page's two actions: SAVE what you changed, and
-     DEPLOY what is saved. It is always there (deploying can happen at any time), and says in plain words
-     which state you are in. Pinned to the SCREEN edge — not "sticky", which floats mid-screen on a short
-     page — centred, and as wide as the page content. */
+  /* Save bar — Reaparr's pattern: it exists only while there are unsaved changes, on every page, with Discard
+     and Save. (Deploying is the separate button in the header.) Pinned to the SCREEN edge — not "sticky",
+     which floats mid-screen on a short page — centred, and as wide as the page content. */
   .save-bar { position: fixed; left: 0; right: 0; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 5; box-sizing: border-box;
               width: min(1076px, calc(100vw - 24px)); margin: 0 auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
               padding: 10px 12px 10px 18px; border-radius: 14px; border: 1px solid #8886;
               background: color-mix(in srgb, Canvas 88%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
               box-shadow: 0 20px 50px -10px #0007; }
-  .save-bar.dirty, .save-bar.busy { border-color: #c98a0088; } .save-bar.clean { border-color: #1f8a3b66; }
+  .save-bar.dirty { border-color: #c98a0088; }
   .save-bar .msg { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; color: var(--bar, inherit); }
   .save-bar .msg .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
   .save-bar .msg strong { display: block; font-size: .95rem; font-weight: 600; line-height: 1.3; }
-  .save-bar.dirty .msg, .save-bar.busy .msg { --bar: #c98a00; } .save-bar.clean .msg { --bar: #1f8a3b; }
-  .save-bar.busy .dot { animation: pulse 1s ease-in-out infinite; } @keyframes pulse { 50% { opacity: .25; } }
+  .save-bar.dirty .msg { --bar: #c98a00; }
   .save-bar .acts { display: flex; gap: 8px; }
   .save-bar button { border-radius: 8px; padding: .5rem .95rem; }
   .save-bar button.primary, dialog button.primary { background: #3b5bdb; border-color: #3b5bdb; color: #fff; border-radius: 8px; }
@@ -46,13 +44,13 @@
   /* the bar floats over the page, so the page keeps room for it at the end (content AND footer stay reachable) */
   body.with-bar { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
   @media (max-width: 640px) {
-    /* sits just above the bottom menu (52px tall + its border + the home-indicator inset), never over it.
-       Two rows: the status on top, the buttons full-width underneath — big targets, and nothing squeezed. */
-    .save-bar { bottom: calc(53px + 8px + env(safe-area-inset-bottom)); width: calc(100vw - 16px); gap: 6px; padding: 8px 10px 10px 12px; border-radius: 12px; }
-    .save-bar .msg { flex: 1 1 100%; }
-    .save-bar .acts { flex: 1 1 100%; gap: 6px; }
-    .save-bar .acts button { flex: 1 1 0; padding: .45rem .4rem; font-size: .95rem; white-space: nowrap; }
-    body.with-bar { padding-bottom: calc(53px + 100px + env(safe-area-inset-bottom)); }   /* menu + action bar */
+    /* sits just above the bottom menu (52px tall + its border + the home-indicator inset), never over it;
+       one row: the status, then the two buttons */
+    .save-bar { bottom: calc(53px + 8px + env(safe-area-inset-bottom)); width: calc(100vw - 16px); flex-wrap: nowrap; gap: 8px; padding: 8px 8px 8px 12px; border-radius: 12px; }
+    .save-bar .msg { min-width: 0; } .save-bar .msg strong { font-size: .9rem; }
+    .save-bar .acts { flex: none; gap: 6px; }
+    .save-bar .acts button { padding: .45rem .8rem; font-size: .95rem; white-space: nowrap; }
+    body.with-bar { padding-bottom: calc(53px + 76px + env(safe-area-inset-bottom)); }   /* menu + save bar */
   }
   .toast { position: fixed; left: 50%; top: 1rem; transform: translateX(-50%); z-index: 20; max-width: min(92vw, 34rem); display: flex; align-items: center; gap: .8rem;
            padding: .6rem 1rem; border-radius: 8px; background: #222; color: #fff; box-shadow: 0 4px 16px #0005; }
@@ -75,6 +73,11 @@
   .tree button.dir { font-weight: 600; } .tree button.sel { background: #36c3; font-weight: 600; }
   .tree button.gen { opacity: .45; cursor: not-allowed; } .tree .note { padding: .3rem .5rem; }
   footer { margin: 2rem 0 .5rem; text-align: center; }
+  /* title row: "hemma" on the left, Deploy flush right on the same line */
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+  .top h1 { margin: .3rem 0 .1rem; } .top #summary { margin: 0; }
+  #deploy { flex: none; margin-top: .3rem; padding: .5rem 1.1rem; border-radius: 8px; background: #3b5bdb; border: 1px solid #3b5bdb; color: #fff; font-weight: 600; }
+  #deploy:disabled { opacity: .45; cursor: default; }
   .sec h2 { font-size: 1.1rem; margin: 1.6rem 0 .1rem; } .sec:first-child h2 { margin-top: .6rem; }
   /* ---- phone pass: space is tight, so every pixel and every tap has to count ---- */
   @media (max-width: 640px) {
@@ -134,11 +137,14 @@
 </style>
 </head>
 <body>
-<h1>hemma</h1>
-<p class="meta" id="summary"></p>
+<header class="top">
+  <div><h1>hemma</h1><p class="meta" id="summary"></p></div>
+  <!-- Deploying is its own step, separate from saving: always here, flush right on the title row, on every page. -->
+  <button id="deploy" class="primary" type="button">Deploy</button>
+</header>
 <nav id="tabs"></nav>
 <section id="view"></section>
-<div id="savebar" class="save-bar clean" hidden></div>
+<div id="savebar" class="save-bar" hidden></div>
 <footer id="foot" class="meta"></footer>
 <div id="toast" class="toast" role="status" hidden></div>
 
@@ -489,15 +495,22 @@ async function pushNow() {
   const res = await post("/api/push", {}); toastResult("Push", res, "Pushed to origin"); await load(); return res.ok;
 }
 
-// Two phases, kept apart, both in the action bar:
-//   1. SAVE   — records what you changed, with a message. Disabled when there is nothing to save.
-//   2. DEPLOY — makes what is SAVED live. Available at any time (nothing is inferred about what is live, so
-//               it also works on a freshly set-up machine with nothing to save).
+// Two steps, kept apart:
+//   1. SAVE   — the save bar (only while there are unsaved changes): Discard / Save, with a message.
+//   2. DEPLOY — the header button, on every page: makes what is SAVED live. Nothing is inferred about what
+//               is live, so it also works on a freshly set-up machine with nothing to save.
 // Deploy pulls from origin, then applies (with no origin there is nothing to pull: it just applies). It can
 // only ever send what is saved: hemma applies the files in the repo and refuses a repo with unsaved changes,
 // so while changes are waiting Deploy is off. It offers to push unpushed saves first.
 let deploying = false;
 let pending = null;   // /api/diff summary of the unsaved changes (null when there are none)
+function renderDeploy() {
+  const b = $("#deploy"), dirty = changes.git && changes.files.length > 0;
+  b.textContent = deploying ? (changes.has_remote ? "Deploying…" : "Applying…") : "Deploy";
+  b.disabled = deploying || dirty;
+  b.title = dirty ? "Save or discard your changes first" : "Pull from origin and make it live on this machine";
+}
+$("#deploy").onclick = () => deploy();
 async function deploy() {
   if (deploying) return;
   if (changes.git && changes.files.length) return toast("Save or discard your unsaved changes before deploying", "warn");
@@ -505,7 +518,7 @@ async function deploy() {
   if (changes.has_remote && changes.ahead > 0 &&
       !(confirm(`${changes.ahead} saved change(s) are not on origin yet — push them first?`) && await pushNow())) return;
   if (!confirm(cmds[key].confirm)) return;
-  deploying = true; renderBar();
+  deploying = true; renderDeploy();
   try {
     const res = await post("/api/run", { command: key, values: {} });
     toastResult(cmds[key].title, res, key === "deploy" ? "Deployed" : "Applied");   // failures stay on screen, with Details
@@ -585,10 +598,8 @@ function openCommit() {
 }
 $("#ccancel").onclick = () => $("#cdlg").close();
 
-// The action bar (Reaparr's save-bar pattern, carrying both actions): always at the bottom of every tab.
-//   unsaved changes  → amber:  Discard · Save (primary) · Deploy (off — the hint says why)
-//   everything saved → green:  Save (off) · Deploy (primary)       (nothing to discard, so no Discard)
-//   deploying        → pulsing amber, everything off
+// The save bar (Reaparr's pattern): at the bottom of every page, but ONLY while there are unsaved changes,
+// with Discard and Save. Deploying is the separate header button.
 function describePending() {
   const p = pending, n = changes.files.length;
   const files = k => `${k} ${k === 1 ? "file" : "files"} changed`;
@@ -602,22 +613,15 @@ function describePending() {
 }
 function renderBar() {
   const bar = $("#savebar"), dirty = changes.git && changes.files.length > 0;
-  bar.hidden = false; document.body.classList.add("with-bar");
-  bar.className = "save-bar " + (deploying ? "busy" : dirty ? "dirty" : "clean");
-  const title = deploying ? (changes.has_remote ? "Deploying…" : "Applying…")
-    : !changes.git ? "Not a git repository — changes can't be saved here"
-    : dirty ? describePending()
-    : "All changes saved";
+  bar.hidden = !dirty; document.body.classList.toggle("with-bar", dirty);   // nothing to save → no bar at all
+  if (!dirty) return;
+  bar.className = "save-bar dirty";
   const mine = !pending || pending.entities.length || pending.generated.length || pending.reformatted;   // anything hemma can revert?
-  const discardBtn = btn("Discard", discard); discardBtn.disabled = deploying || !mine;
-  const saveBtn = btn("Save", openCommit, dirty && !deploying ? "primary" : ""); saveBtn.disabled = !dirty || deploying;
-  const deployBtn = btn(deploying ? "Deploying…" : "Deploy", deploy, !dirty && !deploying ? "primary" : ""); deployBtn.disabled = dirty || deploying;
-  deployBtn.id = "deploy";
-  deployBtn.title = dirty ? "Save or discard your changes first" : "Pull from origin and make it live on this machine";
+  const discardBtn = btn("Discard", discard); discardBtn.disabled = !mine;
   const m = el("div", null, { className: "msg" });
-  m.append(el("span", null, { className: "dot" }), el("strong", title));
+  m.append(el("span", null, { className: "dot" }), el("strong", describePending()));
   const a = el("div", null, { className: "acts" });
-  a.append(...(dirty && !deploying ? [discardBtn, saveBtn, deployBtn] : [saveBtn, deployBtn]));
+  a.append(discardBtn, btn("Save", openCommit, "primary"));
   bar.replaceChildren(m, a);
 }
 
@@ -665,6 +669,7 @@ function render() {
   TABS.forEach(t => nav.append(btn(t, () => { tab = t; render(); }, t === tab ? "on" : "")));
   $("#view").replaceChildren(...VIEWS[tab]());
   $("#foot").textContent = state.version || "";
+  renderDeploy();
   renderBar();
 }
 async function load() {
