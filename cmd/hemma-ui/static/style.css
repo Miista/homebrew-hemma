@@ -29,8 +29,6 @@
   --green-text: oklch(0.43 0.13 155);  --amber-text: oklch(0.48 0.13 70);  --amber-line: oklch(0.7 0.15 75 / .6);
   --del-bg: oklch(0.9 0.06 25);   --add-bg: oklch(0.92 0.07 155);
   --tile-a: #e6dffb;  --tile-b: #b5a3ee;   /* the brand tile: pale on a dark page, a stronger violet on a light one */
-  --shadow: 0 12px 40px -20px rgba(30, 30, 60, .35);
-  --shadow-lift: 0 20px 50px -10px rgba(30, 30, 60, .35);
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -46,8 +44,6 @@
     --green-text: oklch(0.8 0.16 155);  --amber-text: oklch(0.85 0.13 85);  --amber-line: oklch(0.55 0.12 80 / .6);
     --del-bg: oklch(0.5 0.15 25 / .28);   --add-bg: oklch(0.6 0.14 155 / .22);
     --tile-a: #f1eef8;  --tile-b: #c9c0e4;
-    --shadow: 0 12px 40px -20px rgba(0, 0, 0, .8);
-    --shadow-lift: 0 20px 50px -10px rgba(0, 0, 0, .7);
   }
 }
 
@@ -67,22 +63,22 @@ code { font-family: var(--mono); }
 
 /* ---------- controls (specificity 0, so any component rule below wins) ---------- */
 :where(button) { font: inherit; font-size: 14px; font-weight: 600; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border-2);
-                 background: var(--surface-2); color: var(--text); cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s, transform .1s; }
+                 background: var(--surface-2); color: var(--text); cursor: pointer; transition: background .15s, border-color .15s, transform .1s; }
 :where(button:hover:not(:disabled)) { background: var(--surface-hover); }
 :where(button:active:not(:disabled)) { transform: translateY(1px); }
 :where(button:disabled) { opacity: .45; cursor: default; }
 :where(button:focus-visible) { outline: 2px solid var(--violet); outline-offset: 2px; }
-:where(button.primary) { border: 0; background: var(--violet); color: #fff; padding: 9px 18px;
-                         box-shadow: 0 6px 20px color-mix(in oklch, var(--violet) 45%, transparent), inset 0 1px 0 rgba(255, 255, 255, .2); }
+:where(button.primary) { border: 0; background: var(--violet); color: #fff; padding: 9px 18px; }
 :where(button.primary:hover:not(:disabled)) { background: var(--violet-hover); }
 /* destructive actions look neutral until you reach for them (as in reaparr) */
 :where(button.danger:hover:not(:disabled)) { background: var(--red); border-color: var(--red); color: #fff; }
 
 :where(input:not([type=checkbox]), select, textarea) { font: inherit; font-size: 15px; width: 100%; min-width: 0; padding: 10px 12px; border-radius: 10px;
-                         border: 1px solid var(--border-2); background: var(--field); color: var(--text); outline: none; transition: border-color .15s, box-shadow .15s; }
-:where(input:not([type=checkbox]), select, textarea):focus { border-color: var(--violet); box-shadow: 0 0 0 4px var(--violet-ring); }
+                         border: 1px solid var(--border-2); background: var(--field); color: var(--text); outline: none; transition: border-color .15s; }
+/* focus is shown with a flat ring (an outline), never a glow */
+:where(input:not([type=checkbox]), select, textarea):focus { border-color: var(--violet); outline: 3px solid var(--violet-ring); outline-offset: 0; }
 :where(input:not([type=checkbox]), select, textarea)::placeholder { color: var(--faint); }
-:where(input:read-only:not([type=checkbox]), select:disabled) { background: var(--surface-2); color: var(--muted); box-shadow: none; }
+:where(input:read-only:not([type=checkbox]), select:disabled) { background: var(--surface-2); color: var(--muted); }
 :where(select) { appearance: none; -webkit-appearance: none; padding-right: 34px; cursor: pointer;
                  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%239a9cab' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.5 1.5l4.5 4.5 4.5-4.5'/%3E%3C/svg%3E");
                  background-repeat: no-repeat; background-position: right 12px center; }
@@ -96,9 +92,9 @@ label.switchrow { flex-direction: row; align-items: center; justify-content: spa
                   border-radius: 12px; background: var(--field); color: var(--text); font-size: 14px; font-weight: 500; cursor: pointer; }
 .switch { position: relative; display: inline-flex; flex: none; width: 44px; height: 26px; }
 .switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
-.switch .track { position: relative; width: 44px; height: 26px; border-radius: 999px; background: var(--track); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .35); transition: background .2s, box-shadow .2s; }
-.switch .track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .4); transition: left .2s; }
-.switch input:checked + .track { background: var(--violet); box-shadow: 0 0 16px color-mix(in oklch, var(--violet) 55%, transparent); }
+.switch .track { position: relative; width: 44px; height: 26px; border-radius: 999px; background: var(--track); transition: background .2s; }
+.switch .track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: left .2s; }
+.switch input:checked + .track { background: var(--violet); }
 .switch input:checked + .track::after { left: 21px; }
 .switch input:focus-visible + .track { outline: 2px solid var(--violet); outline-offset: 2px; }
 
@@ -106,9 +102,9 @@ label.switchrow { flex-direction: row; align-items: center; justify-content: spa
 .topbar { display: flex; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--border); }
 .brand { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
 .brand-icon { flex: none; width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
-              background: linear-gradient(160deg, var(--tile-a), var(--tile-b)); color: oklch(0.32 0.15 290); box-shadow: 0 0 24px oklch(0.65 0.22 300 / .45); }
+              background: linear-gradient(160deg, var(--tile-a), var(--tile-b)); color: oklch(0.32 0.15 290); }
 nav { flex: 1; display: flex; gap: 4px; }
-nav button { display: inline-flex; align-items: center; border: 0; background: none; box-shadow: none; color: var(--muted);
+nav button { display: inline-flex; align-items: center; border: 0; background: none; color: var(--muted);
              padding: 7px 12px; border-radius: 8px; font-size: 14px; font-weight: 500; }
 nav button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
 nav button.on { color: var(--violet-text); background: var(--violet-bg); font-weight: 600; }
@@ -119,7 +115,7 @@ nav .count { margin-left: 6px; font-size: 11px; font-weight: 600; padding: 0 6px
 footer { margin: 32px 0 8px; text-align: center; }
 
 /* ---------- panels: tables sit in a rounded card, rows hover ---------- */
-.panel { margin: 16px 0; border: 1px solid var(--border); border-radius: 18px; overflow: hidden; box-shadow: var(--shadow);
+.panel { margin: 16px 0; border: 1px solid var(--border); border-radius: 18px; overflow: hidden;
          background-color: var(--surface); background-image: linear-gradient(180deg, var(--surface), var(--surface-b)); }
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; padding: 12px 20px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
@@ -135,7 +131,7 @@ td strong { font-weight: 600; }
 
 /* ---------- dialogs ---------- */
 dialog { width: min(560px, calc(100vw - 32px)); padding: 22px 24px; color: var(--text); border: 1px solid var(--border-2); border-radius: 18px;
-         background-color: var(--surface); background-image: linear-gradient(180deg, var(--surface), var(--surface-b)); box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .55);
+         background-color: var(--surface); background-image: linear-gradient(180deg, var(--surface), var(--surface-b));
          animation: dialog-in .18s ease-out; }
 dialog::backdrop { background: rgba(5, 6, 10, .55); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
@@ -153,7 +149,7 @@ dialog button { border-radius: 10px; }
 .adder { display: flex; gap: 6px; } .adder input { flex: 1; width: auto; }
 .tree { max-height: 45vh; overflow: auto; border: 1px solid var(--border-2); border-radius: 12px; background: var(--field); padding: 4px 0; }
 .tree ul { list-style: none; margin: 0; padding-left: 18px; } .tree > ul { padding-left: 6px; }
-.tree button { display: block; width: 100%; text-align: left; border: 0; background: none; box-shadow: none; padding: 5px 10px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--text); }
+.tree button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 5px 10px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--text); }
 .tree button:hover:not(:disabled) { background: var(--row-hover); }
 .tree button.dir { font-weight: 600; }
 .tree button.sel { background: var(--violet-bg); color: var(--violet-text); font-weight: 600; }
@@ -178,7 +174,7 @@ dialog button { border-radius: 10px; }
 /* ---------- the save bar: glass, only while there are changes to save ---------- */
 .save-bar { position: fixed; left: 0; right: 0; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 5; width: min(1076px, calc(100vw - 24px)); margin: 0 auto;
             display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px 10px 18px; border-radius: 16px; border: 1px solid var(--border-2);
-            background: color-mix(in srgb, var(--surface) 86%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); box-shadow: var(--shadow-lift); }
+            background: color-mix(in srgb, var(--surface) 86%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
 .save-bar.dirty { border-color: var(--amber-line); }
 .save-bar .msg { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; color: var(--amber-text); }
 .save-bar .msg .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
@@ -189,7 +185,7 @@ body.with-bar { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
 
 /* ---------- messages ---------- */
 .toast { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); z-index: 20; max-width: min(92vw, 34rem); display: flex; align-items: center; gap: 12px;
-         padding: 12px 16px; border-radius: 14px; border: 1px solid #2c2e3b; background: #1b1d27; color: #f1f2f6; font-size: 14px; box-shadow: 0 16px 40px -8px rgba(0, 0, 0, .5); }
+         padding: 12px 16px; border-radius: 14px; border: 1px solid #2c2e3b; background: #1b1d27; color: #f1f2f6; font-size: 14px; }
 .toast.err { background: oklch(0.3 0.1 25); border-color: oklch(0.45 0.14 25); } .toast.warn { background: oklch(0.3 0.07 80); border-color: oklch(0.45 0.1 80); }
 .toast span { flex: 1; }
 .toast button { flex: none; padding: 4px 12px; font-size: 13px; background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .2); color: #fff; }
@@ -242,15 +238,14 @@ body.with-bar { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
   .cards.fabwrap { margin: 0; }
   footer { text-align: left; }   /* the floating button sits bottom right, so keep the footer text clear of it */
   .fab { position: fixed; right: 16px; bottom: calc(var(--menu-h) + 14px + env(safe-area-inset-bottom) + var(--bar-extra, 0px)); z-index: 4;
-         flex: none; min-height: 56px; padding: 0 22px 0 18px; border: 0; border-radius: 28px; background: var(--violet); color: #fff; font-size: 16px; font-weight: 600;
-         box-shadow: 0 10px 28px -4px color-mix(in oklch, var(--violet) 60%, transparent), inset 0 1px 0 rgba(255, 255, 255, .2); }
+         flex: none; min-height: 56px; padding: 0 22px 0 18px; border: 0; border-radius: 28px; background: var(--violet); color: #fff; font-size: 16px; font-weight: 600; }
   .fab::before { content: "+"; font-size: 24px; line-height: 1; margin-right: 7px; vertical-align: -.1em; }
   #view.has-fab { padding-bottom: 76px; }   /* the last row can be scrolled clear of the floating button */
   /* a wide table can't fit: each row becomes a card, one "label  value" line per column */
-  .panel { margin: 8px 0; border: 0; border-radius: 0; box-shadow: none; background: none; overflow: visible; }
+  .panel { margin: 8px 0; border: 0; border-radius: 0; background: none; overflow: visible; }
   table.stack thead { display: none; }
   table.stack, table.stack tbody { display: block; }
-  table.stack tr { display: block; margin: 12px 0; padding: 4px 0; border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow);
+  table.stack tr { display: block; margin: 12px 0; padding: 4px 0; border: 1px solid var(--border); border-radius: 16px;
                    background-color: var(--surface); background-image: linear-gradient(180deg, var(--surface), var(--surface-b)); }
   table.stack tbody tr:hover { background-color: var(--surface); }
   table.stack td { display: flex; justify-content: space-between; gap: 16px; border: 0; padding: 4px 14px; text-align: right; overflow-wrap: anywhere; }
