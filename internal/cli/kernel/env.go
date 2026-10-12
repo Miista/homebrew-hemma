@@ -26,11 +26,6 @@ type Env struct {
 	// (docker, caddy, dig, ssh, git, curl, bash): cancelling it kills them.
 	// nil means no bound.
 	Ctx context.Context
-
-	// Self is the path of a hemma binary that `deploy` re-invokes for this
-	// host's own apply. Empty means "the running executable" — right for the
-	// CLI, wrong for a front end that is a different program.
-	Self string
 }
 
 // DisableColor makes the status glyphs plain text for the rest of the process.

@@ -148,8 +148,8 @@ A deliberately small web UI for one host (image: `Dockerfile.ui`; compose + synt
   never a shell, and run in-process via `kernel.Route` with a capturing `kernel.Env`), so validation and the
   single-writer invariant are exactly the CLI's — it is literally the same code. The UI never writes
   `services.yaml` or generated files itself. `Env.NoTerminal` keeps the interactive editors from ever prompting,
-  and the request's deadline is `Env.Ctx`, which kills hung external commands. The one remaining dependency on
-  the `hemma` binary: `deploy` re-invokes it for this host's own apply (`Env.Self` = `HEMMA_BIN`).
+  and the request's deadline is `Env.Ctx`, which kills hung external commands. The image contains only
+  `hemma-ui`: there is no `hemma` binary (even `deploy`'s apply of this host runs in-process).
 - **Typed fields** (`Ref` in `commands.go`, validators in `refs.go`): a host is picked from hosts, a CIDR list is
   validated as CIDRs, a file is picked from the repo tree. The browser offers only valid choices *and* the
   server re-checks every value — the browser is a convenience, not the control.

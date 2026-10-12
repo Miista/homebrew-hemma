@@ -57,7 +57,7 @@ func (c snapCase) withTools(role, tools string) snapCase {
 // fakeTools are the external programs hemma shells out to. Each fake records
 // its argv to $FAKE_LOG and exits 0 (or 1 with a message when FAKE_MODE=fail),
 // so the golden file pins the exact external command sequence.
-var fakeTools = []string{"docker", "caddy", "dig", "ssh", "ssh-keygen", "git", "curl", "bash", "hemma"}
+var fakeTools = []string{"docker", "caddy", "dig", "ssh", "ssh-keygen", "git", "curl", "bash"}
 
 const fakeToolScript = `#!/bin/sh
 echo "${0##*/} $*" >> "$FAKE_LOG"
@@ -526,7 +526,6 @@ func TestSnapshots(t *testing.T) {
 			t.Setenv("PATH", bin)
 			t.Setenv("FAKE_LOG", logPath)
 			t.Setenv("FAKE_MODE", c.tools)
-			defer kernel.SetSelfExecutable(func() (string, error) { return filepath.Join(bin, "hemma"), nil })()
 			if c.role != "" {
 				role := c.role
 				defer kernel.SetLocalHost(func(*config.Config) string { return role })()

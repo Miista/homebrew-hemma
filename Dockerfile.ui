@@ -3,8 +3,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /out/hemma . \
- && CGO_ENABLED=0 go build -o /out/hemma-ui ./cmd/hemma-ui
+RUN CGO_ENABLED=0 go build -o /out/hemma-ui ./cmd/hemma-ui
 
 FROM alpine:3.21
 # docker-cli: `hemma apply` shells out to `docker exec/restart` against the host daemon.
@@ -12,7 +11,7 @@ FROM alpine:3.21
 # bash/curl/gawk: `hemma measure`. openssh-client: only for a git remote reached over ssh
 # (`deploy` pulls from origin; on a single host it never ssh's to a host).
 RUN apk add --no-cache docker-cli git bash curl gawk openssh-client
-COPY --from=build /out/hemma /out/hemma-ui /usr/local/bin/
+COPY --from=build /out/hemma-ui /usr/local/bin/
 # The bind-mounted repo is owned by the host user, not root: without this git refuses
 # it ("dubious ownership"), which breaks hemma's own git calls (deploy preflight/pull).
 RUN git config --system --add safe.directory '*'

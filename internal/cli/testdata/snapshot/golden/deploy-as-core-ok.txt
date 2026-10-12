@@ -19,6 +19,26 @@ Deploying to 2 hosts: edge, core (here, last).
 == edge ==
 
 == core ==
+  Running on host "core".
+  
+  == Validate (core) ==
+    ✓ Caddyfile imports hemma.trusted_proxies.generated.caddy
+    ✓ caddy validate passes
+    ✓ sso config validate passes
+  
+  == DNS (core) ==
+    ✓ restarted pihole
+  
+  == Caddy (core) ==
+    ✓ caddy reloaded
+  
+  == Auth (sso) ==
+    ✓ sso reloaded
+  
+  == Tunnel (core) ==
+    ✓ restarted cloudflared
+  
+  Applied.
 
 == Summary ==
   ✓ edge: applied
@@ -35,5 +55,10 @@ git -C <repo> pull --ff-only
 ssh -o BatchMode=yes ops@192.0.2.20 git -C ~/docker rev-parse HEAD
 git -C <repo> rev-parse HEAD
 ssh -o BatchMode=yes ops@192.0.2.20 hemma apply
-hemma -C <repo> apply
+docker exec caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec sso authelia config validate
+docker restart pihole
+docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+docker restart sso
+docker restart cloudflared
 --- files ---
