@@ -94,8 +94,11 @@ const $ = s => document.querySelector(s);
 let changes = { git: false, files: [] };
 let state = { services: [], hosts: [], domains: [], settings: [] };
 let cmds = {};
-let tab = "Services";
 const TABS = ["Services", "Infrastructure", "Issues", "Settings"];   // Infrastructure = hosts + domains; Settings (the defaults) comes last
+// The page you are on lives in the URL (#/issues), so reload, back/forward and a pasted link all land on the same page.
+const tabFromHash = () => TABS.find(t => "#/" + t.toLowerCase() === location.hash) || "Services";
+let tab = tabFromHash();
+window.addEventListener("popstate", () => { const t = tabFromHash(); if (t === tab || broken) return; tab = t; render(); if (t === "Issues") checkIssues(); });
 // Menu icons: the same outline style as albumreq's bottom menu (shown above the label on a phone, hidden on a wide screen).
 const ICON = (inner) => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 const ICONS = {
@@ -807,7 +810,7 @@ function render() {
   $("#summary").textContent = `${pl(state.services.length, "service", "services")} · ${pl(state.hosts.length, "host", "hosts")} · ${state.domains.join(", ")}`;
   const nav = $("#tabs"); nav.replaceChildren();
   TABS.forEach(t => {
-    const b = el("button", null, { type: "button", className: t === tab ? "on" : "", onclick: () => { tab = t; render(); if (t === "Issues") checkIssues(); } });   // opening Issues re-runs the checks
+    const b = el("button", null, { type: "button", className: t === tab ? "on" : "", onclick: () => { if (t !== tab) history.pushState(null, "", "#/" + t.toLowerCase()); tab = t; render(); if (t === "Issues") checkIssues(); } });   // opening Issues re-runs the checks
     if (t === tab) b.setAttribute("aria-current", "page");
     const ic = el("span", null, { className: "tab-icon" }); ic.innerHTML = ICONS[t];   // static markup defined above
     b.append(ic, el("span", t, { className: "tab-label" }));
