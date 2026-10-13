@@ -165,6 +165,16 @@ A deliberately small web UI for one host (image: `Dockerfile.ui`; compose + synt
   and *deploying* (a standing **Deploy** button, always available — nothing is inferred about what is live, so it
   works on a freshly set-up machine with nothing to save). Deploy pulls from origin then applies, and offers to
   push unpushed commits first; with no origin it just applies.
+- **A file that cannot be loaded is still editable.** Every typed form needs a loadable `services.yaml`, so
+  when it is not, `/api/state` reports why and the page shows a recovery screen: **Discard unsaved changes**
+  (the usual cause is an unsaved edit) or **Edit services.yaml** as text. The text goes through
+  `kernel.ReplaceConfig` — the UI still never writes the file itself — which refuses text that does not
+  parse (nothing written) and otherwise writes it as given and syncs like any other mutation.
+- **hemma must be able to read what it writes.** The none auth mode is the empty string internally and was
+  written as `mode: ""`, which the reader refused — a service with mode none plus bypass paths/groups/policy
+  made the whole file unloadable. The writer now spells it `none`; the reader still accepts the old `mode: ""`
+  but refuses a mapping with NO mode key (so `auth: {groups: [x]}` never reads as "no auth"). The auth form
+  only offers fields that apply to the chosen mode, and the server refuses a combination hemma would skip.
 - **Not exposed on purpose:** credential minting (`create app/user`), and terminal-only `help`/`completion`/
   `version`/`defaults` listings. The file browser only ever shows the mounted repo (no `..`, no symlinks, no
   dot-folders).

@@ -199,3 +199,55 @@ func TestRunCommand_ReportsWhetherTheConfigChanged(t *testing.T) {
 		t.Errorf("a read-only command never changes anything: %v", r)
 	}
 }
+
+// The recovery path: an unloadable services.yaml can still be read and replaced as text — through the kernel,
+// and never with text that does not parse.
+func TestRawConfig_ReadReplaceAndRefuse(t *testing.T) {
+	s := repoWithConfig(t)
+	path := filepath.Join(s.repo, "services.yaml")
+	good, _ := os.ReadFile(path)
+
+	// break it the way hemma once did: an auth mapping with no mode
+	broken := strings.Replace(string(good), "services: {}", "services:\n  web:\n    fqdn: web.example.com\n    host: appbox\n    backend: web:80\n    auth:\n      groups: [admins]\n", 1)
+	if err := os.WriteFile(path, []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	get := httptest.NewRecorder()
+	s.handleRawGet(get, httptest.NewRequest("GET", "/api/config/raw", nil))
+	var raw map[string]any
+	if err := json.Unmarshal(get.Body.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw["text"] != broken || !strings.Contains(raw["error"].(string), "requires a mode") {
+		t.Errorf("the broken file must be readable as text, with the reason: %v", raw)
+	}
+	state := httptest.NewRecorder()
+	s.state(state, httptest.NewRequest("GET", "/api/state", nil))
+	if !strings.Contains(state.Body.String(), "requires a mode") {
+		t.Errorf("/api/state should report why it cannot load: %s", state.Body.String())
+	}
+
+	save := func(text string) *httptest.ResponseRecorder {
+		b, _ := json.Marshal(map[string]string{"text": text})
+		rec := httptest.NewRecorder()
+		s.handleRawSave(rec, httptest.NewRequest("POST", "/api/config/raw", strings.NewReader(string(b))))
+		return rec
+	}
+	// still broken text: refused (400), file untouched
+	before := s.configStamp()
+	if rec := save("hosts: [unclosed"); rec.Code != 400 || s.configStamp() != before {
+		t.Errorf("unparseable text: want 400 and no change, got %d changed=%v", rec.Code, s.configStamp() != before)
+	}
+	// fixed text: saved exactly, and everything loads again
+	fixed := strings.Replace(broken, "      groups: [admins]", "      mode: forward\n      groups: [admins]", 1)
+	if rec := save(fixed); rec.Code != 200 {
+		t.Fatalf("fixed text: %d %s", rec.Code, rec.Body.String())
+	}
+	if now, _ := os.ReadFile(path); string(now) != fixed {
+		t.Errorf("the text must be written as given:\n%s", now)
+	}
+	if code, out := s.runKernel(context.Background(), []string{"list", "--all"}); code != 0 || !strings.Contains(out, "web") {
+		t.Errorf("after the rescue the UI's commands work again: %d\n%s", code, out)
+	}
+}
