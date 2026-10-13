@@ -296,8 +296,12 @@ func TestRunCommand_ChangesFinishWhenTheBrowserLeaves_ReadsDoNot(t *testing.T) {
 		t.Errorf("apply should have completed successfully: %s", rec.Body.String())
 	}
 
-	// measure is read-only (a slow `bash`): when the browser leaves it is stopped, not waited for.
-	_, took := run(`{"command":"measure","values":{"target":"https://example.com/"}}`, 200*time.Millisecond)
+	// measure is read-only (a slow `bash`): when the browser leaves it is stopped, not waited for. Its target is one
+	// of the services, so there has to be one.
+	if code, out := s.runKernel(context.Background(), []string{"add", "service", "web", "--fqdn=web.example.com", "--host=appbox", "--backend=web:80"}); code > 1 {
+		t.Fatalf("add service: %d\n%s", code, out)
+	}
+	_, took := run(`{"command":"measure","values":{"target":"web"}}`, 200*time.Millisecond)
 	if took > 800*time.Millisecond {
 		t.Errorf("a read-only command should stop when the browser leaves; it ran %s", took)
 	}
@@ -370,5 +374,30 @@ func TestDoctorFixable(t *testing.T) {
 		if got := doctorFixable(out); got != want {
 			t.Errorf("doctorFixable(%q) = %v, want %v", out, got, want)
 		}
+	}
+}
+
+// The measure target is one of the services — not free text. The server enforces it, whatever the form offered.
+func TestMeasure_TargetMustBeAService(t *testing.T) {
+	s := repoWithConfig(t)
+	if code, out := s.runKernel(context.Background(), []string{"add", "service", "web", "--fqdn=web.example.com", "--host=appbox", "--backend=web:80"}); code > 1 {
+		t.Fatalf("add service: %d\n%s", code, out)
+	}
+	for _, target := range []string{"https://evil.example.org/", "not-a-service", "web.example.com"} {
+		rec := httptest.NewRecorder()
+		s.runCommand(rec, httptest.NewRequest("POST", "/api/run", strings.NewReader(`{"command":"measure","values":{"target":"`+target+`"}}`)))
+		if rec.Code != 400 || !strings.Contains(rec.Body.String(), "there is no service") {
+			t.Errorf("target %q: want a 400 'there is no service', got %d %s", target, rec.Code, rec.Body.String())
+		}
+	}
+	c := lookup("measure")
+	var f *field
+	for i := range c.Fields {
+		if c.Fields[i].Name == "target" {
+			f = &c.Fields[i]
+		}
+	}
+	if f == nil || f.Ref != "service" || !f.Required {
+		t.Errorf("the target must be a required service picker: %+v", f)
 	}
 }

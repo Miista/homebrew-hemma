@@ -111,7 +111,8 @@ var commands = []command{
 	{Words: []string{"verify"}, Group: "Diagnose", Title: "Verify live DNS/Caddy", ReadOnly: true, FlagsFirst: true, Timeout: 3 * time.Minute,
 		Fields: []field{flag("all", "All services"), ref(pos("fqdn", "Service (optional)", false), "service-fqdn")}},
 	{Words: []string{"measure"}, Group: "Diagnose", Title: "Measure request timing", ReadOnly: true, FlagsFirst: true, Timeout: 3 * time.Minute,
-		Fields: []field{flag("compare", "A/B split-horizon vs public"), {Name: "runs", Label: "Timed runs", Kind: "int"}, {Name: "warmup", Label: "Warm-up runs", Kind: "int"}, pos("target", "Service, hostname or URL", true)}},
+		Fields: []field{flag("compare", "A/B split-horizon vs public"), {Name: "runs", Label: "Timed runs", Kind: "int"}, {Name: "warmup", Label: "Warm-up runs", Kind: "int"},
+			ref(pos("target", "Service", true), "service")}}, // a picker of your services (the CLI also takes a hostname or URL; the A/B compare is services-only anyway)
 	{Words: []string{"doctor"}, Group: "Diagnose", Title: "Doctor (audit)", FlagsFirst: true, Timeout: 2 * time.Minute,
 		Fields: []field{{Name: "fix", Label: "Apply fixes (writes files and .gitignore)", Kind: "bool"}}},
 
