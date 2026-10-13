@@ -176,8 +176,9 @@ A deliberately small web UI for one host (image: `Dockerfile.ui`; compose + synt
   but refuses a mapping with NO mode key (so `auth: {groups: [x]}` never reads as "no auth"). The auth form
   only offers fields that apply to the chosen mode, and the server refuses a combination hemma would skip.
 - **Not exposed on purpose:** credential minting (`create app/user`), and terminal-only `help`/`completion`/
-  `version`/`defaults` listings. The file browser only ever shows the mounted repo (no `..`, no symlinks, no
-  dot-folders).
+  `version`/`defaults` listings, and `list` (the Services page is the overview). The file browser only ever shows
+  the mounted repo (no `..`, no symlinks, no dot-folders). When `hemma doctor` finds nothing, Issues shows just
+  "No issues" plus the two checks you can run yourself (Verify, Measure).
 - **Security posture:** sign-in is **authy** (`github.com/miista/authy`), the outermost layer — nothing,
   not even the page or `/static/`, is reachable without a session. Configure `HEMMA_UI_OIDC_*` (all four
   together; the IdP decides who may sign in) or, with none set, the first visitor creates a local account —

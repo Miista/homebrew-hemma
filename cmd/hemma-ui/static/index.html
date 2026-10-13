@@ -775,8 +775,11 @@ const VIEWS = {
     return [sec("hosts", "Hosts", VIEWS.Hosts()), sec("domains", "Domains", VIEWS.Domains()), sec("defaults", "Defaults", VIEWS.Defaults())];
   },
   Issues() {
+    const tools = cards(["verify", "measure"].map(k => cmdBtn(k)));   // checks you can run yourself
+    // Nothing wrong: say so in one quiet line and show nothing else (no passed-checks list, no buttons to press).
+    if (issues.loaded && !issues.error && issues.count === 0) return [el("p", "No issues", { className: "meta noissues" }), tools];
     const head = el("div", null, { className: "issues-head" });
-    const summary = !issues.loaded ? "Checking…" : issues.error ? "Could not run the checks" : issues.count ? `${issues.count} ${issues.count === 1 ? "issue" : "issues"}` : "No issues";
+    const summary = !issues.loaded ? "Checking…" : issues.error ? "Could not run the checks" : `${issues.count} ${issues.count === 1 ? "issue" : "issues"}`;
     const acts = el("div", null, { className: "row" });
     const re = btn(issues.busy ? "Checking…" : "Re-check", () => checkIssues()); re.disabled = issues.busy || issues.fixing; acts.append(re);
     if (issues.fixable) { const fx = btn(issues.fixing ? "Fixing…" : "Fix with hemma doctor --fix", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing; acts.append(fx); }
@@ -787,8 +790,7 @@ const VIEWS = {
     // doctor's output as it is: each finding in its own card, its own lines untouched
     issues.groups.filter(g => g.kind !== "ok").forEach(g => { const c = el("div", null, { className: `issue ${g.kind}` }); c.append(el("pre", g.lines.join("\n"))); body.append(c); });
     if (passed.length) { const d = el("details", null, { className: "passed" }); d.append(el("summary", `${passed.length} ${passed.length === 1 ? "check" : "checks"} passed`), el("pre", passed.map(g => g.lines.join("\n")).join("\n"))); body.append(d); }
-    return [head, body, el("h2", "Run a check", { className: "subhead" }), cards(["list", "verify", "measure"].map(k => cmdBtn(k))),
-      el("p", "These are the checks `hemma doctor` runs, listed as it prints them. To make saved changes live, use the Deploy button at the top.", { className: "meta" })];
+    return [head, body, tools];
   },
 };
 
