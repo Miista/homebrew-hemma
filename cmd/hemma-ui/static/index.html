@@ -26,6 +26,15 @@
 <footer id="foot" class="meta"></footer>
 <div id="toast" class="toast" role="status" hidden></div>
 
+<!-- One in-app confirmation for every "are you sure?": nothing uses the browser's own confirm() box. -->
+<dialog id="kdlg" tabindex="-1" autofocus aria-labelledby="ktitle" aria-describedby="kmsg">
+  <form method="dialog" id="kform">
+    <h2 id="ktitle"></h2>
+    <p id="kmsg"></p>
+    <div class="row"><button type="button" id="kcancel">Cancel</button><button type="button" id="kgo" class="primary">OK</button></div>
+  </form>
+</dialog>
+
 <dialog id="rdlg" tabindex="-1" autofocus>
   <h2 id="rtitle"></h2>
   <pre id="rout"></pre>
@@ -108,6 +117,21 @@ function toast(msg, kind, details, action) {
 // Browsers focus the first field of a modal dialog by default (and a phone then pops its keyboard).
 // Focus the dialog itself instead: nothing is pre-selected, Tab and Escape still work.
 function openModal(d) { d.showModal(); d.focus({ preventScroll: true }); }
+// ask: the app's own confirmation dialog. Resolves true on the action button, false on Cancel / Esc / the backdrop.
+function ask(title, message, { ok = "OK", danger = false } = {}) {
+  return new Promise(resolve => {
+    const d = $("#kdlg"); let yes = false;
+    $("#ktitle").textContent = title; $("#kmsg").textContent = message;
+    const go = $("#kgo"); go.textContent = ok; go.className = danger ? "danger" : "primary";
+    go.onclick = () => { yes = true; d.close(); };
+    $("#kcancel").onclick = () => d.close();
+    d.onclick = e => { if (e.target === d) d.close(); };   // a tap outside the box cancels
+    d.onclose = () => resolve(yes);
+    openModal(d);
+  });
+}
+// confirmCmd asks before an allowlisted command: titled with the command, its first word on the button; removals are red.
+const confirmCmd = (key, message) => ask(cmds[key].title, message, { ok: cmds[key].title.split(" ")[0], danger: key.startsWith("remove") });
 function showResult(title, text) { $("#rtitle").textContent = title; $("#rout").textContent = text; openModal($("#rdlg")); }
 $("#rclose").onclick = () => $("#rdlg").close();
 // toastResult: one line for a finished action; warnings and failures keep the output behind Details.
@@ -128,7 +152,7 @@ function btn(label, fn, cls) { const b = el("button", label, { onclick: fn }); i
 
 // run executes an allowlisted command directly (no form), then refreshes.
 async function run(key, values, confirmMsg) {
-  if (confirmMsg && !confirm(confirmMsg)) return;
+  if (confirmMsg && !await confirmCmd(key, confirmMsg)) return;
   const res = await post("/api/run", { command: key, values });
   if (!cmds[key].readonly) await load();
   notify(key, res);
@@ -313,7 +337,7 @@ function openCmd(key, prefill = {}) {
       if (fd.kind === "bool" || fd.kind === "int" && v !== "") values[fd.name] = v;
       else if (fd.kind !== "int" && (v !== "" || c.update)) values[fd.name] = v;
     }
-    if (c.confirm && !confirm(c.confirm)) return;
+    if (c.confirm && !await confirmCmd(key, c.confirm)) return;
     $("#go").disabled = true;
     try {
       const res = await post("/api/run", { command: key, values });
@@ -366,7 +390,7 @@ async function openSetting(s) {
   save.onclick = e => { e.preventDefault(); const err = ctl.check(); if (err) { $("#derr").textContent = err; return; } apply(ctl.get()); };
   const clear = $("#dclear");
   clear.hidden = !(s.clearable && s.value);
-  clear.onclick = () => { if (confirm(`Clear ${s.label}?`)) apply("-"); };
+  clear.onclick = async () => { if (await ask(`Clear ${s.label}?`, "The setting goes back to unset.", { ok: "Clear", danger: true })) apply("-"); };
   openModal($("#dlg"));
 }
 
@@ -410,13 +434,24 @@ function renderDeploy() {
   b.title = dirty ? "Save or discard your changes first" : "Pull from origin and make it live on this machine";
 }
 $("#deploy").onclick = () => deploy();
+// deployMessage says what THIS deploy will do, from what is configured — not a fixed list that
+// mentions an auth provider the host does not have.
+function deployMessage(key) {
+  const set = k => (state.settings.find(s => s.key === k) || {}).value;
+  const steps = ["restart pihole", "reload caddy"];
+  if (set("auth-service")) steps.push(`restart the auth provider (${set("auth-service")})`);
+  if (set("tunnel-dir")) steps.push("restart cloudflared");
+  const list = steps.length > 1 ? steps.slice(0, -1).join(", ") + " and " + steps[steps.length - 1] : steps[0];
+  const live = `makes the saved config live on this machine: ${list}.`;
+  return key === "deploy" ? `Pulls from origin, then ${live}` : `This ${live}`;
+}
 async function deploy() {
   if (deploying) return;
   if (changes.git && changes.files.length) return toast("Save or discard your unsaved changes before deploying", "warn");
   const key = changes.has_remote ? "deploy" : "apply";
   if (changes.has_remote && changes.ahead > 0 &&
-      !(confirm(`${changes.ahead} saved change(s) are not on origin yet — push them first?`) && await pushNow())) return;
-  if (!confirm(cmds[key].confirm)) return;
+      !(await ask("Push first?", `${changes.ahead} saved ${changes.ahead === 1 ? "change is" : "changes are"} not on origin yet. Deploy pulls from origin, so push ${changes.ahead === 1 ? "it" : "them"} first.`, { ok: "Push" }) && await pushNow())) return;
+  if (!await ask(key === "deploy" ? "Deploy?" : "Apply now?", deployMessage(key), { ok: key === "deploy" ? "Deploy" : "Apply" })) return;
   deploying = true; renderDeploy();
   try {
     const res = await post("/api/run", { command: key, values: {} });
@@ -426,7 +461,7 @@ async function deploy() {
 
 // discard puts hemma's own output back to the last save; files hemma doesn't manage are left alone.
 async function discard() {
-  if (!confirm("Discard your unsaved changes? services.yaml and the generated files go back to how they were when last saved. Files hemma doesn't manage are left alone.")) return;
+  if (!await ask("Discard unsaved changes?", "services.yaml and the generated files go back to how they were when last saved. Files hemma doesn't manage are left alone.", { ok: "Discard", danger: true })) return;
   const res = await post("/api/discard", {});
   toastResult("Discard", res, "Changes discarded"); await load();
 }
