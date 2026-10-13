@@ -29,7 +29,7 @@ func TestBuild(t *testing.T) {
 		// flags-first commands
 		{"verify", map[string]any{"all": true, "fqdn": "a.example.com"}, []string{"verify", "--all=true", "a.example.com"}, ""},
 		{"defaults set", map[string]any{"key": "tunnel-dir", "value": "-"}, []string{"defaults", "set", "tunnel-dir", "-"}, ""},
-		{"measure", map[string]any{"target": "https://a.example.com", "runs": float64(3)}, []string{"measure", "--runs=3", "https://a.example.com"}, ""},
+		{"measure", map[string]any{"target": "web", "runs": float64(3)}, []string{"measure", "--runs=3", "web"}, ""},
 		// rejections
 		{"add host", map[string]any{"name": "--evil", "ip": "1.2.3.4"}, nil, "not a valid name"},
 		{"add host", map[string]any{"name": "a b", "ip": "1.2.3.4"}, nil, "not a valid name"},
