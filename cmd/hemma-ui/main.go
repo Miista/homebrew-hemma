@@ -173,7 +173,13 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 		settings = append(settings, map[string]any{"key": ds.Key, "label": ds.Label, "help": ds.Help,
 			"kind": ds.Kind, "clearable": ds.Clearable, "value": values[ds.Key]})
 	}
+	// What a deploy would do on THIS machine, from the same rules `apply` follows (never a guess in the page).
+	selfHost, steps, _ := kernel.ApplySteps(s.repo, filepath.Join(s.repo, "services.yaml"))
+	if steps == nil {
+		steps = []string{}
+	}
 	writeJSON(w, 200, map[string]any{
+		"apply":    map[string]any{"host": selfHost, "steps": steps},
 		"services": svcs, "hosts": hosts, "domains": cfg.DomainNames(), "settings": settings, "version": s.version,
 	})
 }
