@@ -61,10 +61,22 @@ completions: ## regenerate shell completions into completions/
 ui-image: ## build the hemma-ui image (tag: hemma-ui)
 	docker build -f Dockerfile.ui -t hemma-ui .
 
-# The fixture is synthetic. Put FIXTURE_BIND=<address> in hack/ui-fixture/.env (gitignored) to reach it
-# from another device; otherwise it listens on loopback only.
+# The fixture is synthetic. It listens on loopback only, unless you opt in by putting
+# FIXTURE_BIND=<address> in hack/ui-fixture/.env (gitignored) to reach it from another device.
+# FIXTURE_BIND=auto resolves the address for the active Docker runtime (Colima: the VM's address;
+# Docker Desktop: the Mac's LAN address — see hack/ui-fixture/bind-address.sh), so a DHCP change does
+# not silently strand a pinned one. (Never a default: the UI container has the Docker socket.)
+-include hack/ui-fixture/.env
+ifeq ($(FIXTURE_BIND),auto)
+  FIXTURE_BIND := $(shell hack/ui-fixture/bind-address.sh)
+  ifeq ($(FIXTURE_BIND),)
+    $(error FIXTURE_BIND=auto but no address could be determined — set one explicitly in hack/ui-fixture/.env)
+  endif
+endif
+
 fixture-redeploy: ## rebuild + recreate ONLY the hemma-ui container; repo data and your account are kept
-	cd hack/ui-fixture && $(COMPOSE) up -d --build --no-deps hemma-ui
+	cd hack/ui-fixture && FIXTURE_BIND=$(FIXTURE_BIND) $(COMPOSE) up -d --build --no-deps hemma-ui
+	@echo "UI: http://$(if $(FIXTURE_BIND),$(FIXTURE_BIND),127.0.0.1):18080"
 
 fixture-logs: ## follow the hemma-ui container's log
 	cd hack/ui-fixture && $(COMPOSE) logs -f --tail=50 hemma-ui
