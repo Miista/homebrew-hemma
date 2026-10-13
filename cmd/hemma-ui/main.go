@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -99,6 +100,8 @@ func (s *server) routes(gate *authy.Gate) (http.Handler, error) {
 	mux.HandleFunc("POST /api/commit", s.handleCommit)
 	mux.HandleFunc("POST /api/push", s.handlePush)
 	mux.HandleFunc("POST /api/run", s.runCommand)
+	mux.HandleFunc("GET /api/config/raw", s.handleRawGet)
+	mux.HandleFunc("POST /api/config/raw", s.handleRawSave)
 	return gate.Wrap(guard(mux)), nil
 }
 
@@ -120,7 +123,11 @@ func guard(next http.Handler) http.Handler {
 				http.Error(w, "cross-origin request refused", http.StatusForbidden)
 				return
 			}
-			r.Body = http.MaxBytesReader(w, r.Body, 1<<16)
+			limit := int64(1 << 16)
+			if r.URL.Path == "/api/config/raw" {
+				limit = 1 << 20 // a whole services.yaml
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
 		}
 		if strings.HasPrefix(r.URL.Path, "/static/fonts/") {
 			w.Header().Set("Cache-Control", "private, max-age=86400") // fixed font files: no need to refetch on every load
@@ -134,7 +141,8 @@ func guard(next http.Handler) http.Handler {
 func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	cfg, err := config.Load(filepath.Join(s.repo, "services.yaml"))
 	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		// The version rides along so the recovery screen can still show it in the footer.
+		writeJSON(w, 500, map[string]any{"error": err.Error(), "version": s.version})
 		return
 	}
 	names := make([]string, 0, len(cfg.Services))
@@ -256,19 +264,28 @@ func (s *server) configStamp() string {
 // it prints. stdout and stderr share one buffer so the output reads in order,
 // as it did when the hemma binary's combined output was captured.
 func (s *server) runKernel(ctx context.Context, argv []string) (code int, output string) {
+	return s.inKernel(ctx, argv[0], func(kenv *kernel.Env) int {
+		code, known := kernel.Route(kenv, s.repo, filepath.Join(s.repo, "services.yaml"), argv[0], argv[1:])
+		if !known {
+			fmt.Fprintln(kenv.Err, "unknown command")
+			return 2
+		}
+		return code
+	})
+}
+
+// inKernel runs fn with a capturing Env (and the request's deadline), recovering from a panic so a bug in a
+// command cannot take the whole UI down. what only names the work in the log.
+func (s *server) inKernel(ctx context.Context, what string, fn func(*kernel.Env) int) (code int, output string) {
 	var buf syncBuf
 	kenv := &kernel.Env{Out: &buf, Err: &buf, Ctx: ctx, NoTerminal: true}
 	defer func() {
-		// A bug in a command must not take the whole UI down with it.
 		if p := recover(); p != nil {
-			log.Printf("kernel panic running %q: %v", argv[0], p)
+			log.Printf("kernel panic running %q: %v", what, p)
 			code, output = 70, buf.String()+"\ninternal error\n"
 		}
 	}()
-	code, known := kernel.Route(kenv, s.repo, filepath.Join(s.repo, "services.yaml"), argv[0], argv[1:])
-	if !known {
-		return 2, "unknown command\n"
-	}
+	code = fn(kenv)
 	return code, buf.String()
 }
 

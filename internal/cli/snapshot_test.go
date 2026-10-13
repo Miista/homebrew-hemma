@@ -181,6 +181,12 @@ func snapshotCases() []snapCase {
 		sc("add-service-tunnel", "add service newsvc --fqdn newsvc.home.example --host edge --backend newsvc:8080 --tunnel", synced),
 		sc("add-service-public-alias", "add service newsvc --fqdn newsvc.home.example --host edge --backend newsvc:8080 --public", synced),
 		sc("add-service-bypass-paths", "add service newsvc --fqdn newsvc.home.example --host edge --backend newsvc:8080 --auth-mode forward --bypass-paths /healthz,/ping", synced),
+		// Mode none + bypass paths/policy is saved and then skipped by the plan (reported, exit 1). The file hemma
+		// wrote must still be loadable: it once wrote `mode: ""`, which nothing could read back.
+		sc("add-service-none-with-bypass-paths", "add service newsvc --fqdn newsvc.home.example --host edge --backend newsvc:8080 --bypass-paths /api", synced),
+		sc("list-after-add-service-none-with-bypass-paths", "list --all", synced, "add service newsvc --fqdn newsvc.home.example --host edge --backend newsvc:8080 --bypass-paths /api"),
+		sc("doctor-after-add-service-none-with-bypass-paths", "doctor", synced, "add service newsvc --fqdn newsvc.home.example --host edge --backend newsvc:8080 --bypass-paths /api"),
+		sc("update-service-add-bypass-paths-to-unprotected", "update service dash --auth-mode none --bypass-paths /api", synced),
 		sc("add-service-duplicate", "add service dash --fqdn dash2.home.example --host edge --backend dash:3000"),
 		sc("add-service-missing-name", "add service"),
 		sc("add-service-no-flags-non-tty", "add service newsvc"),

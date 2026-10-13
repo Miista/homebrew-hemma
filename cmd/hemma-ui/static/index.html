@@ -35,6 +35,17 @@
   </form>
 </dialog>
 
+<!-- The recovery editor: services.yaml as text, for when the file cannot be loaded and no typed form can run. -->
+<dialog id="edlg" tabindex="-1" autofocus aria-labelledby="etitle">
+  <form method="dialog" id="eform">
+    <h2 id="etitle">Edit services.yaml</h2>
+    <p class="meta" id="ehelp"></p>
+    <textarea id="etext" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="services.yaml"></textarea>
+    <p class="err" id="eerr"></p>
+    <div class="row"><button type="button" id="ecancel">Cancel</button><button class="primary" id="ego">Save</button></div>
+  </form>
+</dialog>
+
 <dialog id="rdlg" tabindex="-1" autofocus>
   <h2 id="rtitle"></h2>
   <pre id="rout"></pre>
@@ -464,8 +475,8 @@ let pending = null;   // /api/diff summary of the unsaved changes (null when the
 function renderDeploy() {
   const b = $("#deploy"), dirty = changes.git && changes.files.length > 0;
   b.textContent = deploying ? (changes.has_remote ? "Deploying…" : "Applying…") : "Deploy";
-  b.disabled = deploying || dirty;
-  b.title = dirty ? "Save or discard your changes first" : "Pull from origin and make it live on this machine";
+  b.disabled = deploying || dirty || broken;
+  b.title = broken ? "Fix services.yaml first" : dirty ? "Save or discard your changes first" : "Pull from origin and make it live on this machine";
 }
 $("#deploy").onclick = () => deploy();
 // deployMessage says what THIS deploy will do, from what is configured — not a fixed list that
@@ -656,9 +667,52 @@ function render() {
   renderDeploy();
   renderBar();
 }
+// ── Recovery: services.yaml cannot be loaded ──────────────────────────────────────────────────────────────────
+// Every typed form needs a loadable file, so none of them can fix this. Offer what can: put back the last saved
+// version (the usual cause is an unsaved change), or edit the file as text.
+let broken = false;
+const parseReason = e => (e || "").replace(/^parse \S+: /, "");
+async function showRecovery(error, version) {
+  broken = true;
+  state = { services: [], hosts: [], domains: [], settings: [], version };
+  changes = await (await fetch("/api/changes")).json().catch(() => ({ git: false, files: [] }));
+  $("#tabs").replaceChildren(); $("#summary").textContent = ""; $("#savebar").hidden = true; $("#view").classList.remove("has-fab");
+  const card = el("div", null, { className: "recover" });
+  card.append(el("h2", "services.yaml can't be read"),
+    el("p", "hemma can't load the file, so it can't show or change anything until the file is fixed.", { className: "meta" }),
+    el("pre", parseReason(error), { className: "reason" }));
+  const row = el("div", null, { className: "row" });
+  if (changes.git && changes.files.length) row.append(btn("Discard unsaved changes", async () => { await discard(); }));
+  row.append(btn("Edit services.yaml", () => openRaw(), "primary"));
+  card.append(row);
+  if (changes.git && changes.files.length) card.append(el("p", "Discard puts services.yaml back to how it was when you last saved. The unsaved change is what broke it, if you made one.", { className: "meta" }));
+  $("#view").replaceChildren(card);
+  $("#foot").replaceChildren(state.version || "", " · ", Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" }));
+  renderDeploy();
+}
+async function openRaw() {
+  const r = await fetch("/api/config/raw"); const raw = await r.json();
+  $("#etext").value = raw.text || ""; $("#eerr").textContent = "";
+  $("#ehelp").textContent = raw.error ? `It does not load yet: ${parseReason(raw.error)}` : "Saving checks that the file loads; text that does not is not saved.";
+  $("#ego").disabled = false;
+  $("#ecancel").onclick = () => $("#edlg").close();
+  $("#ego").onclick = async e => {
+    e.preventDefault(); $("#ego").disabled = true;
+    try {
+      const res = await post("/api/config/raw", { text: $("#etext").value });
+      if (!res.ok && !res.changed) { $("#eerr").textContent = formError(res.output); return; }   // refused: nothing saved, keep editing
+      await load(); $("#edlg").close();
+      if (res.ok) toast("services.yaml saved", "ok");
+      else toast("services.yaml saved, but hemma skipped something", "warn", { title: "services.yaml", text: res.output });
+    } finally { $("#ego").disabled = false; }
+  };
+  openModal($("#edlg"));
+}
+
 async function load() {
   const r = await fetch("/api/state"); const s = await r.json();
-  if (s.error) { toast("Could not load services.yaml", "err", { title: "Could not load", text: s.error }); return; }
+  if (s.error) { await showRecovery(s.error, s.version); return; }
+  broken = false;
   state = s;
   changes = await (await fetch("/api/changes")).json();
   pending = null;

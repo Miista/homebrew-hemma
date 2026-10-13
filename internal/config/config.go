@@ -222,9 +222,17 @@ func (p AuthPolicy) MarshalYAML() (any, error) {
 	return policyWire{Local: string(p.Local), Public: string(p.Public)}, nil
 }
 
-// authWire is the mapping (long) YAML form of Auth.
+// authWire is the mapping (long) YAML form of Auth, as written.
 type authWire struct {
 	Mode        string     `yaml:"mode"`
+	Groups      []string   `yaml:"groups,omitempty"`
+	BypassPaths []string   `yaml:"bypass_paths,omitempty"`
+	Policy      AuthPolicy `yaml:"policy,omitempty"`
+}
+
+// authRead is the same mapping as read; Mode is a pointer so a missing key can be told from an empty one.
+type authRead struct {
+	Mode        *string    `yaml:"mode"`
 	Groups      []string   `yaml:"groups,omitempty"`
 	BypassPaths []string   `yaml:"bypass_paths,omitempty"`
 	Policy      AuthPolicy `yaml:"policy,omitempty"`
@@ -250,14 +258,17 @@ func (a *Auth) UnmarshalYAML(value *yaml.Node) error {
 	}
 	// Mapping form: {mode: ..., groups: [...]}.
 	if value.Kind == yaml.MappingNode {
-		var w authWire
+		var w authRead
 		if err := value.Decode(&w); err != nil {
 			return fmt.Errorf("auth object form: %w", err)
 		}
-		if w.Mode == "" {
+		// A MISSING mode is still an error: `auth: {groups: [x]}` must not silently read as "no auth".
+		// An EXPLICIT empty one (`mode: ""`) is accepted as none: it is what hemma itself wrote before
+		// MarshalYAML spelled the none mode out, so it must stay readable.
+		if w.Mode == nil {
 			return fmt.Errorf("auth object form requires a mode (forward, oidc, external, or none)")
 		}
-		mode, err := parseAuthMode(w.Mode)
+		mode, err := parseAuthMode(*w.Mode)
 		a.Mode, a.Groups, a.BypassPaths, a.Policy = mode, w.Groups, w.BypassPaths, w.Policy
 		return err
 	}
@@ -277,7 +288,13 @@ func (a Auth) MarshalYAML() (any, error) {
 	if len(a.Groups) == 0 && len(a.BypassPaths) == 0 && a.Policy.IsZero() {
 		return string(a.Mode), nil
 	}
-	return authWire{Mode: string(a.Mode), Groups: a.Groups, BypassPaths: a.BypassPaths, Policy: a.Policy}, nil
+	// The none mode is the empty string internally; in the mapping form it is spelled out, because the
+	// reader requires a mode there. Writing the raw "" made hemma emit a file it then refused to load.
+	mode := string(a.Mode)
+	if a.Mode == AuthNone {
+		mode = "none"
+	}
+	return authWire{Mode: mode, Groups: a.Groups, BypassPaths: a.BypassPaths, Policy: a.Policy}, nil
 }
 
 // IsZero lets yaml's omitempty drop `auth:` entirely for unprotected services
@@ -544,6 +561,12 @@ func Load(path string) (*Config, error) {
 		}
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
+	return Parse(data, path)
+}
+
+// Parse reads services.yaml text (path is only used to name it in errors and to remember where it lives).
+// It is Load without the file read, so a front end can check text BEFORE writing it.
+func Parse(data []byte, path string) (*Config, error) {
 	var w wireConfig
 	if err := yaml.Unmarshal(data, &w); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)

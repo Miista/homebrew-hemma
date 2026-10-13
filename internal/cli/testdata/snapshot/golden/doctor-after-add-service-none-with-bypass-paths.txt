@@ -1,0 +1,16 @@
+$ hemma doctor
+# setup: doctor --fix ; add service newsvc --fqdn newsvc.home.example --host edge --backend newsvc:8080 --bypass-paths /api
+exit: 0
+--- stdout ---
+Skipped gitignore check (git not available or not a repository).
+✓ Generated files are in sync with services.yaml.
+
+⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
+
+⚠ could not verify OIDC client for wikijs: open core/authelia/data/config/configuration.yml: no such file or directory
+
+⚠ could not verify that Authelia loads the generated hemma.access_control.generated.yml: open core/docker-compose.yml: no such file or directory
+
+These advisories require manual edits (see their fix: lines) — 'hemma doctor --fix' does not resolve them.
+--- stderr ---
+--- files ---
