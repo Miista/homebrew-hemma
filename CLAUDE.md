@@ -199,6 +199,9 @@ A deliberately small web UI for one host (image: `Dockerfile.ui`; compose + synt
   `TestIssues_…` pins it to the real output) — what `--fix` cannot resolve (advisories, known_hosts, …) is just
   listed. Successful changes are confirmed with a plain toast: the warnings a sync prints are repo-wide advisories,
   not about that change, and belong on Issues.
+- **Four pages, one job each:** Services (the list), Infrastructure (hosts + domains), Issues (doctor, plus the
+  Verify/Measure tools), Settings (the defaults; always last). The unsaved-change badge on a tab counts that page's
+  entities (`diff.go` kinds: Service → Services, Host/Domain → Infrastructure, Setting → Settings).
 - **Phones are the primary screen:** keep fields at 16px (iOS zoom), tables become cards under 640px, and
   nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
 - **Look and feel:** the same design language as reaparr/albumreq (Geist, violet accent, glow, glass bars, the

@@ -95,19 +95,21 @@ let changes = { git: false, files: [] };
 let state = { services: [], hosts: [], domains: [], settings: [] };
 let cmds = {};
 let tab = "Services";
-const TABS = ["Services", "Issues", "Settings"];   // Settings (hosts, domains, defaults) comes last
+const TABS = ["Services", "Infrastructure", "Issues", "Settings"];   // Infrastructure = hosts + domains; Settings (the defaults) comes last
 // Menu icons: the same outline style as albumreq's bottom menu (shown above the label on a phone, hidden on a wide screen).
 const ICON = (inner) => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 const ICONS = {
   Services: ICON('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path>'),
+  Infrastructure: ICON('<rect x="3" y="4" width="18" height="6.5" rx="1.8"></rect><rect x="3" y="13.5" width="18" height="6.5" rx="1.8"></rect><path d="M7 7.25h.01M7 16.75h.01"></path>'),
   Issues: ICON('<path d="M12 3.5L2.5 20h19L12 3.5z"></path><path d="M12 10v4M12 17h.01"></path>'),
   Settings: ICON('<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>'),
 };
-// A badge says where the unsaved changes are: services on Services, hosts/domains/defaults on Settings.
+// A badge says where the unsaved changes are: services on Services, hosts and domains on Infrastructure, defaults on Settings.
 function tabBadge(t) {
   const es = pending ? pending.entities : [];
   if (t === "Services") return es.filter(e => e.kind === "Service").length;
-  if (t === "Settings") return es.filter(e => e.kind !== "Service").length;
+  if (t === "Infrastructure") return es.filter(e => e.kind === "Host" || e.kind === "Domain").length;
+  if (t === "Settings") return es.filter(e => e.kind === "Setting").length;
   if (t === "Issues") return issues.count;
   return 0;
 }
@@ -769,10 +771,15 @@ const VIEWS = {
     });
     return [table(["Setting", "Value", ""], rows)];
   },
-  // General settings: the three things that describe the setup itself, one section each.
-  Settings() {
+  // Infrastructure: what the services run on and under — the hosts and the domains, one section each.
+  Infrastructure() {
     const sec = (id, title, nodes) => { const s = el("section", null, { id: `sec-${id}`, className: "sec" }); s.append(el("h2", title), ...nodes); return s; };
-    return [sec("hosts", "Hosts", VIEWS.Hosts()), sec("domains", "Domains", VIEWS.Domains()), sec("defaults", "Defaults", VIEWS.Defaults())];
+    return [sec("hosts", "Hosts", VIEWS.Hosts()), sec("domains", "Domains", VIEWS.Domains())];
+  },
+  // Settings: the repo-wide defaults (their own page now, so no extra heading above the one table).
+  Settings() {
+    const s = el("section", null, { id: "sec-defaults", className: "sec" }); s.append(...VIEWS.Defaults());
+    return [s];
   },
   Issues() {
     // Checks you can run yourself: tools, not issues, so they sit under their own heading.
