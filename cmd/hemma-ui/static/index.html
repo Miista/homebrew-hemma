@@ -437,13 +437,14 @@ $("#deploy").onclick = () => deploy();
 // deployMessage says what THIS deploy will do, from what is configured — not a fixed list that
 // mentions an auth provider the host does not have.
 function deployMessage(key) {
-  const set = k => (state.settings.find(s => s.key === k) || {}).value;
-  const steps = ["restart pihole", "reload caddy"];
-  if (set("auth-service")) steps.push(`restart the auth provider (${set("auth-service")})`);
-  if (set("tunnel-dir")) steps.push("restart cloudflared");
+  // The steps come from the server, which asks the same rules `apply` follows for THIS machine
+  // (the resolver restarts pihole, a service host reloads caddy, the host that runs the auth provider restarts it, …).
+  const a = state.apply || { host: "", steps: [] }, steps = a.steps;
+  const pull = key === "deploy" ? "Pulls from origin, then " : "";
+  if (!a.host) return `${pull}${pull ? "t" : "T"}his machine matches no host in services.yaml, so there is nothing to make live here.`;
+  if (!steps.length) return `${pull}${pull ? "t" : "T"}here is nothing to restart on ${a.host}: it is neither the resolver nor a service host.`;
   const list = steps.length > 1 ? steps.slice(0, -1).join(", ") + " and " + steps[steps.length - 1] : steps[0];
-  const live = `makes the saved config live on this machine: ${list}.`;
-  return key === "deploy" ? `Pulls from origin, then ${live}` : `This ${live}`;
+  return `${pull}${pull ? "m" : "M"}akes the saved config live on ${a.host}: ${list}.`;
 }
 async function deploy() {
   if (deploying) return;

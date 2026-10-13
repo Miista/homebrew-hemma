@@ -2,11 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"hemma/internal/cli/kernel"
+	"hemma/internal/config"
 )
 
 // repoWithConfig builds a minimal valid hemma repo (synthetic data only).
@@ -93,5 +98,34 @@ func TestRunKernel_DeadlineKillsExternalCommands(t *testing.T) {
 	}
 	if d := time.Since(start); d > 5*time.Second {
 		t.Errorf("deadline did not stop the command: took %s", d)
+	}
+}
+
+// /api/state carries what a deploy would do on THIS machine, from the kernel's own
+// rules, so the confirmation dialog never promises a restart that will not happen.
+func TestState_ReportsWhatDeployWouldDoHere(t *testing.T) {
+	s := repoWithConfig(t)
+	call := func() map[string]any {
+		rec := httptest.NewRecorder()
+		s.state(rec, httptest.NewRequest("GET", "/api/state", nil))
+		var out map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("state: %v\n%s", err, rec.Body.String())
+		}
+		return out["apply"].(map[string]any)
+	}
+
+	// A machine that is no declared host: nothing to do, and the list is an empty array (never null).
+	defer kernel.SetLocalHost(func(*config.Config) string { return "" })()
+	if a := call(); a["host"] != "" || len(a["steps"].([]any)) != 0 {
+		t.Errorf("unknown machine: %v", a)
+	}
+
+	// The resolver restarts pihole.
+	kernel.SetLocalHost(func(*config.Config) string { return "resolver" })
+	a := call()
+	steps := a["steps"].([]any)
+	if a["host"] != "resolver" || len(steps) != 1 || steps[0] != "restart pihole" {
+		t.Errorf("resolver: %v", a)
 	}
 }

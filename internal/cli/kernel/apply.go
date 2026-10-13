@@ -60,26 +60,16 @@ func cmdApply(env *Env, repoRoot, cfgPath string, args []string) int {
 	}
 	fmt.Fprintf(env.Out, "Running on host %q.\n", self)
 
-	isDNS := self == cfg.DNSHost()
-	runsCaddy := hostRunsCaddy(cfg, self)
-	runsTunnel := hostHasPublicService(repoRoot, cfg, self)
+	plan := planApply(repoRoot, cfg, self)
+	isDNS, runsCaddy, runsTunnel := plan.DNS, plan.Caddy, plan.Tunnel
 
 	if !isDNS && !runsCaddy {
 		fmt.Fprintf(env.Out, "Nothing to apply here: %q is neither the resolver (%s) nor a service host.\n", self, cfg.DNSHost())
 		return 0
 	}
 
-	// Resolve the auth half up front so validation can run before ANY restart.
-	var authName string
-	var authValidate, authReload []string
-	if name := cfg.Defaults.AuthService; name != "" {
-		if s, ok := cfg.Services[name]; ok && s.Host == self && !s.Disabled {
-			validate, reload := auth.Default().ApplyCommands(name)
-			if reload != nil {
-				authName, authValidate, authReload = name, validate, reload
-			}
-		}
-	}
+	// The auth half is resolved up front so validation can run before ANY restart.
+	authName, authValidate, authReload := plan.Auth, plan.AuthValidate, plan.AuthReload
 
 	const cf = "/etc/caddy/Caddyfile"
 
@@ -194,6 +184,71 @@ func cmdApply(env *Env, repoRoot, cfgPath string, args []string) int {
 	}
 	fmt.Fprintln(env.Out, "Applied.")
 	return 0
+}
+
+// applyPlan is what `apply` does on one host. It is the single source of truth
+// for the decision: cmdApply runs it, and a front end that wants to say what a
+// deploy is about to do (ApplySteps) asks the same function, so the two cannot
+// disagree.
+type applyPlan struct {
+	DNS    bool // restart pihole: this host is the resolver
+	Caddy  bool // reload caddy: this host serves a (non-disabled) service
+	Tunnel bool // restart cloudflared: this host has a public (tunnel) service
+
+	// Auth is the auth service validated and restarted HERE ("" when none): it must be set,
+	// enabled, and run on this host — otherwise some other host owns that restart.
+	Auth         string
+	AuthValidate []string
+	AuthReload   []string
+}
+
+func planApply(repoRoot string, cfg *config.Config, self string) applyPlan {
+	p := applyPlan{
+		DNS:    self == cfg.DNSHost(),
+		Caddy:  hostRunsCaddy(cfg, self),
+		Tunnel: hostHasPublicService(repoRoot, cfg, self),
+	}
+	if name := cfg.Defaults.AuthService; name != "" {
+		if s, ok := cfg.Services[name]; ok && s.Host == self && !s.Disabled {
+			validate, reload := auth.Default().ApplyCommands(name)
+			if reload != nil {
+				p.Auth, p.AuthValidate, p.AuthReload = name, validate, reload
+			}
+		}
+	}
+	return p
+}
+
+// ApplySteps says, in plain words, what `apply` (and so `deploy`) will do on
+// THIS machine: the host it matched and the actions, in order. host is "" when
+// the machine matches no declared host; steps is empty when there is nothing to
+// do here. It never changes anything.
+func ApplySteps(repoRoot, cfgPath string) (host string, steps []string, err error) {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return "", nil, err
+	}
+	host = localHost(cfg)
+	if host == "" {
+		return "", nil, nil
+	}
+	p := planApply(repoRoot, cfg, host)
+	if !p.DNS && !p.Caddy {
+		return host, nil, nil
+	}
+	if p.DNS {
+		steps = append(steps, "restart pihole")
+	}
+	if p.Caddy {
+		steps = append(steps, "reload caddy")
+	}
+	if p.Auth != "" {
+		steps = append(steps, "restart the auth provider ("+p.Auth+")")
+	}
+	if p.Tunnel {
+		steps = append(steps, "restart cloudflared")
+	}
+	return host, steps, nil
 }
 
 // hostRunsCaddy reports whether host serves any (non-disabled) service, i.e. a
