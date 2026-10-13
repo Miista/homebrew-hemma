@@ -10,7 +10,7 @@ GOFILES  = cmd internal tools
 .DEFAULT_GOAL := help
 .PHONY: help build hemma check fmt fmt-check vet test test-fast test-race \
         snapshots snapshots-update man completions \
-        ui-image fixture-redeploy fixture-logs fixture-verify fixture-ps fixture-reset clean
+        ui-image fixture-redeploy fixture-logs fixture-verify fixture-import fixture-ps fixture-reset clean
 
 help: ## list the targets
 	@awk 'BEGIN{FS=":.*## "} /^[a-zA-Z_-]+:.*## /{printf "  \033[1m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -83,6 +83,10 @@ fixture-logs: ## follow the hemma-ui container's log
 
 fixture-verify: ## read-only: did the last Deploy leave the running stack matching the repo?
 	cd hack/ui-fixture && ./verify.sh
+
+fixture-import: ## put a NEUTRALIZED copy of a real services.yaml into the fixture: SRC=<path>. Backs up first
+	@[ -n "$(SRC)" ] || { echo "usage: make fixture-import SRC=<path to a services.yaml>"; exit 2; }
+	hack/ui-fixture/import.sh "$(SRC)"
 
 fixture-ps: ## fixture containers and their status
 	cd hack/ui-fixture && $(COMPOSE) ps
