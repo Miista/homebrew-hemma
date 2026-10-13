@@ -126,6 +126,18 @@ function toast(msg, kind, details) {
 // Browsers focus the first field of a modal dialog by default (and a phone then pops its keyboard).
 // Focus the dialog itself instead: nothing is pre-selected, Tab and Escape still work.
 function openModal(d) { d.showModal(); d.focus({ preventScroll: true }); }
+// ⌘↩ (Mac) / Ctrl+↩ (everywhere else) submits a form dialog from anywhere inside it — including the message box,
+// where a plain Enter has to stay a newline. Only the dialogs that SAVE something: never the confirmations, so a
+// destructive question can't be answered by a stray shortcut. A disabled button (nothing to save yet) is respected.
+const SUBMIT_KEY = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘↩" : "Ctrl+↩";
+for (const [dialog, go] of [["#cdlg", "#cgo"], ["#dlg", "#go"], ["#edlg", "#ego"]]) {
+  $(go).title = `Submit (${SUBMIT_KEY})`;
+  $(dialog).addEventListener("keydown", e => {
+    if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey) || e.isComposing || $(go).disabled) return;
+    e.preventDefault(); $(go).click();
+  });
+}
+
 // ask: the app's own confirmation dialog. Resolves true on the action button, false on Cancel / Esc / the backdrop.
 function ask(title, message, { ok = "OK", danger = false } = {}) {
   return new Promise(resolve => {
