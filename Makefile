@@ -10,7 +10,7 @@ GOFILES  = cmd internal tools
 .DEFAULT_GOAL := help
 .PHONY: help build hemma check fmt fmt-check vet test test-fast test-race \
         snapshots snapshots-update man completions \
-        ui-image fixture-redeploy fixture-logs fixture-verify fixture-import fixture-ps fixture-reset clean
+        ui-image fixture-redeploy fixture-logs fixture-verify fixture-import fixture-import-authelia fixture-ps fixture-reset clean
 
 help: ## list the targets
 	@awk 'BEGIN{FS=":.*## "} /^[a-zA-Z_-]+:.*## /{printf "  \033[1m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -87,6 +87,10 @@ fixture-verify: ## read-only: did the last Deploy leave the running stack matchi
 fixture-import: ## put a NEUTRALIZED copy of a real services.yaml into the fixture: SRC=<path>. Backs up first
 	@[ -n "$(SRC)" ] || { echo "usage: make fixture-import SRC=<path to a services.yaml>"; exit 2; }
 	hack/ui-fixture/import.sh "$(SRC)"
+
+fixture-import-authelia: ## give the fixture a SECRET-FREE Authelia config from a real one piped on stdin; SERVICES=<real services.yaml>
+	@[ -n "$(SERVICES)" ] || { echo "usage: ssh <host> 'cat …/configuration.yml' | make fixture-import-authelia SERVICES=<real services.yaml>"; exit 2; }
+	hack/ui-fixture/import-authelia.sh "$(SERVICES)"
 
 fixture-ps: ## fixture containers and their status
 	cd hack/ui-fixture && $(COMPOSE) ps
