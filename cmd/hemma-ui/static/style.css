@@ -26,6 +26,7 @@
   --violet: oklch(0.55 0.2 290);   --violet-hover: oklch(0.6 0.2 290);
   --violet-text: oklch(0.46 0.2 290);  --violet-bg: oklch(0.94 0.04 290);  --violet-ring: oklch(0.6 0.2 290 / .22);
   --red: oklch(0.55 0.2 25);   --red-text: oklch(0.5 0.19 25);
+  --red-fill: oklch(0.55 0.2 25);   /* the fill behind WHITE text on a destructive button: 5.4:1 in both themes (dark's lighter --red is only 4.0:1) */
   --green-text: oklch(0.43 0.13 155);  --amber-text: oklch(0.48 0.13 70);  --amber-line: oklch(0.7 0.15 75 / .6);
   --del-bg: oklch(0.9 0.06 25);   --add-bg: oklch(0.92 0.07 155);
   --tile-a: #e6dffb;  --tile-b: #b5a3ee;   /* the brand tile: pale on a dark page, a stronger violet on a light one */
@@ -72,7 +73,7 @@ code { font-family: var(--mono); }
 :where(button.primary) { border: 0; background: var(--violet); color: #fff; padding: 9px 18px; }
 :where(button.primary:hover:not(:disabled)) { background: var(--violet-hover); }
 /* destructive actions look neutral until you reach for them (as in reaparr) */
-:where(button.danger:hover:not(:disabled)) { background: var(--red); border-color: var(--red); color: #fff; }
+:where(button.danger:hover:not(:disabled)) { background: var(--red-fill); border-color: var(--red-fill); color: #fff; }
 
 :where(input:not([type=checkbox]), select, textarea) { font: inherit; font-size: 15px; width: 100%; min-width: 0; padding: 10px 12px; border-radius: 10px;
                          border: 1px solid var(--border-2); background: var(--field); color: var(--text); outline: none; transition: border-color .15s; }
@@ -140,8 +141,11 @@ dialog::backdrop { background: rgba(5, 6, 10, .55); -webkit-backdrop-filter: blu
 dialog h2 { margin: 0 0 4px; font-size: 20px; }
 dialog .meta { margin: 0 0 4px; }
 dialog button { border-radius: 10px; }
-#kdlg { width: min(440px, calc(100vw - 32px)); }   /* the confirmation: a short question, narrower than the forms */
+dialog:focus { outline: none; }   /* the box itself takes focus when it opens; only the controls inside show a focus ring */
+@media (min-width: 641px) { #kdlg { width: min(440px, calc(100vw - 32px)); } }   /* the confirmation: a short question, narrower than the forms (on a phone every dialog shares one width) */
 #kdlg p { margin: 8px 0 22px; line-height: 1.5; }
+/* A destructive confirmation is red AT REST: a phone has no hover, so "red on hover" would never tell you. */
+#kgo.danger { background: var(--red-fill); border-color: var(--red-fill); color: #fff; }
 .fqdn { display: flex; gap: 6px; align-items: center; } .fqdn input { flex: 1 1 40%; } .fqdn select { flex: 1 1 55%; }
 
 /* ---------- list editor, file tree ---------- */
@@ -223,10 +227,8 @@ body.with-bar { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
   .tree button { padding: 8px 10px; }
   .tree { max-height: 38vh; }
   /* dialogs: nearly the full screen instead of a floating box */
-  dialog { width: calc(100vw - 16px); min-width: 0; max-width: none; max-height: calc(100dvh - 16px); margin: 8px auto; padding: 16px 16px 18px; overflow-y: auto; border-radius: 16px; }
-  dialog h2 { font-size: 19px; margin: 0 0 4px; }
-  #kdlg { margin: auto auto calc(12px + env(safe-area-inset-bottom)); }   /* the question sits at the bottom, under the thumb, like a sheet */
-  dialog .row { flex-wrap: wrap; } dialog .row button { flex: 1 1 auto; }
+  dialog { width: calc(100vw - 16px); min-width: 0; max-width: none; max-height: calc(100dvh - 16px); margin: auto auto calc(8px + env(safe-area-inset-bottom)); padding: 16px 16px 18px; overflow-y: auto; border-radius: 16px; }   /* every dialog is a sheet at the bottom: its buttons are under the thumb, and a tall form simply fills the screen */
+  dialog h2 { font-size: 19px; margin: 0 0 4px; }  dialog .row { flex-wrap: wrap; } dialog .row button { flex: 1 1 auto; }
   .cdiff { max-height: 42vh; } pre { max-height: 40vh; }
   .toast { top: calc(8px + env(safe-area-inset-top)); width: calc(100vw - 16px); max-width: none; justify-content: space-between; }
   .cards { margin: 8px 0; } .cards button { flex: 1 1 auto; }
