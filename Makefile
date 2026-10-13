@@ -10,7 +10,7 @@ GOFILES  = cmd internal tools
 .DEFAULT_GOAL := help
 .PHONY: help build hemma check fmt fmt-check vet test test-fast test-race \
         snapshots snapshots-update man completions \
-        ui-image fixture-redeploy fixture-logs fixture-ps fixture-reset clean
+        ui-image fixture-redeploy fixture-logs fixture-verify fixture-ps fixture-reset clean
 
 help: ## list the targets
 	@awk 'BEGIN{FS=":.*## "} /^[a-zA-Z_-]+:.*## /{printf "  \033[1m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -68,6 +68,9 @@ fixture-redeploy: ## rebuild + recreate ONLY the hemma-ui container; repo data a
 
 fixture-logs: ## follow the hemma-ui container's log
 	cd hack/ui-fixture && $(COMPOSE) logs -f --tail=50 hemma-ui
+
+fixture-verify: ## read-only: did the last Deploy leave the running stack matching the repo?
+	cd hack/ui-fixture && ./verify.sh
 
 fixture-ps: ## fixture containers and their status
 	cd hack/ui-fixture && $(COMPOSE) ps
