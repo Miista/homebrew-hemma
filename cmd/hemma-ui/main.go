@@ -10,7 +10,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -201,6 +203,9 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	argv, err := c.build(in.Values)
 	if err == nil {
+		err = checkAuthFields(c, in.Values)
+	}
+	if err == nil {
 		err = s.checkState(c, in.Values)
 	}
 	if err != nil {
@@ -220,15 +225,30 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), c.Timeout)
 	defer cancel()
+	before := s.configStamp()
 	code, out := s.runKernel(ctx, argv)
 	ok := code == 0
 	if ctx.Err() != nil {
 		ok = false
 		out += "\n(timed out)\n"
 	}
+	// A non-zero exit does not mean "nothing happened": hemma saves a change and THEN reports entries it
+	// skipped. The page needs to tell "refused, nothing saved" (stay in the form) from "saved, with
+	// problems" (close the form, refresh, warn), so say whether services.yaml moved.
+	changed := !c.ReadOnly && s.configStamp() != before
 	// Log the command key only: arguments and output can carry secrets.
-	log.Printf("run %q -> exit=%d", c.Key, code)
-	writeJSON(w, 200, map[string]any{"ok": ok, "output": out})
+	log.Printf("run %q -> exit=%d changed=%v", c.Key, code, changed)
+	writeJSON(w, 200, map[string]any{"ok": ok, "output": out, "changed": changed})
+}
+
+// configStamp fingerprints services.yaml (empty when unreadable) to detect that a command changed it.
+func (s *server) configStamp() string {
+	b, err := os.ReadFile(filepath.Join(s.repo, "services.yaml"))
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }
 
 // runKernel runs one command (argv as built from the allowlist: command word

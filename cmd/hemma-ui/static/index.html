@@ -262,6 +262,10 @@ function fileTree(selected, onpick) {
   return { node, get: () => sel };
 }
 
+// formError: what to say in a form when a command refused. The CLI's report starts "Error: …" and may carry
+// follow-up lines (usage, hints) — the form needs the reason, not the report.
+const formError = out => (out || "").trim().split(/\n\s*\n|\n(?=Usage:|Run |Hint)/)[0].replace(/^Error:\s*/, "");
+
 // slug turns a service name into a DNS label: "Paper Less_1" → "paper-less-1".
 const slug = s => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
@@ -332,8 +336,15 @@ function openCmd(key, prefill = {}) {
     if (fd.kind === "list") lab.append(el("div", title, { className: "fl" }), k.node);
     else if (k.inline) { lab.className = "switchrow"; lab.append(el("span", fd.label), k.node); }   // label on the left, the switch on the right
     else lab.append(k.node);
-    box.append(lab); ctl.push({ fd, k });
+    box.append(lab); ctl.push({ fd, k, lab });
   }
+  // Fields that only mean something for some value of another field (auth groups, bypass paths and policy
+  // depend on the auth mode) are offered only then — the form cannot build a combination hemma would skip.
+  const byName = Object.fromEntries(ctl.map(x => [x.fd.name, x]));
+  const offered = x => { if (!x.fd.shows) return true; const [dep, vals] = x.fd.shows.split("="); return vals.split("|").includes(byName[dep]?.k.get() ?? ""); };
+  const syncShown = () => ctl.forEach(x => { if (x.fd.shows) x.lab.hidden = !offered(x); });
+  for (const dep of new Set(ctl.filter(x => x.fd.shows).map(x => x.fd.shows.split("=")[0]))) byName[dep]?.k.node.addEventListener("change", syncShown);
+  syncShown();
   // A new service: the name is usually the address too ("paperless" → paperless.example.com), so offer it as a courtesy.
   if (key === "add service") {
     const name = ctl.find(x => x.fd.name === "name"), addr = ctl.find(x => x.k.suggest);
@@ -341,10 +352,14 @@ function openCmd(key, prefill = {}) {
   }
   $("#go").onclick = async e => {
     e.preventDefault();
-    const errs = ctl.map(({ k }) => k.check()).filter(Boolean);
+    const errs = ctl.filter(offered).map(({ k }) => k.check()).filter(Boolean);
     if (errs.length) { $("#derr").textContent = errs[0]; return; }
     const values = {};
-    for (const { fd, k } of ctl) {
+    for (const x of ctl) {
+      const { fd, k } = x;
+      // A field that is not offered is not sent — except on update, where it is sent EMPTY so that
+      // switching the mode away from one that used it also clears what it left behind.
+      if (!offered(x)) { if (c.update) values[fd.name] = ""; continue; }
       const v = k.get();
       if (fd.kind === "bool" || fd.kind === "int" && v !== "") values[fd.name] = v;
       else if (fd.kind !== "int" && (v !== "" || c.update)) values[fd.name] = v;
@@ -356,7 +371,14 @@ function openCmd(key, prefill = {}) {
       // A rejected request (HTTP 400) is a problem with what was entered: say so in the form. But a
       // diagnostic that ran and found problems (verify, doctor) has produced its RESULT: show that.
       const diagnostic = c.readonly || key === "doctor";
-      if (!res.ok && !(diagnostic && res.status === 200)) { $("#derr").textContent = res.output; return; }
+      if (!res.ok && res.changed) {
+        // hemma SAVED the change and then reported a problem (typically: the entry was skipped, so nothing was
+        // generated for it). That is not "the form failed": close it, refresh, and put the report behind Details.
+        await load(); $("#dlg").close();
+        toast(`${c.title}: saved, but hemma skipped it`, "warn", { title: c.title, text: res.output });
+        return;
+      }
+      if (!res.ok && !(diagnostic && res.status === 200)) { $("#derr").textContent = formError(res.output); return; }
       if (!c.readonly) await load();   // refresh behind the dialog first, so no stale value flashes
       $("#dlg").close(); notify(key, res);
     } finally { $("#go").disabled = false; }
