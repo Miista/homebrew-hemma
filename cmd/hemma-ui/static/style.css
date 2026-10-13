@@ -158,6 +158,22 @@ dialog::backdrop { background: rgba(5, 6, 10, .55); -webkit-backdrop-filter: blu
 dialog h2 { margin: 0 0 4px; font-size: 20px; }
 dialog .meta { margin: 0 0 4px; }
 dialog button { border-radius: 10px; }
+/* Issues: what `hemma doctor` says, each finding in its own card */
+.issues-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 16px 0 6px; }
+.issues-head strong { font-size: 18px; }
+.issues-head .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.issuelist { margin: 8px 0 4px; }
+.issue { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--border); border-left: 4px solid var(--amber-line); border-radius: 12px; background: var(--surface); }
+.issue.err { border-left-color: var(--red); }
+.issue.note { border-left-color: var(--border-2); }
+.issue pre { margin: 0; padding: 0; border: 0; background: none; max-height: none; font: 13px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+.issue.note pre { color: var(--muted); }
+details.passed { margin: 10px 0; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+details.passed summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+details.passed pre { margin: 10px 0 0; padding: 0; border: 0; background: none; max-height: none; font: 13px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+.subhead { margin: 28px 0 0; font-size: 16px; }
+nav .count.warn { background: var(--red-fill); }
+
 /* the recovery screen: services.yaml cannot be loaded */
 .recover { margin: 24px 0; padding: 20px; border: 1px solid var(--border-2); border-radius: 18px; background: var(--surface); }
 .recover h2 { margin: 0 0 4px; font-size: 20px; }
