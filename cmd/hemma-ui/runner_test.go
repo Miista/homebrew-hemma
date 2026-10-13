@@ -302,3 +302,73 @@ func TestRunCommand_ChangesFinishWhenTheBrowserLeaves_ReadsDoNot(t *testing.T) {
 		t.Errorf("a read-only command should stop when the browser leaves; it ran %s", took)
 	}
 }
+
+// The Issues page lists exactly what `hemma doctor` says, and offers `doctor --fix` ONLY where doctor itself says
+// --fix can help. This runs the real doctor over real situations so a change to its wording breaks a test, instead of
+// quietly hiding the Fix button or showing one that does nothing.
+func TestIssues_ListDoctorVerbatim_FixOnlyWhereDoctorSaysSo(t *testing.T) {
+	s := repoWithConfig(t)
+	// no git on PATH: doctor then skips its gitignore check, which is fine here
+	t.Setenv("PATH", t.TempDir())
+	issues := func() (out string, ok, fixable bool) {
+		rec := httptest.NewRecorder()
+		s.handleIssues(rec, httptest.NewRequest("GET", "/api/issues", nil))
+		var j struct {
+			OK      bool   `json:"ok"`
+			Output  string `json:"output"`
+			Fixable bool   `json:"fixable"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &j); err != nil {
+			t.Fatalf("%v\n%s", err, rec.Body.String())
+		}
+		return j.Output, j.OK, j.Fixable
+	}
+	run := func(argv ...string) {
+		t.Helper()
+		if code, out := s.runKernel(context.Background(), argv); code > 1 {
+			t.Fatalf("%v: %d\n%s", argv, code, out)
+		}
+	}
+
+	// 1. brand new repo: generated files are missing → doctor says so and offers --fix
+	out, ok, fixable := issues()
+	if ok || !fixable || !strings.Contains(out, "out of sync") || !strings.Contains(out, "doctor --fix") {
+		t.Errorf("missing files: ok=%v fixable=%v\n%s", ok, fixable, out)
+	}
+	// the output is doctor's, verbatim
+	if code, direct := s.runKernel(context.Background(), []string{"doctor"}); code == 0 || direct != out {
+		t.Errorf("the Issues output must be exactly what `hemma doctor` prints:\n--- issues\n%s\n--- doctor\n%s", out, direct)
+	}
+
+	// 2. after --fix: the drift is gone and --fix is no longer offered — but doctor STILL lists what --fix cannot do
+	// (here: no known_hosts entry for the deploy host, with doctor's own "connect once interactively" recipe), and the
+	// page lists it as it is, with no Fix button.
+	run("doctor", "--fix")
+	out, ok, fixable = issues()
+	if fixable || !strings.Contains(out, "in sync") || !strings.Contains(out, "known_hosts") || ok {
+		t.Errorf("after --fix: ok=%v fixable=%v (want: in sync, known_hosts still listed, nothing fixable)\n%s", ok, fixable, out)
+	}
+
+	// 3. only advisories (an oidc service with no Authelia config): listed, but --fix does NOT apply
+	run("add", "service", "sso-app", "--fqdn=sso-app.example.com", "--host=appbox", "--backend=app:80", "--auth-mode=oidc")
+	out, _, fixable = issues()
+	if !strings.Contains(out, "OIDC") || fixable {
+		t.Errorf("advisories only: fixable=%v (--fix does not resolve advisories)\n%s", fixable, out)
+	}
+	if !strings.Contains(out, "does not resolve them") {
+		t.Errorf("doctor's own note about advisories should be in the output:\n%s", out)
+	}
+}
+
+func TestDoctorFixable(t *testing.T) {
+	for out, want := range map[string]bool{
+		"✓ all good\n": false,
+		"⚠ x\n\nThese advisories require manual edits — 'hemma doctor --fix' does not resolve them.\n": false,
+		"✗ 3 generated files out of sync\n\nRun 'hemma doctor --fix' to reconcile.\n":                  true,
+		"⚠ 2 generated files are gitignored and won't deploy. Run 'hemma doctor --fix'.\n":             true,
+	} {
+		if got := doctorFixable(out); got != want {
+			t.Errorf("doctorFixable(%q) = %v, want %v", out, got, want)
+		}
+	}
+}

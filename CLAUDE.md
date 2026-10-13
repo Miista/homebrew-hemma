@@ -191,6 +191,13 @@ A deliberately small web UI for one host (image: `Dockerfile.ui`; compose + synt
   (instant, no confirmation — it is reversible and shows up as an unsaved change). The name opens a read-only
   details dialog (`#vdlg`; read-only inputs so values can be copied) whose pinned footer holds Close / Rename /
   Remove / Edit — Edit, Rename and Remove open the existing typed forms, so nothing about changing a service moved.
+- **Issues lists exactly what `hemma doctor` says.** `GET /api/issues` runs doctor read-only (no write lock, so it
+  can run after every change to keep the tab's badge current) and returns its output verbatim; the page splits it
+  into findings without altering a line. A **Fix** button runs `hemma doctor --fix` and appears only when doctor itself
+  says `--fix` can help (its "Run 'hemma doctor --fix' …" hints; `doctorFixable` follows that wording and
+  `TestIssues_…` pins it to the real output) — what `--fix` cannot resolve (advisories, known_hosts, …) is just
+  listed. Successful changes are confirmed with a plain toast: the warnings a sync prints are repo-wide advisories,
+  not about that change, and belong on Issues.
 - **Phones are the primary screen:** keep fields at 16px (iOS zoom), tables become cards under 640px, and
   nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
 - **Look and feel:** the same design language as reaparr/albumreq (Geist, violet accent, glow, glass bars, the

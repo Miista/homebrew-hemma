@@ -108,6 +108,7 @@ function tabBadge(t) {
   const es = pending ? pending.entities : [];
   if (t === "Services") return es.filter(e => e.kind === "Service").length;
   if (t === "Settings") return es.filter(e => e.kind !== "Service").length;
+  if (t === "Issues") return issues.count;
   return 0;
 }
 
@@ -166,7 +167,8 @@ $("#rclose").onclick = () => $("#rdlg").close();
 function toastResult(title, res, done) {
   const text = res.output || res.error || "";
   if (!res.ok) return toast(`${title} failed`, "err", { title, text });
-  if (/⚠/.test(text)) return toast(`${done || title}, with warnings`, "warn", { title, text });
+  // A successful change is just confirmed. The warnings a sync prints (repo-wide advisories such as "could not verify
+  // OIDC client …") are not about THIS change: they live on the Issues page, which lists what `hemma doctor` says.
   toast(done || title, "ok");
 }
 // Commands whose output IS the result open it in a dialog; everything else just confirms.
@@ -697,6 +699,49 @@ function openService(name) {
   openModal($("#vdlg"));
 }
 
+// ── Issues: exactly what `hemma doctor` says ──────────────────────────────────────────────────────────────────
+// The server runs doctor (read-only) and returns its output verbatim, plus whether doctor itself says `--fix` can
+// help. This lists it as it is; the Fix button runs `hemma doctor --fix` and appears only when there is something
+// for it to do. What --fix cannot resolve (doctor's advisories, known_hosts, …) is simply listed.
+let issues = { loaded: false, busy: false, again: false, fixing: false, fixable: false, groups: [], count: 0, error: "" };
+function parseDoctor(out) {
+  const groups = []; let cur = null;
+  for (const line of (out || "").split("\n")) {
+    if (!line.trim()) { cur = null; continue; }
+    const g = line[0];
+    const kind = g === "✓" ? "ok" : g === "⚠" ? "warn" : (g === "✗" || line.startsWith("Error:")) ? "err" : null;
+    if (kind) { cur = { kind, lines: [line] }; groups.push(cur); }
+    else if (cur) cur.lines.push(line);        // an indented continuation of the finding above it
+    else { cur = { kind: "note", lines: [line] }; groups.push(cur); }   // a line of doctor's own, between findings
+  }
+  return groups;
+}
+async function checkIssues() {
+  if (issues.busy) { issues.again = true; return; }   // one check at a time; if something changed meanwhile, check again after
+  issues.busy = true; if (tab === "Issues") render();
+  try {
+    const r = await fetch("/api/issues"); const j = await r.json();
+    const groups = parseDoctor(j.output);
+    issues = { ...issues, loaded: true, error: j.error || "", fixable: !!j.fixable, groups, count: groups.filter(g => g.kind === "warn" || g.kind === "err").length };
+  } catch (e) { issues = { ...issues, loaded: true, error: String(e) }; }
+  issues.busy = false;
+  if (tab === "Issues") render(); else refreshIssueBadge();   // off the Issues page only the badge changes: don't redraw (and disturb) the page you are on
+  if (issues.again) { issues.again = false; checkIssues(); }
+}
+function refreshIssueBadge() {
+  const b = [...$("#tabs").children].find(x => x.querySelector(".tab-label")?.textContent === "Issues"); if (!b) return;
+  b.querySelector(".count")?.remove();
+  if (issues.count) { const c = el("span", String(issues.count), { className: "count warn" }); c.setAttribute("aria-label", `${issues.count} ${issues.count === 1 ? "issue" : "issues"}`); b.append(c); }
+}
+async function fixIssues() {
+  issues.fixing = true; render();
+  const res = await post("/api/run", { command: "doctor", values: { fix: true } });
+  issues.fixing = false;
+  await load();   // what --fix changed shows up as unsaved changes
+  await checkIssues();
+  toast(res.ok ? "Fixed" : "Ran hemma doctor --fix — what it can fix is fixed; the rest is listed below", res.ok ? "ok" : "warn");
+}
+
 const VIEWS = {
   Services() {
     // The same button everywhere: inline at the top on a wide screen, a floating button at the bottom right on a phone.
@@ -729,8 +774,22 @@ const VIEWS = {
     const sec = (id, title, nodes) => { const s = el("section", null, { id: `sec-${id}`, className: "sec" }); s.append(el("h2", title), ...nodes); return s; };
     return [sec("hosts", "Hosts", VIEWS.Hosts()), sec("domains", "Domains", VIEWS.Domains()), sec("defaults", "Defaults", VIEWS.Defaults())];
   },
-  Issues() { return [cards(["list", "verify", "measure", "doctor"].map(k => cmdBtn(k))),
-    el("p", "Checks on the setup. To make saved changes live, use the Deploy button at the top.", { className: "meta" })]; },
+  Issues() {
+    const head = el("div", null, { className: "issues-head" });
+    const summary = !issues.loaded ? "Checking…" : issues.error ? "Could not run the checks" : issues.count ? `${issues.count} ${issues.count === 1 ? "issue" : "issues"}` : "No issues";
+    const acts = el("div", null, { className: "row" });
+    const re = btn(issues.busy ? "Checking…" : "Re-check", () => checkIssues()); re.disabled = issues.busy || issues.fixing; acts.append(re);
+    if (issues.fixable) { const fx = btn(issues.fixing ? "Fixing…" : "Fix with hemma doctor --fix", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing; acts.append(fx); }
+    head.append(el("strong", summary), acts);
+    const body = el("div", null, { className: "issuelist" });
+    if (issues.error) body.append(el("pre", issues.error, { className: "reason" }));
+    const passed = issues.groups.filter(g => g.kind === "ok");
+    // doctor's output as it is: each finding in its own card, its own lines untouched
+    issues.groups.filter(g => g.kind !== "ok").forEach(g => { const c = el("div", null, { className: `issue ${g.kind}` }); c.append(el("pre", g.lines.join("\n"))); body.append(c); });
+    if (passed.length) { const d = el("details", null, { className: "passed" }); d.append(el("summary", `${passed.length} ${passed.length === 1 ? "check" : "checks"} passed`), el("pre", passed.map(g => g.lines.join("\n")).join("\n"))); body.append(d); }
+    return [head, body, el("h2", "Run a check", { className: "subhead" }), cards(["list", "verify", "measure"].map(k => cmdBtn(k))),
+      el("p", "These are the checks `hemma doctor` runs, listed as it prints them. To make saved changes live, use the Deploy button at the top.", { className: "meta" })];
+  },
 };
 
 function render() {
@@ -738,12 +797,12 @@ function render() {
   $("#summary").textContent = `${pl(state.services.length, "service", "services")} · ${pl(state.hosts.length, "host", "hosts")} · ${state.domains.join(", ")}`;
   const nav = $("#tabs"); nav.replaceChildren();
   TABS.forEach(t => {
-    const b = el("button", null, { type: "button", className: t === tab ? "on" : "", onclick: () => { tab = t; render(); } });
+    const b = el("button", null, { type: "button", className: t === tab ? "on" : "", onclick: () => { tab = t; render(); if (t === "Issues") checkIssues(); } });   // opening Issues re-runs the checks
     if (t === tab) b.setAttribute("aria-current", "page");
     const ic = el("span", null, { className: "tab-icon" }); ic.innerHTML = ICONS[t];   // static markup defined above
     b.append(ic, el("span", t, { className: "tab-label" }));
     const n = tabBadge(t);
-    if (n) { const c = el("span", String(n), { className: "count" }); c.setAttribute("aria-label", `${n} unsaved`); b.append(c); }
+    if (n) { const c = el("span", String(n), { className: "count" + (t === "Issues" ? " warn" : "") }); c.setAttribute("aria-label", t === "Issues" ? `${n} ${n === 1 ? "issue" : "issues"}` : `${n} unsaved`); b.append(c); }
     nav.append(b);
   });
   $("#view").replaceChildren(...VIEWS[tab]());
@@ -803,6 +862,7 @@ async function load() {
   pending = null;
   if (changes.files.length) { const d = await (await fetch("/api/diff")).json().catch(() => null); if (d && !d.error) pending = d; }
   render();
+  checkIssues();   // not awaited: keeps the Issues badge current after every change without making anything wait for doctor
 }
 (async () => {
   const list = await (await fetch("/api/commands")).json();

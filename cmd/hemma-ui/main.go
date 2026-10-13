@@ -101,6 +101,7 @@ func (s *server) routes(gate *authy.Gate) (http.Handler, error) {
 	mux.HandleFunc("POST /api/commit", s.handleCommit)
 	mux.HandleFunc("POST /api/push", s.handlePush)
 	mux.HandleFunc("POST /api/run", s.runCommand)
+	mux.HandleFunc("GET /api/issues", s.handleIssues)
 	mux.HandleFunc("GET /api/config/raw", s.handleRawGet)
 	mux.HandleFunc("POST /api/config/raw", s.handleRawSave)
 	return gate.Wrap(guard(mux)), nil
@@ -221,7 +222,13 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"ok": false, "output": err.Error()})
 		return
 	}
-	if !c.ReadOnly {
+	// doctor only READS unless asked to fix: an audit must not take the write lock (it runs after every change, to keep
+	// the Issues badge current, and must never make a quick toggle wait) nor outlive the browser.
+	readOnly := c.ReadOnly
+	if fix, _ := in.Values["fix"].(bool); c.Key == "doctor" && !fix {
+		readOnly = true
+	}
+	if !readOnly {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 	}
@@ -232,7 +239,7 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	ctx, cancel := workContext(r, c.ReadOnly, c.Timeout)
+	ctx, cancel := workContext(r, readOnly, c.Timeout)
 	defer cancel()
 	before := s.configStamp()
 	code, out := s.runKernel(ctx, argv)
@@ -244,7 +251,7 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 	// A non-zero exit does not mean "nothing happened": hemma saves a change and THEN reports entries it
 	// skipped. The page needs to tell "refused, nothing saved" (stay in the form) from "saved, with
 	// problems" (close the form, refresh, warn), so say whether services.yaml moved.
-	changed := !c.ReadOnly && s.configStamp() != before
+	changed := !readOnly && s.configStamp() != before
 	// Log the command key only: arguments and output can carry secrets.
 	log.Printf("run %q -> exit=%d changed=%v", c.Key, code, changed)
 	writeJSON(w, 200, map[string]any{"ok": ok, "output": out, "changed": changed})
