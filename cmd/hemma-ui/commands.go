@@ -108,8 +108,6 @@ var commands = []command{
 	{Words: []string{"deploy"}, Group: "Operate", Title: "Deploy (pull from origin + apply)", Timeout: 10 * time.Minute,
 		Confirm: "Deploy? This pulls from origin, then makes the saved config live on this host."},
 
-	{Words: []string{"list"}, Group: "Diagnose", Title: "List overview", ReadOnly: true, FlagsFirst: true,
-		Fields: []field{flag("all", "All hosts"), flag("policy", "Show policy columns")}},
 	{Words: []string{"verify"}, Group: "Diagnose", Title: "Verify live DNS/Caddy", ReadOnly: true, FlagsFirst: true, Timeout: 3 * time.Minute,
 		Fields: []field{flag("all", "All services"), ref(pos("fqdn", "Service (optional)", false), "service-fqdn")}},
 	{Words: []string{"measure"}, Group: "Diagnose", Title: "Measure request timing", ReadOnly: true, FlagsFirst: true, Timeout: 3 * time.Minute,
@@ -118,7 +116,7 @@ var commands = []command{
 		Fields: []field{{Name: "fix", Label: "Apply fixes (writes files and .gitignore)", Kind: "bool"}}},
 
 	// Not exposed on purpose: credential minting (create app/user), and the terminal-only
-	// help, completion, version and `defaults` listing (the Defaults tab shows the same data;
+	// help, completion, version, `list` (the Services page IS the overview) and `defaults` listing (the Defaults tab shows the same data;
 	// the version is shown in the page footer).
 }
 

@@ -195,7 +195,7 @@ func TestRunCommand_ReportsWhetherTheConfigChanged(t *testing.T) {
 	if r := post(add); r["ok"] == true || r["changed"] != false {
 		t.Errorf("a refused add must report changed=false: %v", r)
 	}
-	if r := post(`{"command":"list","values":{}}`); r["changed"] != false {
+	if r := post(`{"command":"verify","values":{}}`); r["changed"] != false {
 		t.Errorf("a read-only command never changes anything: %v", r)
 	}
 }
