@@ -69,10 +69,12 @@
 <dialog id="cdlg" tabindex="-1" autofocus>
   <form method="dialog" id="cform">
     <h2>Save changes</h2>
-    <p class="meta">Saving records these changes with your message. Deploying them is a separate step.</p>
+    <p class="meta">Saving records these changes with your message.</p>
     <div id="cdiff" class="cdiff"></div>
     <details><summary class="meta">All changed files</summary><pre id="cfiles"></pre></details>
     <label>Change message *<textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
+    <label class="switchrow" id="cdeploy"><span>Deploy right after saving</span><span class="switch"><input type="checkbox" id="cdep"><span class="track"></span></span></label>
+    <p class="meta" id="cdephelp"></p>
     <p class="err" id="cerr"></p>
     <div class="row"><button type="button" id="ccancel">Cancel</button><button class="primary" id="cgo">Save</button></div>
   </form>
@@ -112,18 +114,14 @@ async function post(url, body) {
    (with Deploy) is what the page then points you at. Raw command output appears only where it IS
    the result (list, verify, doctor, …) or behind "Details" when something needs a closer look. */
 let toastTimer;
-// `action` turns the message into an offer: { label, fn } adds a button for it, plus "Not now", and the
-// message stays a little longer so there is time to decide (it never blocks: you can ignore it).
-function toast(msg, kind, details, action) {
+// A toast only REPORTS (with Details for the long version). It never asks a question: choices live in dialogs.
+function toast(msg, kind, details) {
   const t = $("#toast"); t.className = "toast " + (kind || "");
   t.replaceChildren(el("span", msg));
   if (details) t.append(btn("Details", () => { t.hidden = true; showResult(details.title, details.text); }));
-  if (action) {
-    t.append(btn(action.label, () => { t.hidden = true; action.fn(); }, "primary"), btn("Not now", () => { t.hidden = true; }));
-  }
   if (kind === "err") t.append(btn("Dismiss", () => { t.hidden = true; }));
   t.hidden = false; clearTimeout(toastTimer);
-  if (kind !== "err") toastTimer = setTimeout(() => { t.hidden = true; }, action ? 15000 : 5000);
+  if (kind !== "err") toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
 }
 // Browsers focus the first field of a modal dialog by default (and a phone then pops its keyboard).
 // Focus the dialog itself instead: nothing is pre-selected, Tab and Escape still work.
@@ -498,10 +496,16 @@ async function deploy() {
   if (changes.has_remote && changes.ahead > 0 &&
       !(await ask("Push first?", `${changes.ahead} saved ${changes.ahead === 1 ? "change is" : "changes are"} not on origin yet. Deploy pulls from origin, so push ${changes.ahead === 1 ? "it" : "them"} first.`, { ok: "Push" }) && await pushNow())) return;
   if (!await ask(key === "deploy" ? "Deploy?" : "Apply now?", deployMessage(key), { ok: key === "deploy" ? "Deploy" : "Apply" })) return;
+  await deployNow(key, key === "deploy" ? "Deployed" : "Applied");
+}
+// deployNow runs the deploy/apply itself (no questions: the caller has the person's consent). Failures stay on
+// screen with Details; `failed` names a failure when the deploy was part of something larger (Save & deploy).
+async function deployNow(key, done, failed) {
   deploying = true; renderDeploy();
   try {
     const res = await post("/api/run", { command: key, values: {} });
-    toastResult(cmds[key].title, res, key === "deploy" ? "Deployed" : "Applied");   // failures stay on screen, with Details
+    if (failed && !res.ok) toast(failed, "err", { title: cmds[key].title, text: res.output || res.error || "" });
+    else toastResult(cmds[key].title, res, done);
   } finally { deploying = false; await load(); }
 }
 
@@ -562,16 +566,32 @@ function openCommit() {
     .catch(() => $("#cdiff").replaceChildren(el("p", "Could not load the changes.", { className: "err" })));
   $("#cfiles").textContent = changes.files.map(f => `${f.status.padEnd(2)} ${f.path}`).join("\n");
   $("#cmsg").value = ""; $("#cerr").textContent = "";
+  // Saving can deploy straight away. The choice is the person's to make once and is remembered; it is OFF until
+  // they turn it on, because deploying restarts things.
+  const dep = $("#cdep"), act = changes.has_remote ? "deploy" : "apply";
+  dep.checked = localStorage.getItem("hemma.deployAfterSave") === "1";
+  const syncDeploy = () => {
+    $("#cgo").textContent = dep.checked ? "Save & deploy" : "Save";
+    $("#cdephelp").textContent = dep.checked
+      ? (changes.has_remote ? "Pushes to origin first, then pulls and makes it live on this machine." : "Then makes it live on this machine.")
+      : "Saving only records the change; deploy it later from the Deploy button.";
+  };
+  dep.onchange = () => { localStorage.setItem("hemma.deployAfterSave", dep.checked ? "1" : "0"); syncDeploy(); };
+  syncDeploy();
   $("#cgo").onclick = async e => {
     e.preventDefault();
     if (!$("#cform").reportValidity()) return;
     $("#cgo").disabled = true;
     try {
-      const res = await post("/api/commit", { message: $("#cmsg").value, push: false });
-      if (!res.ok) { $("#cerr").textContent = res.output; return; }
-      await load();
-      // Saving never deploys by itself — but it is the natural moment to offer: Deploy now, or later from the bar.
-      $("#cdlg").close(); toast("Saved", "ok", null, { label: "Deploy now", fn: deploy });
+      const wantDeploy = dep.checked;
+      // Deploy pulls from origin, so a deploy-after-save has to push the new commit first.
+      const res = await post("/api/commit", { message: $("#cmsg").value, push: wantDeploy && changes.has_remote });
+      const savedLocally = !res.ok && /^committed locally/.test(res.output || "");
+      if (!res.ok && !savedLocally) { $("#cerr").textContent = res.output; return; }   // nothing was saved: stay and fix it
+      await load(); $("#cdlg").close();
+      if (savedLocally) { toast("Saved, but pushing failed — not deployed", "err", { title: "Push", text: res.output }); return; }
+      if (!wantDeploy) { toast("Saved", "ok"); return; }
+      await deployNow(act, "Saved and deployed", "Saved, but deploying failed");
     } finally { $("#cgo").disabled = false; }
   };
   openModal($("#cdlg"));
