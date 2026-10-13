@@ -775,9 +775,10 @@ const VIEWS = {
     return [sec("hosts", "Hosts", VIEWS.Hosts()), sec("domains", "Domains", VIEWS.Domains()), sec("defaults", "Defaults", VIEWS.Defaults())];
   },
   Issues() {
-    const tools = cards(["verify", "measure"].map(k => cmdBtn(k)));   // checks you can run yourself
+    // Checks you can run yourself: tools, not issues, so they sit under their own heading.
+    const tools = [el("h2", "Tools", { className: "subhead" }), cards(["verify", "measure"].map(k => cmdBtn(k)))];
     // Nothing wrong: say so in one quiet line and show nothing else (no passed-checks list, no buttons to press).
-    if (issues.loaded && !issues.error && issues.count === 0) return [el("p", "No issues", { className: "meta noissues" }), tools];
+    if (issues.loaded && !issues.error && issues.count === 0) return [el("p", "No issues", { className: "meta noissues" }), ...tools];
     const head = el("div", null, { className: "issues-head" });
     const summary = !issues.loaded ? "Checking…" : issues.error ? "Could not run the checks" : `${issues.count} ${issues.count === 1 ? "issue" : "issues"}`;
     const acts = el("div", null, { className: "row" });
@@ -790,7 +791,7 @@ const VIEWS = {
     // doctor's output as it is: each finding in its own card, its own lines untouched
     issues.groups.filter(g => g.kind !== "ok").forEach(g => { const c = el("div", null, { className: `issue ${g.kind}` }); c.append(el("pre", g.lines.join("\n"))); body.append(c); });
     if (passed.length) { const d = el("details", null, { className: "passed" }); d.append(el("summary", `${passed.length} ${passed.length === 1 ? "check" : "checks"} passed`), el("pre", passed.map(g => g.lines.join("\n")).join("\n"))); body.append(d); }
-    return [head, body, tools];
+    return [head, body, ...tools];
   },
 };
 
