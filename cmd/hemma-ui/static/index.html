@@ -469,9 +469,6 @@ const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, () => {
   openCmd(key, prefill);
 }, "");
 
-async function pushNow() {
-  const res = await post("/api/push", {}); toastResult("Push", res, "Pushed to origin"); await load(); return res.ok;
-}
 
 // Two steps, kept apart:
 //   1. SAVE   — the save bar (only while there are unsaved changes): Discard / Save, with a message.
@@ -491,11 +488,14 @@ function renderDeploy() {
 $("#deploy").onclick = () => deploy();
 // deployMessage says what THIS deploy will do, from what is configured — not a fixed list that
 // mentions an auth provider the host does not have.
-function deployMessage(key) {
+function deployMessage(key, unpushed = 0) {
   // The steps come from the server, which asks the same rules `apply` follows for THIS machine
   // (the resolver restarts pihole, a service host reloads caddy, the host that runs the auth provider restarts it, …).
   const a = state.apply || { host: "", steps: [] }, steps = a.steps;
-  const pull = key === "deploy" ? "Pulls from origin, then " : "";
+  // Deploy pulls from origin; saved changes origin does not have yet are pushed first, as part of the same action.
+  const pull = key !== "deploy" ? "" : unpushed > 0
+    ? `Pushes your ${unpushed} saved ${unpushed === 1 ? "change" : "changes"} to origin, then `
+    : "Pulls from origin, then ";
   if (!a.host) return `${pull}${pull ? "t" : "T"}his machine matches no host in services.yaml, so there is nothing to make live here.`;
   if (!steps.length) return `${pull}${pull ? "t" : "T"}here is nothing to restart on ${a.host}: it is neither the resolver nor a service host.`;
   const list = steps.length > 1 ? steps.slice(0, -1).join(", ") + " and " + steps[steps.length - 1] : steps[0];
@@ -505,16 +505,22 @@ async function deploy() {
   if (deploying) return;
   if (changes.git && changes.files.length) return toast("Save or discard your unsaved changes before deploying", "warn");
   const key = changes.has_remote ? "deploy" : "apply";
-  if (changes.has_remote && changes.ahead > 0 &&
-      !(await ask("Push first?", `${changes.ahead} saved ${changes.ahead === 1 ? "change is" : "changes are"} not on origin yet. Deploy pulls from origin, so push ${changes.ahead === 1 ? "it" : "them"} first.`, { ok: "Push" }) && await pushNow())) return;
-  if (!await ask(key === "deploy" ? "Deploy?" : "Apply now?", deployMessage(key), { ok: key === "deploy" ? "Deploy" : "Apply" })) return;
-  await deployNow(key, key === "deploy" ? "Deployed" : "Applied");
+  // Saves that are not on origin yet are pushed as PART of deploying (deploy pulls from origin, so they would
+  // otherwise deploy nothing): one question that says so, not a "push first?" followed by a "deploy?".
+  const unpushed = changes.has_remote ? changes.ahead : 0;
+  if (!await ask(key === "deploy" ? "Deploy?" : "Apply now?", deployMessage(key, unpushed), { ok: key === "deploy" ? "Deploy" : "Apply" })) return;
+  await deployNow(key, key === "deploy" ? "Deployed" : "Applied", undefined, unpushed > 0);
 }
 // deployNow runs the deploy/apply itself (no questions: the caller has the person's consent). Failures stay on
-// screen with Details; `failed` names a failure when the deploy was part of something larger (Save & deploy).
-async function deployNow(key, done, failed) {
+// screen with Details; `failed` names a failure when the deploy was part of something larger (Save & deploy);
+// pushFirst pushes the saved commits to origin before deploying (a failed push stops everything).
+async function deployNow(key, done, failed, pushFirst) {
   deploying = true; renderDeploy();
   try {
+    if (pushFirst) {
+      const pushed = await post("/api/push", {});
+      if (!pushed.ok) { toast("Not deployed: pushing to origin failed", "err", { title: "Push", text: pushed.output || pushed.error || "" }); return; }
+    }
     const res = await post("/api/run", { command: key, values: {} });
     if (failed && !res.ok) toast(failed, "err", { title: cmds[key].title, text: res.output || res.error || "" });
     else toastResult(cmds[key].title, res, done);
