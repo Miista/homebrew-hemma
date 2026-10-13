@@ -251,3 +251,54 @@ func TestRawConfig_ReadReplaceAndRefuse(t *testing.T) {
 		t.Errorf("after the rescue the UI's commands work again: %d\n%s", code, out)
 	}
 }
+
+// A command that CHANGES something finishes even if the browser goes away mid-way (a phone locking during a
+// deploy must not leave things half-done); a read-only one stops when the person leaves.
+func TestRunCommand_ChangesFinishWhenTheBrowserLeaves_ReadsDoNot(t *testing.T) {
+	s := repoWithConfig(t)
+	bin := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "calls.log")
+	// each external call takes a second and then records itself (absolute path: PATH holds only these fakes)
+	slow := "#!/bin/sh\n/bin/sleep 1\necho \"$*\" >> \"$FAKE_LOG\"\n"
+	// the read-only command's tool must BE the sleeper (exec), or killing it leaves an orphan holding the pipe open
+	for tool, body := range map[string]string{"docker": slow, "bash": "#!/bin/sh\nexec /bin/sleep 5\n"} {
+		if err := os.WriteFile(filepath.Join(bin, tool), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("FAKE_LOG", logPath)
+	defer kernel.SetLocalHost(func(*config.Config) string { return "resolver" })()
+	if code, out := s.runKernel(context.Background(), []string{"doctor", "--fix"}); code > 1 {
+		t.Fatalf("doctor --fix: %d\n%s", code, out)
+	}
+
+	run := func(body string, leaveAfter time.Duration) (*httptest.ResponseRecorder, time.Duration) {
+		os.Remove(logPath)
+		ctx, leave := context.WithCancel(context.Background()) // "the browser went away"
+		time.AfterFunc(leaveAfter, leave)
+		defer leave()
+		req := httptest.NewRequest("POST", "/api/run", strings.NewReader(body)).WithContext(ctx)
+		rec := httptest.NewRecorder()
+		start := time.Now()
+		s.runCommand(rec, req)
+		return rec, time.Since(start)
+	}
+
+	// apply restarts pihole (one slow docker call). The browser leaves 200ms in; the restart must still happen.
+	rec, _ := run(`{"command":"apply","values":{}}`, 200*time.Millisecond)
+	raw, _ := os.ReadFile(logPath)
+	if !strings.Contains(string(raw), "restart pihole") {
+		t.Errorf("apply was abandoned when the browser left: log %q, response %s", raw, rec.Body.String())
+	}
+	var res map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil || res["ok"] != true {
+		t.Errorf("apply should have completed successfully: %s", rec.Body.String())
+	}
+
+	// measure is read-only (a slow `bash`): when the browser leaves it is stopped, not waited for.
+	_, took := run(`{"command":"measure","values":{"target":"https://example.com/"}}`, 200*time.Millisecond)
+	if took > 800*time.Millisecond {
+		t.Errorf("a read-only command should stop when the browser leaves; it ran %s", took)
+	}
+}

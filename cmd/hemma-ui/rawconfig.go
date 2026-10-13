@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -44,7 +43,7 @@ func (s *server) handleRawSave(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	ctx, cancel := workContext(r, false, 2*time.Minute) // a save is not abandoned half-way when the browser goes
 	defer cancel()
 	before := s.configStamp()
 	code, out := s.inKernel(ctx, "replace config", func(env *kernel.Env) int {

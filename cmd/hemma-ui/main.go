@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/miista/authy"
 
@@ -231,7 +232,7 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), c.Timeout)
+	ctx, cancel := workContext(r, c.ReadOnly, c.Timeout)
 	defer cancel()
 	before := s.configStamp()
 	code, out := s.runKernel(ctx, argv)
@@ -247,6 +248,18 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 	// Log the command key only: arguments and output can carry secrets.
 	log.Printf("run %q -> exit=%d changed=%v", c.Key, code, changed)
 	writeJSON(w, 200, map[string]any{"ok": ok, "output": out, "changed": changed})
+}
+
+// workContext is the context a command runs under. A command that CHANGES something must finish even if the
+// browser goes away — a phone locking mid-deploy must not leave the fleet half-converged, or a save half-written —
+// so it is cut off from the request and bounded only by its own timeout. A read-only one has nothing to protect and
+// stops when the person leaves.
+func workContext(r *http.Request, readOnly bool, timeout time.Duration) (context.Context, context.CancelFunc) {
+	base := r.Context()
+	if !readOnly {
+		base = context.WithoutCancel(base)
+	}
+	return context.WithTimeout(base, timeout)
 }
 
 // configStamp fingerprints services.yaml (empty when unreadable) to detect that a command changed it.
