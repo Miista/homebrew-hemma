@@ -187,6 +187,10 @@ A deliberately small web UI for one host (image: `Dockerfile.ui`; compose + synt
   container mounts the Docker socket (root-equivalent on the host), so keep it LAN-only. Caveat: authy
   has not had an independent security review yet (its own README says so). `auth_test.go` pins that every
   route is refused without a session.
+- **The Services page is a plain list** (`.svclist`): a service's name and, on the right, an enable/disable switch
+  (instant, no confirmation — it is reversible and shows up as an unsaved change). The name opens a read-only
+  details dialog (`#vdlg`; read-only inputs so values can be copied) whose pinned footer holds Close / Rename /
+  Remove / Edit — Edit, Rename and Remove open the existing typed forms, so nothing about changing a service moved.
 - **Phones are the primary screen:** keep fields at 16px (iOS zoom), tables become cards under 640px, and
   nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
 - **Look and feel:** the same design language as reaparr/albumreq (Geist, violet accent, glow, glass bars, the

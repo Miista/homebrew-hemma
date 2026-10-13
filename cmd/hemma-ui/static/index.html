@@ -35,6 +35,13 @@
   </form>
 </dialog>
 
+<!-- A service's details, read only. Edit / Rename / Remove are buttons here, so the list itself stays just a name and a switch. -->
+<dialog id="vdlg" tabindex="-1" autofocus aria-labelledby="vtitle">
+  <h2 id="vtitle"></h2>
+  <div id="vfields"></div>
+  <div class="row" id="vactions"></div>
+</dialog>
+
 <!-- The recovery editor: services.yaml as text, for when the file cannot be loaded and no typed form can run. -->
 <dialog id="edlg" tabindex="-1" autofocus aria-labelledby="etitle">
   <form method="dialog" id="eform">
@@ -646,18 +653,55 @@ function renderBar() {
   document.documentElement.style.setProperty("--bar-extra", bar.offsetHeight + 8 + "px");
 }
 
+// ── Services: a plain list. The name opens the service's details; the switch on the right enables/disables it. ──
+function serviceRow(s) {
+  const li = el("li", null, { className: s.disabled ? "off" : "" });
+  const open = el("button", s.name, { type: "button", className: "svcopen", onclick: () => openService(s.name) });   // the name is a real button: keyboard and screen readers open it too
+  const sw = el("span", null, { className: "switch" });
+  const cb = el("input", null, { type: "checkbox", checked: !s.disabled });
+  cb.setAttribute("role", "switch"); cb.setAttribute("aria-label", `${s.name} enabled`);
+  cb.onchange = async () => {
+    cb.disabled = true;
+    await run(cb.checked ? "enable service" : "disable service", { name: s.name });   // reloads, which redraws this row
+    cb.disabled = false;
+  };
+  sw.append(cb, el("span", null, { className: "track" }));
+  li.append(open, sw);
+  return li;
+}
+// openService: the service's details, read only (the fields look like the edit form's, but you cannot change them
+// here — Edit opens the form). Read-only inputs, so the values can still be selected and copied.
+function openService(name) {
+  const s = state.services.find(x => x.name === name); if (!s) return;
+  const mode = s["auth-mode"] || "";
+  const field = (label, value) => { const l = el("label", label); l.append(el("input", null, { type: "text", value: value || "—", readOnly: true })); return l; };
+  // (no Name field: the title already is the name)
+  const fields = [
+    field("Address", s.fqdn), field("Host", s.host), field("Backend (name:port)", s.backend),
+    field("Auth mode", mode || "none"),
+  ];
+  // Only the auth detail that applies to this mode (the edit form shows the same ones).
+  if (mode === "forward" || mode === "oidc") fields.push(field("Auth groups", s["auth-groups"]), field("Bypass paths", s["bypass-paths"]));
+  if (mode === "forward") fields.push(field("Policy: local horizon", s["auth-policy-local"]), field("Policy: public horizon", s["auth-policy-public"]));
+  fields.push(field("Reachable from the internet (tunnel)", s.tunnel ? "yes" : "no"), field("Status", s.disabled ? "Disabled" : "Enabled"));
+  $("#vtitle").textContent = s.name; $("#vfields").replaceChildren(...fields);
+  const act = (label, fn, cls) => btn(label, () => { $("#vdlg").close(); fn(); }, cls);
+  $("#vactions").replaceChildren(
+    btn("Close", () => $("#vdlg").close()),
+    act("Rename", () => openCmd("rename service", { old: s.name, __lock: "old" })),
+    act("Remove", () => run("remove service", { name: s.name }, cmds["remove service"].confirm), "danger"),
+    act("Edit", () => openCmd("update service", { ...s, __lock: "name" }), "primary"));
+  openModal($("#vdlg"));
+}
+
 const VIEWS = {
   Services() {
-    const rows = state.services.map(s => row(
-      [s.name, s.fqdn, s.host, s.backend, s["auth-mode"] || "none", s.tunnel ? "yes" : "no"],
-      [btn("Edit", () => openCmd("update service", { ...s, __lock: "name" })),
-       btn(s.disabled ? "Enable" : "Disable", () => run(s.disabled ? "enable service" : "disable service", { name: s.name })),
-       btn("Rename", () => openCmd("rename service", { old: s.name, __lock: "old" })),
-       btn("Remove", () => run("remove service", { name: s.name }, cmds["remove service"].confirm), "danger")], s.disabled));
     // The same button everywhere: inline at the top on a wide screen, a floating button at the bottom right on a phone.
     const add = cmdBtn("add service"); add.classList.add("fab");
     const bar = cards([add]); bar.classList.add("fabwrap");
-    return [bar, table(["Name", "Address", "Host", "Backend", "Auth", "Internet", ""], rows)];
+    const list = el("ul", null, { className: "svclist" }); state.services.forEach(s => list.append(serviceRow(s)));
+    const panel = el("div", null, { className: "panel" }); panel.append(list);
+    return [bar, panel];
   },
   Hosts() {
     const rows = state.hosts.map(h => row([h.name, h.ip, h["trusted-proxies"] || "—"],

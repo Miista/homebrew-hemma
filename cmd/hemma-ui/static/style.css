@@ -23,7 +23,7 @@
   --field: #ffffff;       --row-hover: #f6f6fb;     --track: #c6c8d6;
   --border: #e4e5ee;      --border-2: #d2d4e1;
   --text: #16171d;        --muted: #4f5266;         --faint: #666a7c;
-  --violet: oklch(0.55 0.2 290);   --violet-hover: oklch(0.6 0.2 290);
+  --violet: oklch(0.55 0.2 290);   --violet-hover: oklch(0.5 0.2 290);   /* hover is DARKER: white text on a lighter violet was 4.26:1, below AA */
   --violet-text: oklch(0.46 0.2 290);  --violet-bg: oklch(0.94 0.04 290);  --violet-ring: oklch(0.6 0.2 290 / .22);
   --red: oklch(0.55 0.2 25);   --red-text: oklch(0.5 0.19 25);
   --red-fill: oklch(0.55 0.2 25);   /* the fill behind WHITE text on a destructive button: 5.4:1 in both themes (dark's lighter --red is only 4.0:1) */
@@ -39,7 +39,7 @@
     --field: #0c0d12;     --row-hover: #16171f;     --track: #2a2c38;
     --border: #1f2129;    --border-2: #262935;
     --text: #e8e9ee;      --muted: #a0a2b1;         --faint: #7d8091;
-    --violet: oklch(0.57 0.2 290);   --violet-hover: oklch(0.64 0.2 290);
+    --violet: oklch(0.57 0.2 290);   --violet-hover: oklch(0.52 0.2 290);   /* darker on hover for the same reason (a lighter one was 3.61:1) */
     --violet-text: oklch(0.82 0.13 290);  --violet-bg: oklch(0.3 0.08 290 / .55);  --violet-ring: oklch(0.6 0.2 290 / .28);
     --red: oklch(0.62 0.2 25);   --red-text: oklch(0.75 0.17 25);
     --green-text: oklch(0.8 0.16 155);  --amber-text: oklch(0.85 0.13 85);  --amber-line: oklch(0.55 0.12 80 / .6);
@@ -126,6 +126,22 @@ td { text-align: left; padding: 14px 20px; border-bottom: 1px solid var(--border
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover { background: var(--row-hover); }
 tr.off td { opacity: .5; }
+/* the services list: a name (opens the details) and a switch (enables / disables) */
+.svclist { list-style: none; margin: 0; padding: 0; }
+.svclist li { display: flex; align-items: center; gap: 12px; padding-right: 16px; border-top: 1px solid var(--border); }
+.svclist li:first-child { border-top: 0; }
+.svclist .svcopen { flex: 1; min-width: 0; min-height: 54px; padding: 12px 16px; border: 0; border-radius: 0; background: none; color: var(--text);
+                    font-size: 16px; font-weight: 500; text-align: left; overflow-wrap: anywhere; }
+.svclist .svcopen:hover { background: var(--row-hover); }
+.svclist li.off .svcopen { color: var(--muted); font-weight: 400; }   /* a disabled service reads quieter (colour, not opacity: it must stay AA) */
+.svclist .switch { flex: none; }
+/* the track is 44x26, too small a target for a thumb: the invisible checkbox laid over it reaches the row's height (and a little sideways) */
+.svclist .switch input { inset: -14px -10px; width: auto; height: auto; }
+#vdlg input[readonly] { background: var(--surface-2); cursor: text; }
+/* the actions stay pinned to the bottom of the dialog: the details can be long, and Edit / Remove must never need a scroll */
+#vdlg .row { flex-wrap: wrap; position: sticky; bottom: -18px; margin: 14px 0 -18px; padding: 12px 0 18px; background: var(--surface-b); border-top: 1px solid var(--border); }   /* surface-b: where the dialog's gradient ends */
+#vdlg .row button { flex: 1 1 auto; }
+@media (min-width: 641px) { #vdlg .row { bottom: -22px; margin-bottom: -22px; padding-bottom: 22px; } }
 td button { margin-right: 6px; padding: 6px 12px; font-size: 13px; }
 td .help { display: block; max-width: 34rem; margin-top: 2px; font-size: 13px; font-weight: 400; color: var(--muted); }
 td strong { font-weight: 600; }
