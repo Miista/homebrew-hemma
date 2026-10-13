@@ -23,6 +23,9 @@ type field struct {
 	Options  []string `json:"options,omitempty"`
 	Required bool     `json:"required,omitempty"`
 	Help     string   `json:"help,omitempty"`
+	// Shows: the field is only offered while another field has one of these values, as
+	// "<field>=<v1>|<v2>". The browser hides it otherwise; checkAuthFields is the server's own check.
+	Shows string `json:"shows,omitempty"`
 }
 
 type command struct {
@@ -48,8 +51,9 @@ var (
 func pos(name, label string, req bool) field {
 	return field{Name: name, Label: label, Kind: "pos", Required: req}
 }
-func ref(f field, r string) field   { f.Ref = r; return f }
-func flag(name, label string) field { return field{Name: name, Label: label, Kind: "bool"} }
+func ref(f field, r string) field       { f.Ref = r; return f }
+func withShows(f field, s string) field { f.Shows = s; return f }
+func flag(name, label string) field     { return field{Name: name, Label: label, Kind: "bool"} }
 func list(name, label, r string) field {
 	return field{Name: name, Label: label, Kind: "list", Ref: r}
 }
@@ -65,10 +69,12 @@ func serviceFields(add bool) []field {
 		{Name: "host", Label: "Host", Kind: "str", Ref: "host", Required: add},
 		{Name: "backend", Label: "Backend (name:port)", Kind: "str", Ref: "backend", Required: add},
 		{Name: "auth-mode", Label: "Auth mode", Kind: "select", Options: authModes},
-		list("auth-groups", "Auth groups", "name"),
-		list("bypass-paths", "Bypass paths (forward mode)", "path"),
-		{Name: "auth-policy-local", Label: "Policy: local horizon", Kind: "select", Options: levels},
-		{Name: "auth-policy-public", Label: "Policy: public horizon", Kind: "select", Options: levels},
+		// Only offered where they mean something (plan.go: groups and bypass paths need a mode that goes through
+		// the auth provider; a per-horizon policy needs forward) — so the form cannot build a combination hemma skips.
+		withShows(list("auth-groups", "Auth groups", "name"), "auth-mode=forward|oidc"),
+		withShows(list("bypass-paths", "Bypass paths", "path"), "auth-mode=forward|oidc"),
+		withShows(field{Name: "auth-policy-local", Label: "Policy: local horizon", Kind: "select", Options: levels}, "auth-mode=forward"),
+		withShows(field{Name: "auth-policy-public", Label: "Policy: public horizon", Kind: "select", Options: levels}, "auth-mode=forward"),
 		flag("tunnel", "Reachable from the internet (tunnel)"),
 	}
 }

@@ -76,6 +76,29 @@ func validateRef(ref, v string) error {
 	return nil
 }
 
+// checkAuthFields refuses an auth combination hemma would persist and then skip (design: plan.go's
+// groups / bypass_paths / policy rules): groups and bypass paths only mean something when the mode
+// goes through the auth provider (forward|oidc), and a per-horizon policy only when it is forward.
+// The form never offers them otherwise; this is the server not trusting the form. No state needed.
+func checkAuthFields(c *command, vals map[string]any) error {
+	if c.Key != "add service" && c.Key != "update service" {
+		return nil
+	}
+	str := func(k string) string { v, _ := vals[k].(string); return strings.TrimSpace(v) }
+	mode := str("auth-mode")
+	usesProvider := mode == "forward" || mode == "oidc"
+	if !usesProvider && str("auth-groups") != "" {
+		return fmt.Errorf("Auth groups need an auth mode of forward or oidc — pick one, or clear the groups")
+	}
+	if !usesProvider && str("bypass-paths") != "" {
+		return fmt.Errorf("Bypass paths need an auth mode of forward or oidc — pick one, or clear them")
+	}
+	if mode != "forward" && (str("auth-policy-local") != "" || str("auth-policy-public") != "") {
+		return fmt.Errorf("A per-horizon policy needs the forward auth mode — pick it, or clear the policy")
+	}
+	return nil
+}
+
 // checkState verifies every state-dependent value of a command against services.yaml.
 func (s *server) checkState(c *command, vals map[string]any) error {
 	need := false

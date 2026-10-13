@@ -129,3 +129,73 @@ func TestState_ReportsWhatDeployWouldDoHere(t *testing.T) {
 		t.Errorf("resolver: %v", a)
 	}
 }
+
+// The server refuses an auth combination hemma would save and then skip — whatever the form offered.
+func TestCheckAuthFields(t *testing.T) {
+	add := lookup("add service")
+	cases := []struct {
+		name string
+		vals map[string]any
+		bad  bool
+	}{
+		{"nothing set", map[string]any{"auth-mode": ""}, false},
+		{"none + bypass", map[string]any{"auth-mode": "none", "bypass-paths": "/api"}, true},
+		{"unset mode + groups", map[string]any{"auth-groups": "admins"}, true},
+		{"external + groups", map[string]any{"auth-mode": "external", "auth-groups": "admins"}, true},
+		{"forward + groups + bypass", map[string]any{"auth-mode": "forward", "auth-groups": "admins", "bypass-paths": "/api"}, false},
+		{"oidc + groups", map[string]any{"auth-mode": "oidc", "auth-groups": "admins"}, false},
+		{"oidc + policy", map[string]any{"auth-mode": "oidc", "auth-policy-local": "bypass"}, true},
+		{"forward + policy", map[string]any{"auth-mode": "forward", "auth-policy-public": "one_factor"}, false},
+		{"none + policy", map[string]any{"auth-mode": "none", "auth-policy-local": "bypass"}, true},
+	}
+	for _, c := range cases {
+		if err := checkAuthFields(add, c.vals); (err != nil) != c.bad {
+			t.Errorf("%s: err=%v, want refused=%v", c.name, err, c.bad)
+		}
+	}
+	// Other commands are not its business.
+	if err := checkAuthFields(lookup("add host"), map[string]any{"auth-groups": "x"}); err != nil {
+		t.Errorf("add host: %v", err)
+	}
+}
+
+// A refused add is refused BEFORE anything is saved; a combination the form never offers cannot be
+// smuggled in through the API.
+func TestRunCommand_RefusesBadAuthComboWithoutSaving(t *testing.T) {
+	s := repoWithConfig(t)
+	before := s.configStamp()
+	body := `{"command":"add service","values":{"name":"lol","fqdn":"lol.example.com","host":"appbox","backend":"test:80","auth-mode":"","bypass-paths":"/api"}}`
+	rec := httptest.NewRecorder()
+	s.runCommand(rec, httptest.NewRequest("POST", "/api/run", strings.NewReader(body)))
+	if rec.Code != 400 || !strings.Contains(rec.Body.String(), "Bypass paths need an auth mode") {
+		t.Fatalf("want 400 with the reason, got %d %s", rec.Code, rec.Body.String())
+	}
+	if s.configStamp() != before {
+		t.Error("services.yaml changed although the request was refused")
+	}
+}
+
+// The response says whether services.yaml moved, so the page can tell "refused" from "saved, with problems".
+func TestRunCommand_ReportsWhetherTheConfigChanged(t *testing.T) {
+	s := repoWithConfig(t)
+	post := func(body string) map[string]any {
+		rec := httptest.NewRecorder()
+		s.runCommand(rec, httptest.NewRequest("POST", "/api/run", strings.NewReader(body)))
+		var out map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("%v\n%s", err, rec.Body.String())
+		}
+		return out
+	}
+	add := `{"command":"add service","values":{"name":"web","fqdn":"web.example.com","host":"appbox","backend":"web:80"}}`
+	if r := post(add); r["ok"] != true || r["changed"] != true {
+		t.Errorf("a successful add: %v", r)
+	}
+	// The same add again is refused by hemma (exists): a non-zero exit with NOTHING saved.
+	if r := post(add); r["ok"] == true || r["changed"] != false {
+		t.Errorf("a refused add must report changed=false: %v", r)
+	}
+	if r := post(`{"command":"list","values":{}}`); r["changed"] != false {
+		t.Errorf("a read-only command never changes anything: %v", r)
+	}
+}
