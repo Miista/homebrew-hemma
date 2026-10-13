@@ -262,6 +262,9 @@ function fileTree(selected, onpick) {
   return { node, get: () => sel };
 }
 
+// slug turns a service name into a DNS label: "Paper Less_1" → "paper-less-1".
+const slug = s => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
 // A service address is "<name>.<domain>": pick the domain, type the name.
 function fqdnControl(current, required) {
   const doms = state.domains;
@@ -271,7 +274,11 @@ function fqdnControl(current, required) {
   const inp = el("input", null, { type: "text", value: sub, placeholder: "name", autocomplete: "off", autocapitalize: "off" });
   const sel = picker(doms, dom);
   wrap.append(inp, el("span", "."), sel);
-  return { node: wrap, get: () => { const s = inp.value.trim(); return s ? `${s}.${sel.value}` : sel.value; },
+  // The service's name may suggest the address as it is typed — until the person types their own address
+  // (typing in the box sets `own`; clearing it hands the box back to the suggestion).
+  let own = false;
+  inp.addEventListener("input", () => { own = inp.value !== ""; });
+  return { node: wrap, suggest: s => { if (!own) inp.value = s; }, get: () => { const s = inp.value.trim(); return s ? `${s}.${sel.value}` : sel.value; },
            check: () => (required && !sel.value) ? "define a domain first (Domains tab)" : (inp.value && !RX.dnsname.test(`${inp.value.trim()}.${sel.value || "x.io"}`) ? "the name has characters that are not allowed" : "") };
 }
 
@@ -291,7 +298,7 @@ function control(fd, prefill, locked) {
     const cl = listEditor(String(v || "").split(",").filter(Boolean), CHECK[fd.ref] || (() => true), HINT[fd.ref]);
     return { node: cl.node, get: () => cl.get(), check: () => cl.flush() ? "" : "fix or clear the value in the box" };
   }
-  if (fd.ref === "fqdn") { const c = fqdnControl(v, fd.required); return { node: c.node, get: c.get, check: c.check }; }
+  if (fd.ref === "fqdn") { const c = fqdnControl(v, fd.required); return { node: c.node, suggest: c.suggest, get: c.get, check: c.check }; }
   const pickSet = { host: () => names(state.hosts), service: () => names(state.services), domain: () => state.domains,
                     "service-fqdn": () => state.services.map(s => s.fqdn) }[fd.ref];
   if (fd.options || pickSet) {
@@ -326,6 +333,11 @@ function openCmd(key, prefill = {}) {
     else if (k.inline) { lab.className = "switchrow"; lab.append(el("span", fd.label), k.node); }   // label on the left, the switch on the right
     else lab.append(k.node);
     box.append(lab); ctl.push({ fd, k });
+  }
+  // A new service: the name is usually the address too ("paperless" → paperless.example.com), so offer it as a courtesy.
+  if (key === "add service") {
+    const name = ctl.find(x => x.fd.name === "name"), addr = ctl.find(x => x.k.suggest);
+    if (name && addr) name.k.node.addEventListener("input", () => addr.k.suggest(slug(name.k.node.value)));
   }
   $("#go").onclick = async e => {
     e.preventDefault();
