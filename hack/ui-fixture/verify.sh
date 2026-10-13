@@ -27,7 +27,7 @@ echo; echo "== Repo vs origin (what Deploy pulls)"
 repo=$(docker exec "$ui" sh -c 'cd /repo && echo "$(git rev-parse --short HEAD)|$(git rev-parse --short origin/main 2>/dev/null)|$(git status --short | wc -l | tr -d " ")"')
 IFS='|' read -r head origin dirty <<<"$repo"
 [ "$head" = "$origin" ] && ok "HEAD $head = origin/main $origin" || no "HEAD $head differs from origin/main $origin"
-[ "${dirty:-0}" = "0" ] && ok "no uncommitted changes" || no "$dirty uncommitted file(s)"
+[ "${dirty:-0}" = "0" ] && ok "no uncommitted changes" || note "$dirty file(s) with unsaved changes — work in progress, not a mismatch (Deploy stays off until you Save or Discard)"
 
 echo; echo "== Caddy: what is RUNNING vs what the files on disk say"
 # 127.0.0.1, not localhost: busybox resolves localhost to ::1 and the admin API listens on IPv4 only.
