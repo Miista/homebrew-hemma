@@ -95,12 +95,12 @@ var commands = []command{
 		{Name: "value", Label: "Value ('-' clears)", Kind: "pos", Required: true}}},
 
 	{Words: []string{"apply"}, Group: "Operate", Title: "Apply on this host", Timeout: 5 * time.Minute, Fields: nil,
-		Confirm: "Apply now? This restarts pihole, reloads caddy and restarts the auth provider on this host."},
+		Confirm: "Apply now? This makes the saved config live on this host."},
 
 	// deploy on a single host: `git pull --ff-only` from origin, then apply — all local, no ssh
 	// (this machine is never ssh'd to). Needs an upstream and a clean, pushed repo; hemma enforces that.
 	{Words: []string{"deploy"}, Group: "Operate", Title: "Deploy (pull from origin + apply)", Timeout: 10 * time.Minute,
-		Confirm: "Deploy? This pulls from origin, then restarts pihole, reloads caddy and restarts the auth provider."},
+		Confirm: "Deploy? This pulls from origin, then makes the saved config live on this host."},
 
 	{Words: []string{"list"}, Group: "Diagnose", Title: "List overview", ReadOnly: true, FlagsFirst: true,
 		Fields: []field{flag("all", "All hosts"), flag("policy", "Show policy columns")}},

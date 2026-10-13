@@ -140,6 +140,8 @@ dialog::backdrop { background: rgba(5, 6, 10, .55); -webkit-backdrop-filter: blu
 dialog h2 { margin: 0 0 4px; font-size: 20px; }
 dialog .meta { margin: 0 0 4px; }
 dialog button { border-radius: 10px; }
+#kdlg { width: min(440px, calc(100vw - 32px)); }   /* the confirmation: a short question, narrower than the forms */
+#kdlg p { margin: 8px 0 22px; line-height: 1.5; }
 .fqdn { display: flex; gap: 6px; align-items: center; } .fqdn input { flex: 1 1 40%; } .fqdn select { flex: 1 1 55%; }
 
 /* ---------- list editor, file tree ---------- */
@@ -223,6 +225,7 @@ body.with-bar { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
   /* dialogs: nearly the full screen instead of a floating box */
   dialog { width: calc(100vw - 16px); min-width: 0; max-width: none; max-height: calc(100dvh - 16px); margin: 8px auto; padding: 16px 16px 18px; overflow-y: auto; border-radius: 16px; }
   dialog h2 { font-size: 19px; margin: 0 0 4px; }
+  #kdlg { margin: auto auto calc(12px + env(safe-area-inset-bottom)); }   /* the question sits at the bottom, under the thumb, like a sheet */
   dialog .row { flex-wrap: wrap; } dialog .row button { flex: 1 1 auto; }
   .cdiff { max-height: 42vh; } pre { max-height: 40vh; }
   .toast { top: calc(8px + env(safe-area-inset-top)); width: calc(100vw - 16px); max-width: none; justify-content: space-between; }
