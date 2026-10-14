@@ -189,11 +189,7 @@ dialog button { border-radius: 10px; }
 .chk .ftext.cmd { font-family: var(--mono); font-size: 13px; }
 .chk .cfix { margin-top: 14px; }
 .chk .cnote { margin: 6px 0 0; font-size: 13px; color: var(--faint); }
-.chk code, .plist code { padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text); font-family: var(--mono); font-size: 12.5px; white-space: normal; }
-.plist { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 14px; line-height: 1.5; color: var(--muted); }
-.plist li { display: flex; gap: 8px; overflow-wrap: anywhere; }
-.plist .tickmark { flex: none; color: var(--green-text); font-weight: 700; }
-.plist li.info .tickmark { color: var(--faint); }
+.chk code { padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text); font-family: var(--mono); font-size: 12.5px; white-space: normal; }
 .subhead { margin: 28px 0 0; font-size: 16px; }
 nav .count.warn { background: var(--red-fill); }
 
