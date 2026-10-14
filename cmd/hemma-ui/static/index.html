@@ -78,7 +78,7 @@
     <h2>Save changes</h2>
     <p class="meta">Saving records these changes with your message.</p>
     <div id="cdiff" class="cdiff"></div>
-    <details><summary class="meta">All changed files</summary><pre id="cfiles"></pre></details>
+    <details id="cadv" class="advanced" hidden><summary class="meta">Advanced</summary><div id="cadvbody"></div></details>
     <label>Change message *<textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
     <label class="switchrow" id="cdeploy"><span>Deploy right after saving</span><span class="switch"><input type="checkbox" id="cdep"><span class="track"></span></span></label>
     <p class="meta" id="cdephelp"></p>
@@ -575,28 +575,35 @@ function renderDiff(d) {
     root.append(card);
   }
   if (d.reformatted) root.append(el("p", "services.yaml was rewritten by hemma, but no value in it changed — only its formatting. You can commit it or discard it.", { className: "meta" }));
-  if (d.generated.length) {
-    const det = el("details", null, { className: "dsec" });
-    det.append(el("summary", `${d.generated.length} generated ${d.generated.length === 1 ? "file" : "files"} updated automatically`));
-    const ul = el("ul", null, { className: "dfiles" }); d.generated.forEach(p => ul.append(el("li", p))); det.append(ul); root.append(det);
-  }
-  if (d.other.length) {
-    root.append(el("div", "Other files changed (not managed by hemma — listed only)", { className: "dsec" }));
-    const ul = el("ul", null, { className: "dfiles" });
-    d.other.forEach(f => { const li = el("li"); li.append(el("code", f.path), ` — ${FILE_STATUS[f.status] || f.status}`); ul.append(li); });
-    root.append(ul);
-  }
   if (!root.children.length) root.append(el("p", "No changes.", { className: "meta" }));
   return root;
+}
+// The files behind a change are for people who want to see them, not for the person saving it: they sit in one
+// collapsed "Advanced" fold, in plain words. Saving records ALL of them with the message (the fold says so), so
+// nothing is saved that cannot be seen here. Nothing to show (only services.yaml changed) → no fold at all.
+function fillAdvanced(d) {
+  const adv = $("#cadv"), body = $("#cadvbody"), n = d ? d.generated.length + d.other.length : 0;
+  adv.hidden = n === 0; body.replaceChildren();
+  if (!n) return;
+  body.append(el("p", "Saving records every file below together with this change.", { className: "meta" }));
+  const group = (title, items, show) => {
+    if (!items.length) return;
+    body.append(el("div", title, { className: "dsec" }));
+    const ul = el("ul", null, { className: "dfiles" });
+    items.forEach(it => { const li = el("li"); li.append(show(it)); ul.append(li); });
+    body.append(ul);
+  };
+  group(`Made by hemma (${d.generated.length})`, d.generated, p => el("code", p));
+  group(`Other files (${d.other.length})`, d.other, f => { const s = document.createDocumentFragment(); s.append(el("code", f.path), ` — ${FILE_STATUS[f.status] || f.status}`); return s; });
 }
 
 // openCommit (the Save panel): review what changed, write the change message, save. Saving only records
 // the changes; deploying them is the separate Deploy button.
 function openCommit() {
   $("#cdiff").replaceChildren(el("p", "Loading changes…", { className: "meta" }));
-  fetch("/api/diff").then(r => r.json()).then(d => $("#cdiff").replaceChildren(d.error ? el("p", d.error, { className: "err" }) : renderDiff(d)))
+  fillAdvanced(null); $("#cadv").open = false;
+  fetch("/api/diff").then(r => r.json()).then(d => { $("#cdiff").replaceChildren(d.error ? el("p", d.error, { className: "err" }) : renderDiff(d)); if (!d.error) fillAdvanced(d); })
     .catch(() => $("#cdiff").replaceChildren(el("p", "Could not load the changes.", { className: "err" })));
-  $("#cfiles").textContent = changes.files.map(f => `${f.status.padEnd(2)} ${f.path}`).join("\n");
   $("#cmsg").value = ""; $("#cerr").textContent = "";
   // Saving can deploy straight away. The choice is the person's to make once and is remembered; it is OFF until
   // they turn it on, because deploying restarts things.
@@ -721,6 +728,72 @@ function parseDoctor(out) {
   }
   return groups;
 }
+// How a finding LOOKS. doctor's words are shown untouched; only their layout changes, so the page reads as the page
+// and not as a console dump: the headline in the UI font, what explains it as supporting text, 'quoted commands' as
+// code chips, and `fix:` / `then:` lines as labelled rows. All text goes in as text nodes (never as markup).
+const GLYPH = /^[✓⚠✗]\s*/;
+function withCode(text) {
+  const frag = document.createDocumentFragment();
+  const re = /(^|[\s(])'([^']+)'(?=[\s.,;:)]|$)/g;   // a quote that opens a word, so the apostrophe in "hemma's" is left alone
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    frag.append(text.slice(last, m.index + m[1].length), el("code", m[2]));
+    last = m.index + m[0].length;
+  }
+  frag.append(text.slice(last));
+  return frag;
+}
+const withText = (tag, cls, text) => { const e = el(tag, null, { className: cls }); e.append(withCode(text)); return e; };
+// The lines of a finding after its headline: labelled rows (fix: / then:), bullets, and indented lines (a list of
+// files or rules) as list items; anything else is supporting text.
+function addLines(card, lines) {
+  let row = null, list = null;
+  for (const raw of lines) {
+    const t = raw.trim(); if (!t) continue;
+    const lab = /^(fix|then|run|hint|try|see)\s*:\s*(.*)$/i.exec(t), bullet = /^[•*-]\s+(.*)$/.exec(t);
+    const indented = /^\s{2,}\S/.test(raw) && !/\s/.test(t);   // an indented single token is a path or a rule (a list item); an indented sentence is just text
+    if (lab) {
+      list = null; row = el("div", null, { className: "frow" });
+      const body = withText("span", "ftext" + (/^(then|run)$/i.test(lab[1]) ? " cmd" : ""), lab[2]);
+      row.append(el("span", lab[1], { className: "flabel" }), body); card.append(row);
+    } else if (bullet || indented) {
+      row = null; if (!list) { list = el("ul"); card.append(list); }
+      const li = el("li", null, { className: bullet ? "" : "item" }); li.append(withCode(bullet ? bullet[1] : t)); list.append(li);   // "item": a path or a rule, so monospace
+    } else if (row) {                              // a deeper-indented line continues the row above it
+      row.lastChild.append(" ", withCode(t));
+    } else { list = null; card.append(withText("div", "fwhy", t)); }
+  }
+}
+function findingEl(g) {
+  const card = el("div", null, { className: `issue ${g.kind}` });
+  const first = g.lines[0].replace(GLYPH, "").trim();
+  let head = first, why = "";
+  const i = first.indexOf(": ");
+  if (first.length > 100 && i > 0 && i <= 90) { head = first.slice(0, i); why = first.slice(i + 2); }   // a long sentence: the claim, then its explanation
+  card.append(withText("div", "fhead", head));
+  if (why) card.append(withText("div", "fwhy", why));
+  addLines(card, g.lines.slice(1));
+  return card;
+}
+// doctor's own lines between findings ("Run 'hemma doctor --fix' to …", the rules to add) belong to the finding above
+// them: they join its card instead of standing alone.
+function findingEls(groups) {
+  const cards = []; let prev = null;
+  for (const g of groups) {
+    if (prev && g.kind === "note" && (prev.kind === "note" || /^\s*Run\b/.test(g.lines[0]))) { addLines(prev.card, g.lines); continue; }
+    const card = findingEl(g); cards.push(card); prev = { kind: g.kind, card };
+  }
+  return cards;
+}
+function passedEl(passed) {
+  const ul = el("ul", null, { className: "plist" });
+  passed.forEach(g => {
+    const li = el("li"), tick = el("span", "✓", { className: "tickmark" });
+    tick.setAttribute("aria-hidden", "true");   // decorative: the sentence says it passed (it sits under "N checks passed")
+    li.append(tick, withText("span", "", g.lines.map(l => l.replace(GLYPH, "").trim()).join(" "))); ul.append(li);
+  });
+  return ul;
+}
 async function checkIssues() {
   if (issues.busy) { issues.again = true; return; }   // one check at a time; if something changed meanwhile, check again after
   issues.busy = true; if (tab === "Issues") render();
@@ -798,9 +871,9 @@ const VIEWS = {
     const body = el("div", null, { className: "issuelist" });
     if (issues.error) body.append(el("pre", issues.error, { className: "reason" }));
     const passed = issues.groups.filter(g => g.kind === "ok");
-    // doctor's output as it is: each finding in its own card, its own lines untouched
-    issues.groups.filter(g => g.kind !== "ok").forEach(g => { const c = el("div", null, { className: `issue ${g.kind}` }); c.append(el("pre", g.lines.join("\n"))); body.append(c); });
-    if (passed.length) { const d = el("details", null, { className: "passed" }); d.append(el("summary", `${passed.length} ${passed.length === 1 ? "check" : "checks"} passed`), el("pre", passed.map(g => g.lines.join("\n")).join("\n"))); body.append(d); }
+    // doctor's words as they are, laid out as the page's own text: each finding in its own card (see findingEl)
+    body.append(...findingEls(issues.groups.filter(g => g.kind !== "ok")));
+    if (passed.length) { const d = el("details", null, { className: "passed" }); d.append(el("summary", `${passed.length} ${passed.length === 1 ? "check" : "checks"} passed`), passedEl(passed)); body.append(d); }
     return [head, body, ...tools];
   },
 };

@@ -171,11 +171,22 @@ dialog button { border-radius: 10px; }
 .issue { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--border); border-left: 4px solid var(--amber-line); border-radius: 12px; background: var(--surface); }
 .issue.err { border-left-color: var(--red); }
 .issue.note { border-left-color: var(--border-2); }
-.issue pre { margin: 0; padding: 0; border: 0; background: none; max-height: none; font: 13px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
-.issue.note pre { color: var(--muted); }
+/* a finding is laid out as the page's own text (see findingEl): headline, supporting text, labelled rows, code chips */
+.issue { overflow-wrap: anywhere; }
+.issue .fhead { font-size: 15px; font-weight: 600; line-height: 1.4; }
+.issue.note .fhead { font-weight: 500; color: var(--muted); }
+.issue .fwhy { margin-top: 4px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.issue .frow { display: flex; gap: 10px; margin-top: 8px; font-size: 14px; line-height: 1.5; }
+.issue .flabel { flex: none; min-width: 3.4em; padding-top: 3px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.issue .ftext { min-width: 0; }
+.issue ul { margin: 6px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.issue code, .plist code { padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text); font-size: 12.5px; white-space: normal; }
+.issue .cmd code, .issue .ftext.cmd, .issue li.item { font-family: var(--mono); font-size: 13px; }
 details.passed { margin: 10px 0; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 details.passed summary { cursor: pointer; color: var(--muted); font-size: 14px; }
-details.passed pre { margin: 10px 0 0; padding: 0; border: 0; background: none; max-height: none; font: 13px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+.plist { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.plist li { display: flex; gap: 8px; overflow-wrap: anywhere; }
+.plist .tickmark { flex: none; color: var(--green-text); font-weight: 700; }
 .noissues { margin: 18px 0 6px; font-size: 15px; }
 .subhead { margin: 28px 0 0; font-size: 16px; }
 nav .count.warn { background: var(--red-fill); }
