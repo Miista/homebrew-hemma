@@ -9,8 +9,9 @@ import (
 	"hemma/internal/cli/kernel"
 )
 
-// The Issues page lists exactly what `hemma doctor` says. This endpoint runs doctor (read-only: no --fix, no lock)
-// and returns its output verbatim, plus whether `hemma doctor --fix` could resolve something in it.
+// The Issues page is a checklist of what `hemma doctor` checks. This endpoint runs doctor (read-only: no --fix, no
+// lock) and returns its output verbatim, the same read into items (issueitems.go), and whether
+// `hemma doctor --fix` could resolve something in it.
 //
 // "Could --fix resolve something?" is answered from doctor's own wording, not guessed: wherever --fix can help,
 // doctor says so in a hint ("Run 'hemma doctor --fix' to …"); the one other line that mentions --fix is the note
@@ -22,7 +23,7 @@ func (s *server) handleIssues(w http.ResponseWriter, r *http.Request) {
 	code, out := s.inKernel(ctx, "doctor", func(env *kernel.Env) int {
 		return kernel.Doctor(env, filepath.Join(s.repo, "services.yaml"), nil)
 	})
-	writeJSON(w, 200, map[string]any{"ok": code == 0, "output": out, "fixable": doctorFixable(out)})
+	writeJSON(w, 200, map[string]any{"ok": code == 0, "output": out, "fixable": doctorFixable(out), "items": parseDoctorItems(out)})
 }
 
 // doctorFixable reports whether doctor's output offers `hemma doctor --fix` for something.
