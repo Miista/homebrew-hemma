@@ -242,6 +242,7 @@ func TestDiff(t *testing.T) {
 		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
+		s.invalidateChanges() // the handlers do this after every change; this test edits the files itself
 	}
 	v1 := "hosts:\n    pi:\n        ip: 192.0.2.50\ndomains:\n    - example.com\ndefaults:\n    dns_host: pi\n" +
 		"services:\n    demo:\n        fqdn: demo.example.com\n        host: pi\n        backend: demo:80\n" +
