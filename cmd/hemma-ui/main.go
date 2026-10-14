@@ -1,4 +1,5 @@
-// hemma-ui is a single-host web UI for hemma: view, edit, diagnose and apply.
+// hemma-ui is a web UI for hemma: view, edit, diagnose and deploy. It runs on the deploy host,
+// where Deploy fans out over ssh exactly as `hemma deploy` does.
 // It never writes generated files or services.yaml itself — every command is
 // run from an allowlist (commands.go) through the same kernel the CLI uses
 // (internal/cli/kernel, called in-process), so validation and the

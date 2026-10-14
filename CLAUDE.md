@@ -142,18 +142,23 @@ does not import `hemma.trusted_proxies.generated.caddy` (design §4.7 — hemma 
 boundary, so it refuses to reload a Caddy that would silently ignore it; `doctor` only advises
 there, since the global options block it belongs in is hand-maintained).
 
-## `hemma-ui` — single-host web UI (`cmd/hemma-ui`)
+## `hemma-ui` — web UI (`cmd/hemma-ui`)
 
-A deliberately small web UI for one host (image: `Dockerfile.ui`; compose + synthetic test fixture:
-`docker-compose.ui.yml`, `hack/ui-fixture/`). **Single host only for now** — multi-host (ssh targets,
-`deploy-host`) is intentionally not exposed. It is NOT a second implementation of hemma:
+A deliberately small web UI (image: `Dockerfile.ui`; compose + synthetic test fixture:
+`docker-compose.ui.yml`, `hack/ui-fixture/`). **It runs on the deploy host**, and Deploy is the kernel's
+fleet `deploy` — the same code as the CLI, so it ssh's to the other hosts (ssh key + `known_hosts`
+mounted read-only under `/data/.ssh`, see the compose file) and applies on this host last. There is no
+hub/agent: that design (the unmerged `web-ui` branch) was dropped in favour of the shared kernel.
+The container runs as uid 1000 (the image's `hemma` user: passwd entry for ssh, owned `/data/auth` for
+authy). It is NOT a second implementation of hemma:
 
 - **Every change goes through the kernel** (`commands.go` is an allowlist of typed commands, built as an argv,
   never a shell, and run in-process via `kernel.Route` with a capturing `kernel.Env`), so validation and the
   single-writer invariant are exactly the CLI's — it is literally the same code. The UI never writes
   `services.yaml` or generated files itself. `Env.NoTerminal` keeps the interactive editors from ever prompting,
   and the request's deadline is `Env.Ctx`, which kills hung external commands. The image contains only
-  `hemma-ui`: there is no `hemma` binary (even `deploy`'s apply of this host runs in-process).
+  `hemma-ui`: there is no `hemma` binary here (`deploy`'s apply of this host runs in-process; the OTHER hosts
+  run their installed `hemma apply` over ssh, as on the CLI).
 - **Typed fields** (`Ref` in `commands.go`, validators in `refs.go`): a host is picked from hosts, a CIDR list is
   validated as CIDRs, a file is picked from the repo tree. The browser offers only valid choices *and* the
   server re-checks every value — the browser is a convenience, not the control.
