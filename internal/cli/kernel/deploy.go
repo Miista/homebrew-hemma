@@ -107,15 +107,7 @@ func cmdDeploy(env *Env, repoRoot, cfgPath string, args []string) int {
 		return code
 	}
 	self = localHost(cfg)
-	// A rebase can leave generated files that no longer match the merged services.yaml (both sides regenerate the
-	// same files). apply refuses a drifted repo on every host, so find out here — before any host pulls or restarts
-	// anything — instead of failing host by host in phase 2.
-	if d := detectDrift(repoRoot, cfg, loadManifest(env, repoRoot, cfg)); d.Any() {
-		errf(env, "The repo has drifted (%d %s out of sync with services.yaml) — deploy would be refused at apply on every host.",
-			d.Count(), plural(d.Count(), "generated file"))
-		printDriftDetail(env, d)
-		fmt.Fprintln(env.Err)
-		hint(env, "Run 'hemma doctor --fix', commit and push the result, then deploy again.")
+	if driftRefusal(env, repoRoot, cfg) {
 		return 1
 	}
 	if targets, err = resolveDeployTargets(cfg, self, args); err != nil {
@@ -126,7 +118,38 @@ func cmdDeploy(env *Env, repoRoot, cfgPath string, args []string) int {
 		fmt.Fprintln(env.Out, "Nothing to deploy: no host runs a service or is the dns_host.")
 		return 0
 	}
-	return runDeploy(env, execRunner{env}, targets, repoRoot)
+	// If a remote host turns out to hold commits origin lacks, they reach origin during phase 1 and this host must take
+	// them in too: the same sync and drift check again.
+	resync := func() error {
+		if err := deployPreflight(env, repoRoot); err != nil {
+			return err
+		}
+		c, _ := loadExisting(env, cfgPath, "deploy")
+		if c == nil {
+			return fmt.Errorf("services.yaml cannot be read after syncing with origin")
+		}
+		if driftRefusal(env, repoRoot, c) {
+			return fmt.Errorf("the repo has drifted after syncing with origin — deploy stopped")
+		}
+		return nil
+	}
+	return runDeploy(env, execRunner{env}, targets, repoRoot, resync)
+}
+
+// driftRefusal reports (and says why) when the generated files no longer match services.yaml. A rebase can leave them
+// stale — both sides regenerate the same files — and apply refuses a drifted repo on every host, so find out here,
+// before any host pulls or restarts anything, instead of failing host by host in phase 2.
+func driftRefusal(env *Env, repoRoot string, cfg *config.Config) bool {
+	d := detectDrift(repoRoot, cfg, loadManifest(env, repoRoot, cfg))
+	if !d.Any() {
+		return false
+	}
+	errf(env, "The repo has drifted (%d %s out of sync with services.yaml) — deploy would be refused at apply on every host.",
+		d.Count(), plural(d.Count(), "generated file"))
+	printDriftDetail(env, d)
+	fmt.Fprintln(env.Err)
+	hint(env, "Run 'hemma doctor --fix', commit and push the result, then deploy again.")
+	return true
 }
 
 // deployTarget is one host the deploy fans out to.
@@ -208,11 +231,20 @@ func resolveDeployTargets(cfg *config.Config, self string, names []string) ([]de
 	return out, nil
 }
 
-// deployPreflight makes this checkout carry exactly what origin should: refuses a dirty tree (a local-only edit would
-// deploy a state that does not match what this machine shows), then brings it level with origin — `git pull --rebase`
-// when origin has commits this checkout lacks, `git push` when this checkout has commits origin lacks. A rebase is
-// transactional: if it stops on a real conflict it is aborted, leaving the repo exactly as it was, and the error says
-// so. The tree is clean here, so nothing is stashed.
+// gitFunc runs one git command in a checkout — this machine's (directly) or a remote host's (over ssh) — and returns
+// its trimmed combined output.
+type gitFunc func(args ...string) (string, error)
+
+// syncWho words the messages of syncWithOrigin for whose checkout it is.
+type syncWho struct {
+	owner string // "your" | "optiplex's"
+	where string // "here" | "on optiplex"
+}
+
+var syncLocal = syncWho{"your", "here"}
+
+// deployPreflight makes THIS checkout carry exactly what origin should: refuses a dirty tree (a local-only edit would
+// deploy a state that does not match what this machine shows), then brings it level with origin (syncWithOrigin).
 func deployPreflight(env *Env, repoRoot string) error {
 	git := func(args ...string) (string, error) {
 		out, err := env.command("git", append([]string{"-C", repoRoot}, args...)...).CombinedOutput()
@@ -228,52 +260,135 @@ func deployPreflight(env *Env, repoRoot string) error {
 	if out, err := git("rev-parse", "--abbrev-ref", "@{u}"); err != nil {
 		return fmt.Errorf("cannot find the upstream of the current branch in %s (no upstream configured?): %v\n%s", repoRoot, err, out)
 	}
-	// A few rounds: after our push, someone else's push can land in between and refuse it once more.
+	_, err = syncWithOrigin(git, syncLocal, false, func(format string, a ...any) { fmt.Fprintf(env.Out, format+"\n", a...) })
+	return err
+}
+
+// syncWithOrigin brings one checkout level with origin: `git pull --rebase` when origin has commits it lacks,
+// `git push` when it has commits origin lacks. It serves this host (a clean tree, see deployPreflight) and every
+// remote host (reconcileRemote), so the two cannot drift apart. Other hosts commit to the same repository too (an
+// updater on one of them, say), so "origin has work this checkout lacks" is ordinary, not an error for a person to
+// resolve.
+//
+// A rebase is transactional: if it stops on a real conflict it is aborted, leaving the repo exactly as it was, and the
+// error says so. With allowDirty (a remote host: someone may be mid-edit there) uncommitted files are left alone, and
+// only stashed around the rebase when none of them is also changed by origin's new commits — then re-applying them
+// cannot conflict. If one is, nothing is touched and the error names the files. Returns whether anything was pushed
+// (so the caller knows origin gained commits).
+func syncWithOrigin(git gitFunc, who syncWho, allowDirty bool, say func(format string, a ...any)) (pushed bool, err error) {
+	// A few rounds: after a push, someone else's push can land in between and refuse it once more.
 	for round := 0; round < 3; round++ {
 		if out, err := git("fetch"); err != nil {
-			return fmt.Errorf("cannot reach origin to compare with it: %v\n%s", err, out)
+			return pushed, fmt.Errorf("cannot reach origin to compare with it (%s): %v\n%s", who.where, err, out)
 		}
-		ahead, behind := aheadBehind(git)
+		ahead, behind, err := aheadBehind(git)
+		if err != nil {
+			return pushed, fmt.Errorf("cannot compare the checkout %s with origin (no upstream configured?): %v", who.where, err)
+		}
 		if behind > 0 {
-			if out, err := git("pull", "--rebase"); err != nil {
+			pullArgs := []string{"pull", "--rebase"}
+			if allowDirty {
+				status, _ := git("status", "--porcelain")
+				if dirty := porcelainPaths(status); len(dirty) > 0 {
+					incoming, _ := git("diff", "--name-only", "HEAD...@{u}")
+					if overlap := intersect(dirty, strings.Fields(incoming)); len(overlap) > 0 {
+						return pushed, fmt.Errorf("%s has uncommitted edits to %s, which origin's new commits also change — nothing was touched. "+
+							"Commit or stash the edits there, then deploy again.", strings.TrimSuffix(who.owner, "'s"), strings.Join(overlap, ", "))
+					}
+					pullArgs = append(pullArgs, "--autostash")
+				}
+			}
+			if out, err := git(pullArgs...); err != nil {
 				git("rebase", "--abort") // a no-op unless the rebase stopped on a conflict
-				return fmt.Errorf("origin has %d new %s that overlap with your %d unpushed %s, so they could not be combined — nothing was changed here.\n%s\n"+
+				return pushed, fmt.Errorf("origin has %d new %s that overlap with %s %d unpushed %s, so they could not be combined — nothing was changed %s.\n%s\n"+
 					"Resolve it in the repo (git pull --rebase, fix the conflict), then deploy again.",
-					behind, plural(behind, "commit"), ahead, plural(ahead, "commit"), out)
+					behind, plural(behind, "commit"), who.owner, ahead, plural(ahead, "commit"), who.where, out)
 			}
 			if ahead > 0 {
-				fmt.Fprintf(env.Out, "Rebased your %d unpushed %s onto %d new from origin.\n", ahead, plural(ahead, "commit"), behind)
+				say("Rebased %s %d unpushed %s onto %d new from origin.", who.owner, ahead, plural(ahead, "commit"), behind)
 			} else {
-				fmt.Fprintf(env.Out, "Pulled %d new %s from origin.\n", behind, plural(behind, "commit"))
+				say("Pulled %d new %s from origin %s.", behind, plural(behind, "commit"), who.where)
 			}
 		}
 		if ahead == 0 {
-			return nil
+			return pushed, nil
 		}
 		out, err := git("push")
 		if err == nil {
-			fmt.Fprintf(env.Out, "Pushed %d %s to origin.\n", ahead, plural(ahead, "commit"))
-			return nil
+			say("Pushed %s %d %s to origin.", who.owner, ahead, plural(ahead, "commit"))
+			return true, nil
 		}
 		if !strings.Contains(out, "fetch first") && !strings.Contains(out, "non-fast-forward") && !strings.Contains(out, "rejected") {
-			return fmt.Errorf("pushing your %d unpushed %s to origin failed:\n%s", ahead, plural(ahead, "commit"), out)
+			return pushed, fmt.Errorf("pushing %s %d unpushed %s to origin failed:\n%s", who.owner, ahead, plural(ahead, "commit"), out)
 		}
 		// origin moved again while we were pushing: take another round
 	}
-	return fmt.Errorf("origin kept changing while pushing — try again")
+	return pushed, fmt.Errorf("origin kept changing while pushing — try again")
+}
+
+// reconcileRemote brings one REMOTE host's checkout level with origin before the fleet pulls (see syncWithOrigin): its
+// own unpushed commits (the updater's, say) reach origin, and origin's new ones reach it. Uncommitted edits there are
+// respected: see syncWithOrigin.
+func reconcileRemote(env *Env, r deployRunner, t deployTarget) (pushed bool, err error) {
+	git := func(args ...string) (string, error) {
+		out, err := r.run(t, append([]string{"git", "-C", remoteRepoPath}, args...))
+		return strings.TrimSpace(out), err
+	}
+	return syncWithOrigin(git, syncWho{owner: t.Name + "'s", where: "on " + t.Name}, true,
+		func(format string, a ...any) { fmt.Fprintf(env.Out, "  "+format+"\n", a...) })
 }
 
 // aheadBehind counts the commits this checkout has that its upstream lacks (ahead) and the other way round (behind).
-// Output that cannot be read counts as level (0, 0).
-func aheadBehind(git func(args ...string) (string, error)) (ahead, behind int) {
+// Output that cannot be read counts as level (0, 0); a git failure is an error.
+func aheadBehind(git gitFunc) (ahead, behind int, err error) {
 	out, err := git("rev-list", "--left-right", "--count", "HEAD...@{u}")
+	if err != nil {
+		return 0, 0, fmt.Errorf("%v: %s", err, out)
+	}
 	f := strings.Fields(out)
-	if err != nil || len(f) != 2 {
-		return 0, 0
+	if len(f) != 2 {
+		return 0, 0, nil
 	}
 	ahead, _ = strconv.Atoi(f[0])
 	behind, _ = strconv.Atoi(f[1])
-	return ahead, behind
+	return ahead, behind, nil
+}
+
+// porcelainPaths reads the paths out of `git status --porcelain` (a rename counts as its new path). Each line is
+// "XY path", where X may be a space — and the caller's trimming may have eaten the very first line's leading space — so
+// the path is whatever follows the first space AFTER the status letters, not a fixed column.
+func porcelainPaths(status string) []string {
+	var paths []string
+	for _, line := range strings.Split(status, "\n") {
+		l := strings.TrimLeft(line, " ")
+		i := strings.IndexByte(l, ' ')
+		if i < 0 {
+			continue
+		}
+		p := strings.TrimSpace(l[i+1:])
+		if j := strings.LastIndex(p, " -> "); j >= 0 {
+			p = p[j+4:]
+		}
+		if p != "" {
+			paths = append(paths, strings.Trim(p, "\""))
+		}
+	}
+	return paths
+}
+
+// intersect returns the members of a that are also in b, in a's order.
+func intersect(a, b []string) []string {
+	in := map[string]bool{}
+	for _, x := range b {
+		in[x] = true
+	}
+	var out []string
+	for _, x := range a {
+		if in[x] {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 // Per-target argv builders. A local target operates on the local checkout
@@ -396,7 +511,7 @@ func deployProbe(env *Env, r deployRunner, targets []deployTarget) int {
 
 // runDeploy executes the two phases against resolved, ordered targets.
 // Factored off cmdDeploy so the phase logic runs under a fake runner in tests.
-func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo string) int {
+func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo string, resync func() error) int {
 	fmt.Fprintf(env.Out, "Deploying to %d %s: %s.\n", len(targets), plural(len(targets), "host"), joinTargetNames(targets))
 
 	// Phase 0 — probe ssh reachability to every REMOTE target; ANY failure
@@ -413,6 +528,34 @@ func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo strin
 	// Success is one tick line per host (apply-style); the raw git output is
 	// shown only on failure, where it is the diagnostic.
 	fmt.Fprintf(env.Out, "\n%s== Phase 1: pull ==%s\n", boldOn, boldOff)
+
+	// First bring every REMOTE checkout level with origin (syncWithOrigin): commits made on a remote host (an updater's,
+	// say) reach origin, origin's new ones reach it, and edits someone has under way there are left alone. A remote whose
+	// edits clash with origin's new commits stops the deploy here, naming the files. If any remote pushed, origin gained
+	// commits this host lacks, so this host syncs again (and re-checks for drift) before everyone pulls.
+	pushedFromRemote := false
+	for _, t := range targets {
+		if t.Local {
+			continue
+		}
+		pushed, err := reconcileRemote(env, r, t)
+		if err != nil {
+			fmt.Fprintln(env.Out)
+			errf(env, "Could not bring %q level with origin — deploy aborted, phase 2 (apply) never started.\n%v", t.Name, err)
+			hint(env, "No runtime state was changed anywhere.")
+			return 1
+		}
+		pushedFromRemote = pushedFromRemote || pushed
+	}
+	if pushedFromRemote && resync != nil {
+		if err := resync(); err != nil {
+			fmt.Fprintln(env.Out)
+			errf(env, "%v", err)
+			hint(env, "No runtime state was changed anywhere.")
+			return 1
+		}
+	}
+
 	for _, t := range targets {
 		out, err := r.run(t, pullArgv(t, localRepo))
 		if err == nil {

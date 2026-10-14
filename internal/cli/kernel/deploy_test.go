@@ -96,6 +96,13 @@ type fakeRunner struct {
 	failOn   map[string]bool   // host -> fail its pull
 	applyErr map[string]bool   // host -> fail its apply
 	heads    map[string]string // host -> rev-parse output (default "aaa")
+
+	// The state of a remote host's checkout, for the phase-1 sync with origin (default: level, clean).
+	ahead, behind map[string]int    // host -> commits it has that origin lacks / origin has that it lacks
+	dirty         map[string]string // host -> `git status --porcelain` output
+	incoming      map[string]string // host -> `git diff --name-only HEAD...@{u}` output
+	rebaseFail    map[string]bool   // host -> `git pull --rebase` stops on a conflict
+	pushRejected  map[string]bool   // host -> `git push` is refused (origin moved)
 }
 
 func (f *fakeRunner) run(t deployTarget, argv []string) (string, error) {
@@ -105,6 +112,24 @@ func (f *fakeRunner) run(t deployTarget, argv []string) (string, error) {
 	case cmd == "true":
 		if f.probeErr[t.Name] {
 			return "ssh: connect to host appbox.lan port 22: Connection refused", fmt.Errorf("exit status 255")
+		}
+		return "", nil
+	case strings.HasSuffix(cmd, " fetch"), strings.HasSuffix(cmd, "rebase --abort"):
+		return "", nil
+	case strings.Contains(cmd, "rev-list --left-right --count"):
+		return fmt.Sprintf("%d\t%d", f.ahead[t.Name], f.behind[t.Name]), nil
+	case strings.Contains(cmd, "status --porcelain"):
+		return f.dirty[t.Name], nil
+	case strings.Contains(cmd, "diff --name-only"):
+		return f.incoming[t.Name], nil
+	case strings.Contains(cmd, "pull --rebase"):
+		if f.rebaseFail[t.Name] {
+			return "CONFLICT (content): Merge conflict in optiplex/docker-compose.yml", fmt.Errorf("exit status 1")
+		}
+		return "Successfully rebased.", nil
+	case strings.HasSuffix(cmd, " push"):
+		if f.pushRejected[t.Name] {
+			return "! [rejected] master -> master (fetch first)", fmt.Errorf("exit status 1")
 		}
 		return "", nil
 	case strings.Contains(cmd, "pull"):
@@ -143,13 +168,15 @@ var deployTestTargets = []deployTarget{
 
 func TestRunDeploy_HappyPath(t *testing.T) {
 	f := &fakeRunner{}
-	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo"); code != 0 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil); code != 0 {
 		t.Fatalf("happy path should exit 0, got %d (calls: %v)", code, f.calls)
 	}
-	// Phase 0 probes the remote first, then remote pulls the convention path
-	// and local pulls the local checkout.
+	// Phase 0 probes the remote first; phase 1 brings the remote level with origin (fetch, then compare — level here, so
+	// nothing more), then every host pulls: the remote at the convention path, the local at the local checkout.
 	wantPrefix := []string{
 		"appbox: true",
+		"appbox: git -C ~/docker fetch",
+		"appbox: git -C ~/docker rev-list --left-right --count HEAD...@{u}",
 		"appbox: git -C ~/docker pull --ff-only",
 		"resolver: git -C /repo pull --ff-only",
 	}
@@ -177,7 +204,7 @@ func TestRunDeploy_HappyPath(t *testing.T) {
 // pull.
 func TestRunDeploy_Phase0ProbesRemotesOnly(t *testing.T) {
 	f := &fakeRunner{}
-	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo"); code != 0 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil); code != 0 {
 		t.Fatalf("happy path should exit 0, got %d (calls: %v)", code, f.calls)
 	}
 	// Exactly one probe, for the remote; self (resolver) is never probed.
@@ -193,7 +220,7 @@ func TestRunDeploy_Phase0ProbesRemotesOnly(t *testing.T) {
 // apply.
 func TestRunDeploy_Phase0AbortOnUnreachable(t *testing.T) {
 	f := &fakeRunner{probeErr: map[string]bool{"appbox": true}}
-	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo"); code != 1 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil); code != 1 {
 		t.Fatalf("unreachable host should exit 1, got %d", code)
 	}
 	if f.count("pull") != 0 {
@@ -208,7 +235,7 @@ func TestRunDeploy_Phase0AbortOnUnreachable(t *testing.T) {
 // are not pulled and NOTHING is applied.
 func TestRunDeploy_Phase1AbortOnPullFailure(t *testing.T) {
 	f := &fakeRunner{failOn: map[string]bool{"appbox": true}}
-	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo"); code != 1 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil); code != 1 {
 		t.Fatalf("pull failure should exit 1, got %d", code)
 	}
 	if f.count("pull") != 1 {
@@ -223,7 +250,7 @@ func TestRunDeploy_Phase1AbortOnPullFailure(t *testing.T) {
 // aborts before anything is applied.
 func TestRunDeploy_Phase1AbortOnHeadMismatch(t *testing.T) {
 	f := &fakeRunner{heads: map[string]string{"appbox": "aaa", "resolver": "bbb"}}
-	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo"); code != 1 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil); code != 1 {
 		t.Fatalf("head mismatch should exit 1, got %d", code)
 	}
 	if f.count("apply") != 0 {
@@ -235,7 +262,7 @@ func TestRunDeploy_Phase1AbortOnHeadMismatch(t *testing.T) {
 // remaining hosts still apply, and the exit code is non-zero.
 func TestRunDeploy_ApplyFailureContinues(t *testing.T) {
 	f := &fakeRunner{applyErr: map[string]bool{"appbox": true}}
-	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo"); code != 1 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil); code != 1 {
 		t.Fatalf("apply failure should exit 1, got %d", code)
 	}
 	if f.count("apply") != 2 {
@@ -412,7 +439,7 @@ func TestDeployPreflight_SyncsWithOrigin(t *testing.T) {
 		if gitOut(t, clone, "rev-list", "@{u}..HEAD") != "" || gitOut(t, clone, "rev-list", "HEAD..@{u}") != "" {
 			t.Error("after the preflight the checkout must be level with origin")
 		}
-		if !strings.Contains(out.String(), "Rebased your 1 unpushed commit onto 1 new from origin") || !strings.Contains(out.String(), "Pushed 1 commit") {
+		if !strings.Contains(out.String(), "Rebased your 1 unpushed commit onto 1 new from origin") || !strings.Contains(out.String(), "Pushed your 1 commit") {
 			t.Errorf("should say what it did: %q", out.String())
 		}
 	})
@@ -446,6 +473,208 @@ func TestDeployPreflight_SyncsWithOrigin(t *testing.T) {
 		commitFile(t, dir, "f", "1", "init")
 		if err := deployPreflight(stdEnv(), dir); err == nil || !strings.Contains(err.Error(), "upstream") {
 			t.Errorf("no upstream should be refused, got %v", err)
+		}
+	})
+}
+
+// Phase 1 brings every REMOTE checkout level with origin before the fleet pulls: commits made there (an updater's) reach
+// origin, origin's new ones reach it, edits someone has under way there are respected, and a real clash stops the deploy
+// before anything is applied, naming the files.
+func TestRunDeploy_Phase1SyncsRemotesWithOrigin(t *testing.T) {
+	deploy := func(f *fakeRunner, resync func() error) (code int, out string) {
+		var buf strings.Builder
+		code = runDeploy(&Env{Out: &buf, Err: &buf, NoTerminal: true}, f, deployTestTargets, "/repo", resync)
+		return code, buf.String()
+	}
+	had := func(f *fakeRunner, call string) bool { return f.count(call) > 0 }
+
+	t.Run("level: nothing to sync", func(t *testing.T) {
+		f := &fakeRunner{}
+		if code, out := deploy(f, nil); code != 0 || had(f, "pull --rebase") || had(f, " push") {
+			t.Errorf("a level remote needs no sync: code=%d calls=%v\n%s", code, f.calls, out)
+		}
+	})
+	t.Run("behind and clean: pulled with rebase", func(t *testing.T) {
+		f := &fakeRunner{behind: map[string]int{"appbox": 3}}
+		code, out := deploy(f, nil)
+		if code != 0 || !had(f, "appbox: git -C ~/docker pull --rebase") || had(f, "--autostash") {
+			t.Errorf("code=%d calls=%v", code, f.calls)
+		}
+		if !strings.Contains(out, "Pulled 3 new commits from origin on appbox.") {
+			t.Errorf("should say what it did:\n%s", out)
+		}
+	})
+	t.Run("commits the remote made reach origin, and this host syncs again", func(t *testing.T) {
+		f := &fakeRunner{ahead: map[string]int{"appbox": 2}}
+		resynced := 0
+		code, out := deploy(f, func() error { resynced++; return nil })
+		if code != 0 || !had(f, "appbox: git -C ~/docker push") || resynced != 1 {
+			t.Errorf("an unpushed remote commit should be pushed and trigger one re-sync: code=%d resynced=%d calls=%v", code, resynced, f.calls)
+		}
+		if !strings.Contains(out, "Pushed appbox's 2 commits to origin.") {
+			t.Errorf("should say what it did:\n%s", out)
+		}
+	})
+	t.Run("nothing pushed: no re-sync", func(t *testing.T) {
+		f := &fakeRunner{behind: map[string]int{"appbox": 1}}
+		resynced := 0
+		deploy(f, func() error { resynced++; return nil })
+		if resynced != 0 {
+			t.Errorf("a re-sync is only needed when a remote pushed, got %d", resynced)
+		}
+	})
+	t.Run("behind with edits under way elsewhere: stashed around the rebase", func(t *testing.T) {
+		f := &fakeRunner{
+			behind:   map[string]int{"appbox": 1},
+			dirty:    map[string]string{"appbox": " M appbox/mealie.yml\n?? notes.txt"},
+			incoming: map[string]string{"appbox": "appbox/other.yml"},
+		}
+		if code, _ := deploy(f, nil); code != 0 || !had(f, "appbox: git -C ~/docker pull --rebase --autostash") {
+			t.Errorf("disjoint edits can be carried across: code=%d calls=%v", code, f.calls)
+		}
+	})
+	t.Run("an edit origin also changes: nothing touched, files named, nothing applied", func(t *testing.T) {
+		f := &fakeRunner{
+			behind:   map[string]int{"appbox": 1},
+			dirty:    map[string]string{"appbox": " M appbox/docker-compose.yml"},
+			incoming: map[string]string{"appbox": "appbox/docker-compose.yml\nappbox/other.yml"},
+		}
+		code, out := deploy(f, nil)
+		if code != 1 || had(f, "pull --rebase") || had(f, "apply") || had(f, "pull --ff-only") {
+			t.Fatalf("must stop before touching or applying anything: code=%d calls=%v", code, f.calls)
+		}
+		if !strings.Contains(out, "appbox has uncommitted edits to appbox/docker-compose.yml") || !strings.Contains(out, "nothing was touched") {
+			t.Errorf("should name the files and the host:\n%s", out)
+		}
+	})
+	t.Run("a real conflict: aborted and the deploy stops", func(t *testing.T) {
+		f := &fakeRunner{behind: map[string]int{"appbox": 1}, ahead: map[string]int{"appbox": 1}, rebaseFail: map[string]bool{"appbox": true}}
+		code, out := deploy(f, nil)
+		if code != 1 || !had(f, "appbox: git -C ~/docker rebase --abort") || had(f, "apply") || had(f, "push") {
+			t.Fatalf("a conflicting rebase must be aborted and stop the deploy: code=%d calls=%v", code, f.calls)
+		}
+		if !strings.Contains(out, "nothing was changed on appbox") {
+			t.Errorf("should say nothing changed there:\n%s", out)
+		}
+	})
+	t.Run("this host's re-sync fails: the deploy stops before any pull", func(t *testing.T) {
+		f := &fakeRunner{ahead: map[string]int{"appbox": 1}}
+		code, out := deploy(f, func() error { return fmt.Errorf("the repo has drifted after syncing with origin — deploy stopped") })
+		if code != 1 || had(f, "pull --ff-only") || had(f, "apply") {
+			t.Errorf("code=%d calls=%v", code, f.calls)
+		}
+		if !strings.Contains(out, "drifted after syncing") {
+			t.Errorf("the reason should be shown:\n%s", out)
+		}
+	})
+	t.Run("this host is never synced over ssh", func(t *testing.T) {
+		f := &fakeRunner{ahead: map[string]int{"resolver": 2}}
+		deploy(f, nil)
+		if had(f, "resolver: git -C /repo push") || had(f, "resolver: git -C /repo fetch") {
+			t.Errorf("only REMOTE hosts are reconciled in phase 1 (this one was synced up front): %v", f.calls)
+		}
+	})
+}
+
+// porcelainPaths must read every path whatever the status letters look like — including the first line after the
+// caller trimmed its leading space (" M x" arrives as "M x").
+func TestPorcelainPaths(t *testing.T) {
+	for in, want := range map[string]string{
+		"M a/b.yml":                       "a/b.yml",
+		" M a/b.yml\n?? c d.txt":          "a/b.yml|c d.txt",
+		"M  staged.yml\nMM both.yml":      "staged.yml|both.yml",
+		"R  old.yml -> new.yml":           "new.yml",
+		"?? \"quoted name.txt\"\n D gone": "quoted name.txt|gone",
+		"":                                "",
+	} {
+		if got := strings.Join(porcelainPaths(in), "|"); got != want {
+			t.Errorf("porcelainPaths(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A remote host may have uncommitted edits (someone mid-change). Against real git: edits to files origin's new commits
+// do not touch are carried across the rebase untouched; an edit to a file origin also changed — even in a different
+// place — is NOT gambled on: nothing is touched and the file is named.
+func TestSyncWithOrigin_DirtyRemote(t *testing.T) {
+	run := func(dir string) gitFunc {
+		return func(args ...string) (string, error) {
+			cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+			cmd.Env = append(os.Environ(),
+				"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
+				"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+			out, err := cmd.CombinedOutput()
+			return strings.TrimSpace(string(out)), err
+		}
+	}
+	who := syncWho{owner: "optiplex's", where: "on optiplex"}
+	say := func(string, ...any) {}
+
+	t.Run("edits origin does not touch are carried across", func(t *testing.T) {
+		clone := gitRepo(t)
+		commitFile(t, clone, "g", "g1", "add g")
+		gitOut(t, clone, "push")
+		other := otherClone(t, clone)
+		commitFile(t, other, "g", "g2", "elsewhere changes g")
+		gitOut(t, other, "push")
+		if err := os.WriteFile(filepath.Join(clone, "f"), []byte("my edit"), 0o644); err != nil { // f: tracked, origin did not touch it
+			t.Fatal(err)
+		}
+		if _, err := syncWithOrigin(run(clone), who, true, say); err != nil {
+			t.Fatalf("disjoint edits should be carried across: %v", err)
+		}
+		if b, _ := os.ReadFile(filepath.Join(clone, "f")); string(b) != "my edit" {
+			t.Errorf("the uncommitted edit must survive, got %q", b)
+		}
+		if b, _ := os.ReadFile(filepath.Join(clone, "g")); string(b) != "g2" {
+			t.Errorf("origin's change should have arrived, got %q", b)
+		}
+		if gitOut(t, clone, "stash", "list") != "" {
+			t.Error("the autostash must be re-applied and dropped, not left behind")
+		}
+	})
+	t.Run("same file, different place: refused, untouched", func(t *testing.T) {
+		clone := gitRepo(t)
+		if err := os.WriteFile(filepath.Join(clone, "f"), []byte("top\nmiddle\nbottom\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		gitOut(t, clone, "add", "f")
+		gitOut(t, clone, "commit", "-m", "three lines")
+		gitOut(t, clone, "push")
+		other := otherClone(t, clone)
+		commitFile(t, other, "f", "TOP\nmiddle\nbottom\n", "elsewhere edits the top")
+		gitOut(t, other, "push")
+		mine := "top\nmiddle\nBOTTOM\n"
+		if err := os.WriteFile(filepath.Join(clone, "f"), []byte(mine), 0o644); err != nil { // my edit is at the other end
+			t.Fatal(err)
+		}
+		before := gitOut(t, clone, "rev-parse", "HEAD")
+		_, err := syncWithOrigin(run(clone), who, true, say)
+		if err == nil || !strings.Contains(err.Error(), "uncommitted edits to f") || !strings.Contains(err.Error(), "nothing was touched") {
+			t.Fatalf("an edit to a file origin also changed must be refused by name, got %v", err)
+		}
+		if gitOut(t, clone, "rev-parse", "HEAD") != before {
+			t.Error("HEAD must not move")
+		}
+		if b, _ := os.ReadFile(filepath.Join(clone, "f")); string(b) != mine {
+			t.Errorf("the edit must be intact, got %q", b)
+		}
+		if gitOut(t, clone, "stash", "list") != "" {
+			t.Error("nothing may be stashed when the sync is refused")
+		}
+	})
+	t.Run("unpushed commits go out even with an edit under way", func(t *testing.T) {
+		clone := gitRepo(t)
+		commitFile(t, clone, "h", "mine", "updater commit")
+		if err := os.WriteFile(filepath.Join(clone, "f"), []byte("my edit"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		pushed, err := syncWithOrigin(run(clone), who, true, say)
+		if err != nil || !pushed {
+			t.Fatalf("an unpushed commit should be pushed regardless of the dirty tree: pushed=%v err=%v", pushed, err)
+		}
+		if gitOut(t, clone, "rev-list", "@{u}..HEAD") != "" {
+			t.Error("nothing may be left unpushed")
 		}
 	})
 }
