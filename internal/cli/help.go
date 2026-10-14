@@ -396,8 +396,12 @@ Targets default to every host with a role (runs a service, or is the
 dns_host); pass names to restrict. Hosts are reached with
 'ssh -o BatchMode=yes <dest>' where <dest> is the host's ssh: field
 (default: its name); a host whose IP matches this machine runs locally.
-Refuses up front if the LOCAL repo is dirty or has unpushed commits —
-deploying means "make the fleet match origin", so push first.`},
+Deploying means "make the fleet match origin", so on THIS host deploy first
+brings the repo level with origin, before any host is touched: it refuses a
+dirty tree; runs 'git pull --rebase' if origin has work this checkout lacks
+(a rebase that hits a real conflict is aborted — nothing is changed); pushes
+any unpushed commits; and refuses if the generated files then no longer match
+services.yaml (run 'hemma doctor --fix', commit, push, deploy again).`},
 
 	{"doctor", `hemma doctor — audit the repo (gitignore, Caddyfile imports, drift, auth,
 deploy readiness)

@@ -368,6 +368,9 @@ func snapshotCases() []snapCase {
 		sc("deploy-unrestricted-ok", "deploy", "defaults set deploy-host -", synced).withTools("", "ok"),
 		sc("deploy-unrestricted-fail", "deploy", "defaults set deploy-host -", synced).withTools("", "fail"),
 	)
+	// Generated files that do not match services.yaml (here: never generated): deploy refuses after syncing with
+	// origin and BEFORE any host is touched, instead of failing host by host at apply.
+	add(sc("deploy-drift-refused", "deploy").withTools("core", "ok"))
 
 	// ── malformed repos ──────────────────────────────────────────────────────
 	add(

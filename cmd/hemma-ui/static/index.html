@@ -516,7 +516,7 @@ async function deploy() {
   const a = state.apply || { host: "", steps: [] };
   if (!deployMany() && unpushed === 0 && (!a.host || !a.steps.length)) { await ask("Deploy?", "Nothing to update.", { ok: "OK", single: true }); return; }
   if (!await ask("Deploy?", deployMessage(), { ok: "Deploy" })) return;
-  await deployNow(key, "Deployed", undefined, unpushed > 0);
+  await deployNow(key, "Deployed", undefined);
 }
 // Which servers a failed deploy names in its output (a failed pull or apply, an unreachable host), for "Deploy failed on …".
 function deployFailedHosts(out) {
@@ -525,15 +525,12 @@ function deployFailedHosts(out) {
   return [...hosts];
 }
 // deployNow runs the deploy/apply itself (no questions: the caller has the person's consent). Failures stay on
-// screen with Details; `failed` names a failure when the deploy was part of something larger (Save & deploy);
-// pushFirst pushes the saved commits to origin before deploying (a failed push stops everything).
-async function deployNow(key, done, failed, pushFirst) {
+// screen with Details; `failed` names a failure when the deploy was part of something larger (Save & deploy).
+// Sending the saved commits to origin is Deploy's own first step (hemma rebases onto origin and pushes, on this host),
+// so there is nothing to push from here.
+async function deployNow(key, done, failed) {
   deploying = true; renderDeploy();
   try {
-    if (pushFirst) {
-      const pushed = await post("/api/push", {});
-      if (!pushed.ok) { toast("Deploy didn't start: your changes couldn't be sent on", "err", { title: "Deploy", text: pushed.output || pushed.error || "" }); return; }
-    }
     const res = await post("/api/run", { command: key, values: {} });
     const text = res.output || res.error || "";
     if (!res.ok) { const on = deployFailedHosts(text); toast((failed || "Deploy failed") + (on.length ? ` on ${on.join(", ")}` : ""), "err", { title: "Deploy", text }); }
@@ -621,12 +618,10 @@ function openCommit() {
     $("#cgo").disabled = true;
     try {
       const wantDeploy = dep.checked;
-      // Deploy pulls from origin, so a deploy-after-save has to push the new commit first.
-      const res = await post("/api/commit", { message: $("#cmsg").value, push: wantDeploy && changes.has_remote });
-      const savedLocally = !res.ok && /^committed locally/.test(res.output || "");
-      if (!res.ok && !savedLocally) { $("#cerr").textContent = res.output; return; }   // nothing was saved: stay and fix it
+      // Saving only commits. Sending the commit to origin is part of Deploy (hemma does it, rebasing onto origin first).
+      const res = await post("/api/commit", { message: $("#cmsg").value });
+      if (!res.ok) { $("#cerr").textContent = res.output; return; }   // nothing was saved: stay and fix it
       await load(); $("#cdlg").close();
-      if (savedLocally) { toast("Saved, but not deployed: your changes couldn't be sent on", "err", { title: "Deploy", text: res.output }); return; }
       if (!wantDeploy) { toast("Saved", "ok"); return; }
       await deployNow(act, "Saved and deployed", "Saved, but deploy failed");
     } finally { $("#cgo").disabled = false; }

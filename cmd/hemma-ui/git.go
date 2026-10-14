@@ -98,20 +98,8 @@ func (s *server) changes() changes {
 	return c
 }
 
-// handlePush pushes the current branch to its upstream. Needs git credentials
-// available inside the container (see docker-compose.ui.yml); none are stored here.
-func (s *server) handlePush(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	defer s.invalidateChanges() // "ahead" changes
-	if !s.changes().HasRemote {
-		writeJSON(w, 400, map[string]any{"ok": false, "output": "no upstream configured for this branch — nothing to push to"})
-		return
-	}
-	out, err := s.git(2*time.Minute, "push")
-	log.Printf("push: err=%v", err)
-	writeJSON(w, 200, map[string]any{"ok": err == nil, "output": out})
-}
+// There is no push here: sending commits to origin is the first step of `hemma deploy` itself (on this, the deploy
+// host: pull --rebase when origin moved, then push), so Save only commits.
 
 func (s *server) handleChanges(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, s.changesCached())
@@ -123,7 +111,6 @@ func (s *server) handleChanges(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleCommit(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Message string `json:"message"`
-		Push    bool   `json:"push"`
 	}
 	if json.NewDecoder(r.Body).Decode(&in) != nil {
 		writeJSON(w, 400, map[string]any{"ok": false, "output": "invalid request body"})
@@ -155,15 +142,7 @@ func (s *server) handleCommit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if in.Push {
-		out, err := s.git(2*time.Minute, "push")
-		sb.WriteString(out)
-		if err != nil {
-			writeJSON(w, 200, map[string]any{"ok": false, "output": "committed locally, but push failed:\n" + sb.String()})
-			return
-		}
-	}
-	log.Printf("commit: %d files (push=%v)", len(ch.Files), in.Push)
+	log.Printf("commit: %d files", len(ch.Files))
 	writeJSON(w, 200, map[string]any{"ok": true, "output": sb.String()})
 }
 
