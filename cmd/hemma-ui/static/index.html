@@ -152,10 +152,11 @@ for (const [dialog, go] of [["#cdlg", "#cgo"], ["#dlg", "#go"], ["#edlg", "#ego"
 }
 
 // ask: the app's own confirmation dialog. Resolves true on the action button, false on Cancel / Esc / the backdrop.
-function ask(title, message, { ok = "OK", danger = false } = {}) {
+function ask(title, message, { ok = "OK", danger = false, single = false } = {}) {
   return new Promise(resolve => {
     const d = $("#kdlg"); let yes = false;
     $("#ktitle").textContent = title; $("#kmsg").textContent = message;
+    $("#kcancel").hidden = single;   // a notice with nothing to decide has only an OK
     const go = $("#kgo"); go.textContent = ok; go.className = danger ? "danger" : "primary";
     go.onclick = () => { yes = true; d.close(); };
     $("#kcancel").onclick = () => d.close();
@@ -495,35 +496,33 @@ let deploying = false;
 let pending = null;   // /api/diff summary of the unsaved changes (null when there are none)
 function renderDeploy() {
   const b = $("#deploy"), dirty = changes.git && changes.files.length > 0;
-  b.textContent = deploying ? (changes.has_remote ? "Deploying…" : "Applying…") : "Deploy";
+  b.textContent = deploying ? "Deploying…" : "Deploy";
   b.disabled = deploying || dirty || broken;
-  b.title = broken ? "Fix services.yaml first" : dirty ? "Save or discard your changes first" : "Pull from origin and make it live on this machine";
+  b.title = broken ? "Fix services.yaml first" : dirty ? "Save or discard your changes first" : "Make your saved changes live";
 }
 $("#deploy").onclick = () => deploy();
-// deployMessage says what THIS deploy will do, from what is configured — not a fixed list that
-// mentions an auth provider the host does not have.
-function deployMessage(key, unpushed = 0) {
-  // The steps come from the server, which asks the same rules `apply` follows for THIS machine
-  // (the resolver restarts pihole, a service host reloads caddy, the host that runs the auth provider restarts it, …).
-  const a = state.apply || { host: "", steps: [] }, steps = a.steps;
-  // Deploy pulls from origin; saved changes origin does not have yet are pushed first, as part of the same action.
-  const pull = key !== "deploy" ? "" : unpushed > 0
-    ? `Pushes your ${unpushed} saved ${unpushed === 1 ? "change" : "changes"} to origin, then `
-    : "Pulls from origin, then ";
-  if (!a.host) return `${pull}${pull ? "t" : "T"}his machine matches no host in services.yaml, so there is nothing to make live here.`;
-  if (!steps.length) return `${pull}${pull ? "t" : "T"}here is nothing to restart on ${a.host}: it is neither the resolver nor a service host.`;
-  const list = steps.length > 1 ? steps.slice(0, -1).join(", ") + " and " + steps[steps.length - 1] : steps[0];
-  return `${pull}${pull ? "m" : "M"}akes the saved config live on ${a.host}: ${list}.`;
-}
+// The Deploy question is one short sentence, the same everywhere: what happens (your saved changes go live) and the one
+// thing worth knowing (services restart briefly). Which services, on which host, is for the Details after a failure.
+// With a shared copy (an origin) Deploy reaches every server; without one it is just this one. Saved changes origin
+// does not have yet are sent as part of Deploy, so there is no separate "push first?" question.
+const deployMany = () => state.hosts.length > 1 && changes.has_remote;
+const deployMessage = () => `Your saved changes go live on ${deployMany() ? "all servers" : "this server"}. Some services restart briefly.`;
 async function deploy() {
   if (deploying) return;
   if (changes.git && changes.files.length) return toast("Save or discard your unsaved changes before deploying", "warn");
   const key = changes.has_remote ? "deploy" : "apply";
-  // Saves that are not on origin yet are pushed as PART of deploying (deploy pulls from origin, so they would
-  // otherwise deploy nothing): one question that says so, not a "push first?" followed by a "deploy?".
   const unpushed = changes.has_remote ? changes.ahead : 0;
-  if (!await ask(key === "deploy" ? "Deploy?" : "Apply now?", deployMessage(key, unpushed), { ok: key === "deploy" ? "Deploy" : "Apply" })) return;
-  await deployNow(key, key === "deploy" ? "Deployed" : "Applied", undefined, unpushed > 0);
+  // One server with nothing to restart and nothing to send on: say so, and do nothing.
+  const a = state.apply || { host: "", steps: [] };
+  if (!deployMany() && unpushed === 0 && (!a.host || !a.steps.length)) { await ask("Deploy?", "Nothing to update.", { ok: "OK", single: true }); return; }
+  if (!await ask("Deploy?", deployMessage(), { ok: "Deploy" })) return;
+  await deployNow(key, "Deployed", undefined, unpushed > 0);
+}
+// Which servers a failed deploy names in its output (a failed pull or apply, an unreachable host), for "Deploy failed on …".
+function deployFailedHosts(out) {
+  const hosts = new Set(); let m;
+  for (const re of [/(?:Pull|rev-parse) failed on "([^"]+)"/g, /✗\s+([^\s:]+): (?:unreachable|failed-apply)/g]) while ((m = re.exec(out || ""))) hosts.add(m[1]);
+  return [...hosts];
 }
 // deployNow runs the deploy/apply itself (no questions: the caller has the person's consent). Failures stay on
 // screen with Details; `failed` names a failure when the deploy was part of something larger (Save & deploy);
@@ -533,17 +532,18 @@ async function deployNow(key, done, failed, pushFirst) {
   try {
     if (pushFirst) {
       const pushed = await post("/api/push", {});
-      if (!pushed.ok) { toast("Not deployed: pushing to origin failed", "err", { title: "Push", text: pushed.output || pushed.error || "" }); return; }
+      if (!pushed.ok) { toast("Deploy didn't start: your changes couldn't be sent on", "err", { title: "Deploy", text: pushed.output || pushed.error || "" }); return; }
     }
     const res = await post("/api/run", { command: key, values: {} });
-    if (failed && !res.ok) toast(failed, "err", { title: cmds[key].title, text: res.output || res.error || "" });
-    else toastResult(cmds[key].title, res, done);
+    const text = res.output || res.error || "";
+    if (!res.ok) { const on = deployFailedHosts(text); toast((failed || "Deploy failed") + (on.length ? ` on ${on.join(", ")}` : ""), "err", { title: "Deploy", text }); }
+    else toast(done, "ok");
   } finally { deploying = false; await load(); }
 }
 
 // discard puts hemma's own output back to the last save; files hemma doesn't manage are left alone.
 async function discard() {
-  if (!await ask("Discard unsaved changes?", "services.yaml and the generated files go back to how they were when last saved. Files hemma doesn't manage are left alone.", { ok: "Discard", danger: true })) return;
+  if (!await ask("Discard your changes?", "Everything you changed since the last save will be undone.", { ok: "Discard", danger: true })) return;
   const res = await post("/api/discard", {});
   toastResult("Discard", res, "Changes discarded"); await load();
 }
@@ -557,7 +557,7 @@ function renderDiff(d) {
     const card = el("div", null, { className: "dcard" }), head = el("div", null, { className: "dhead" });
     head.append(el("span", e.status, { className: "badge " + e.status }), el("strong", `${e.kind} · ${e.name}`));
     card.append(head);
-    const rows = e.fields.filter(f => e.status === "changed" || (e.status === "added" ? f.after !== "—" : f.before !== "—"));
+    const rows = e.fields.filter(f => e.status === "changed" || e.status === "renamed" || (e.status === "added" ? f.after !== "—" : f.before !== "—"));
     if (rows.length) {
       const t = el("table", null, { className: "dtab" });
       const hr = el("tr"); ["", "Current", "Changed"].forEach(h => hr.append(el("th", h)));
@@ -611,9 +611,7 @@ function openCommit() {
   dep.checked = localStorage.getItem("hemma.deployAfterSave") === "1";
   const syncDeploy = () => {
     $("#cgo").textContent = dep.checked ? "Save & deploy" : "Save";
-    $("#cdephelp").textContent = dep.checked
-      ? (changes.has_remote ? "Pushes to origin first, then pulls and makes it live on this machine." : "Then makes it live on this machine.")
-      : "Saving only records the change; deploy it later from the Deploy button.";
+    $("#cdephelp").textContent = dep.checked ? "Your changes go live right after saving." : "Not live yet — use Deploy when you're ready.";
   };
   dep.onchange = () => { localStorage.setItem("hemma.deployAfterSave", dep.checked ? "1" : "0"); syncDeploy(); };
   syncDeploy();
@@ -628,9 +626,9 @@ function openCommit() {
       const savedLocally = !res.ok && /^committed locally/.test(res.output || "");
       if (!res.ok && !savedLocally) { $("#cerr").textContent = res.output; return; }   // nothing was saved: stay and fix it
       await load(); $("#cdlg").close();
-      if (savedLocally) { toast("Saved, but pushing failed — not deployed", "err", { title: "Push", text: res.output }); return; }
+      if (savedLocally) { toast("Saved, but not deployed: your changes couldn't be sent on", "err", { title: "Deploy", text: res.output }); return; }
       if (!wantDeploy) { toast("Saved", "ok"); return; }
-      await deployNow(act, "Saved and deployed", "Saved, but deploying failed");
+      await deployNow(act, "Saved and deployed", "Saved, but deploy failed");
     } finally { $("#cgo").disabled = false; }
   };
   openModal($("#cdlg"));
