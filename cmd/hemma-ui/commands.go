@@ -103,10 +103,11 @@ var commands = []command{
 	{Words: []string{"apply"}, Group: "Operate", Title: "Apply on this host", Timeout: 5 * time.Minute, Fields: nil,
 		Confirm: "Apply now? This makes the saved config live on this host."},
 
-	// deploy on a single host: `git pull --ff-only` from origin, then apply — all local, no ssh
-	// (this machine is never ssh'd to). Needs an upstream and a clean, pushed repo; hemma enforces that.
+	// deploy is the kernel's fleet deploy (design §6.8), exactly as on the CLI: ssh to every other host to
+	// `git pull --ff-only` and apply, then this host last (its own apply runs in-process). It runs on the
+	// deploy host; hemma enforces that, and an upstream plus a clean, pushed repo.
 	{Words: []string{"deploy"}, Group: "Operate", Title: "Deploy (pull from origin + apply)", Timeout: 10 * time.Minute,
-		Confirm: "Deploy? This pulls from origin, then makes the saved config live on this host."},
+		Confirm: "Deploy? This pulls from origin, then makes the saved config live on every host."},
 
 	{Words: []string{"verify"}, Group: "Diagnose", Title: "Verify live DNS/Caddy", ReadOnly: true, FlagsFirst: true, Timeout: 3 * time.Minute,
 		Fields: []field{flag("all", "All services"), ref(pos("fqdn", "Service (optional)", false), "service-fqdn")}},

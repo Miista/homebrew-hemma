@@ -1,5 +1,6 @@
-# hemma-ui — SINGLE-HOST web UI (multi-host is deliberately not supported yet).
-# Run on the host that runs pihole/caddy.
+# hemma-ui — web UI for the fleet. Run it on the deploy host (defaults.deploy_host): Deploy is
+# `hemma deploy`, which pulls and applies on every host over ssh and on this one last (see the
+# ssh mounts below).
 # Sign-in is handled by authy (github.com/miista/authy) and cannot be switched off.
 #   - Recommended: set the four HEMMA_UI_OIDC_* variables below and let your IdP (Authelia, …)
 #     decide who may sign in. Register a confidential client with redirect URI
@@ -12,7 +13,13 @@ services:
   hemma-ui:
     build: { context: ., dockerfile: Dockerfile.ui }
     network_mode: host            # apply identifies the host by local IP
+    # Runs as you, not root: uid 1000 is the image's `hemma` user (passwd entry + owned /data/auth,
+    # see Dockerfile.ui). A different uid needs its own passwd entry.
+    user: "1000:1000"
+    # Reach the Docker socket: the host's docker group id (`getent group docker`).
+    group_add: ["${DOCKER_GID:-984}"]
     environment:
+      HOME: /data                 # git and ssh keep their files under /data
       HEMMA_UI_ADDR: ":8080"
       # OIDC sign-in (all four together; omit them all to use the local account instead):
       # HEMMA_UI_OIDC_ISSUER: https://auth.example.com
@@ -27,11 +34,14 @@ services:
       - ${HEMMA_REPO_DIR:?set HEMMA_REPO_DIR}:/repo
       - hemma-ui-auth:/data/auth      # authy's session-signing key and sign-out records (and the local account, if used)
       - /var/run/docker.sock:/var/run/docker.sock
-      # `deploy` pulls from, and the UI pushes to, the repo's origin. That needs git credentials
-      # inside the container; none are baked in. Provision a dedicated, least-privilege credential
-      # (e.g. a read/write deploy key limited to this one repo), mounted read-only, e.g.:
-      # - ./git_deploy_key:/root/.ssh/id_ed25519:ro
-      # - ./known_hosts:/root/.ssh/known_hosts:ro
+      # `deploy` ssh's to every other host in the fleet (hosts[].ssh, default the host name), and
+      # pulls from / the UI pushes to the repo's origin. Both need credentials inside the container;
+      # none are baked in. Mount ONLY the files needed (not all of ~/.ssh), read-only. ssh reads
+      # them from ~ = /data; the key must be readable by uid 1000 (mode 600, owned by you):
+      # - ${HOME}/.ssh/id_ed25519:/data/.ssh/id_ed25519:ro
+      # - ${HOME}/.ssh/known_hosts:/data/.ssh/known_hosts:ro
+      # Use full user@host destinations in hosts[].ssh: an ssh config file is not mounted.
+      # Single-host setups need none of this.
     restart: unless-stopped
 volumes:
   hemma-ui-auth:
