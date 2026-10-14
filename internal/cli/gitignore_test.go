@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"hemma/internal/config"
+	"hemma/internal/plan"
 )
 
 func gitInit(t *testing.T, dir string) {
@@ -46,7 +47,92 @@ func TestIgnoredPaths_NotARepo(t *testing.T) {
 	}
 }
 
-// The unignore block must re-include sd's .conf/.caddy under data/ while
+// The block is FIXED (the same in every repo and at every moment) and NARROW: only the directories
+// hemma writes into are re-included, one block covers every host, and nothing un-ignores directories
+// wholesale (that would make git walk all runtime data on every `git status`).
+func TestUnignoreRules_FixedNarrowAndHostAgnostic(t *testing.T) {
+	want := []string{
+		"!**/authelia/data/config/",
+		"!**/authelia/data/config/*.generated.yml",
+		"!**/caddy/data/*.generated.caddy",
+		"!**/caddy/data/sites/",
+		"!**/caddy/data/sites/*.caddy",
+		"!**/caddy/data/tls/",
+		"!**/caddy/data/tls/*.caddy",
+		"!**/pihole/data/dnsmasq.d/",
+		"!**/pihole/data/dnsmasq.d/*.generated.conf",
+	}
+	got := unignoreRules()
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("rules =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	for _, r := range got {
+		if r == "!**/data/" || r == "!**/data/**/" {
+			t.Errorf("blanket rule %q would make git walk every data dir", r)
+		}
+	}
+}
+
+// rulesForOutputs describes a path host-agnostically: from the service directory before data/, ignoring
+// the host directory, and skipping paths that are not under a data/ directory at all.
+func TestRulesForOutputs_HostAgnosticAndSkipsNonData(t *testing.T) {
+	got := rulesForOutputs([]string{
+		"pi/caddy/data/sites/a.caddy", "optiplex/caddy/data/sites/b.caddy", "nas-box/caddy/data/sites/c.caddy",
+		"pi/cloudflared/config.yml", "shared/auth.caddy",
+	})
+	want := "!**/caddy/data/sites/\n!**/caddy/data/sites/*.caddy"
+	if strings.Join(got, "\n") != want {
+		t.Errorf("rules = %q, want %q", strings.Join(got, "\n"), want)
+	}
+	if len(rulesForOutputs(nil)) != 0 {
+		t.Error("no output paths must give no rules")
+	}
+}
+
+// The fixed block must cover everything hemma actually writes under a data/ directory. This builds a rich
+// plan (caddy sites, tls, trusted proxies, the (auth) snippet, dnsmasq, the auth provider's artifact) and
+// asks real git whether any of its outputs would be ignored under `**/data/**` plus the block — so adding
+// a new kind of output without a rule fails here instead of silently not being deployed.
+func TestUnignoreRules_CoversEveryPlanOutput(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	gitInit(t, dir)
+	mkdirs(t, dir, "appbox")
+	seedWithAuth(t, dir)
+	cfg, err := config.Load(filepath.Join(dir, configName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := planPaths(plan.Build(cfg))
+	underData := 0
+	for _, p := range paths {
+		if !strings.Contains(p, "/data/") {
+			continue
+		}
+		underData++
+		full := filepath.Join(dir, p)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if underData < 4 {
+		t.Fatalf("expected a rich plan with several outputs under data/, got %d: %v", underData, paths)
+	}
+	gi := "**/data/**\n" + strings.Join(unignoreRules(), "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(gi), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if ig, ok := ignoredPaths(dir, paths); !ok || len(ig) != 0 {
+		t.Errorf("hemma writes these but the fixed rules leave them ignored (ok=%v):\n  %s", ok, strings.Join(ig, "\n  "))
+	}
+}
+
+// The unignore block must re-include hemma's .conf/.caddy/.yml under data/ while
 // leaving runtime data (e.g. .db) ignored — verified against real git.
 func TestUnignoreRules_RoundTrip(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
@@ -58,11 +144,15 @@ func TestUnignoreRules_RoundTrip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(gi), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, d := range []string{"pi/pihole/data/dnsmasq.d", "optiplex/caddy/data/sites", "pi/pihole/data/data"} {
+	for _, d := range []string{"pi/pihole/data/dnsmasq.d", "optiplex/caddy/data/sites", "pi/pihole/data/data", "pi/authelia/data/config", "pi/registry/data/docker"} {
 		os.MkdirAll(filepath.Join(dir, d), 0o755)
 	}
-	tracked := []string{"pi/pihole/data/dnsmasq.d/x.generated.conf", "optiplex/caddy/data/sites/y.caddy"}
-	ignoredStill := []string{"pi/pihole/data/data/gravity.db", "pi/pihole/data/dnsmasq.d/cache.db"}
+	tracked := []string{"pi/pihole/data/dnsmasq.d/x.generated.conf", "optiplex/caddy/data/sites/y.caddy",
+		"pi/authelia/data/config/hemma.access_control.generated.yml",
+		"nas/caddy/data/sites/z.caddy"} // a host that is not in the plan's paths: the rules are host-agnostic
+	os.MkdirAll(filepath.Join(dir, "nas/caddy/data/sites"), 0o755)
+	ignoredStill := []string{"pi/pihole/data/data/gravity.db", "pi/pihole/data/dnsmasq.d/cache.db",
+		"pi/authelia/data/config/db.sqlite3", "pi/registry/data/docker/blob.bin"}
 	for _, f := range append(append([]string{}, tracked...), ignoredStill...) {
 		os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o644)
 	}
@@ -352,5 +442,73 @@ func TestDoctor_AdvisoriesOnly_NoFixHint(t *testing.T) {
 	// advisory block with the summary line.
 	if !strings.Contains(out, advisorySummaryLine) {
 		t.Errorf("advisory block should end with the summary line:\n%s", out)
+	}
+}
+
+// An older hemma wrote broad rules into its managed block. doctor notices a block that is not what
+// it would write now — even when every generated file is already tracked (so nothing is "ignored")
+// — and --fix rewrites it in place, leaving the rest of the file alone.
+func TestCheckManagedBlock_StaleBlockIsReportedAndFixed(t *testing.T) {
+	old := "*.env\n**/data/**\n" +
+		giBlockStart + "\n# old comment\n!**/data/\n!**/data/**/\n!**/data/**/*.generated.conf\n!**/caddy/data/**/*.caddy\n" + giBlockEnd + "\n" +
+		"# hand-written, after the block\n!pi/keep/me\n"
+	gi := filepath.Join(t.TempDir(), ".gitignore")
+	if err := os.WriteFile(gi, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var problems int
+	out := captureStdout(t, func() { problems = checkManagedBlock(gi, false) })
+	if problems != 1 || !strings.Contains(out, "out of date") {
+		t.Fatalf("stale block without --fix: problems=%d out=%q", problems, out)
+	}
+	if b, _ := os.ReadFile(gi); string(b) != old {
+		t.Fatal("a check without --fix must not touch the file")
+	}
+
+	out = captureStdout(t, func() { problems = checkManagedBlock(gi, true) })
+	if problems != 0 || !strings.Contains(out, "Updated") {
+		t.Fatalf("stale block with --fix: problems=%d out=%q", problems, out)
+	}
+	b, _ := os.ReadFile(gi)
+	got, found := managedBlockRules(string(b))
+	if !found || strings.Join(got, ",") != strings.Join(unignoreRules(), ",") {
+		t.Errorf("rewritten rules = %v (found=%v)", got, found)
+	}
+	for _, keep := range []string{"*.env\n**/data/**\n", "# hand-written, after the block\n!pi/keep/me\n"} {
+		if !strings.Contains(string(b), keep) {
+			t.Errorf("content outside the block was lost (%q):\n%s", keep, b)
+		}
+	}
+	// A second run finds nothing to do, and the file does not change (idempotent).
+	out = captureStdout(t, func() { problems = checkManagedBlock(gi, true) })
+	b2, _ := os.ReadFile(gi)
+	if problems != 0 || string(b2) != string(b) || !strings.Contains(out, "current") {
+		t.Errorf("second run: problems=%d changed=%v out=%q", problems, string(b2) != string(b), out)
+	}
+}
+
+// Blanket rules outside hemma's block (the predecessor tool's) are advised about, never edited, and
+// do not count as a problem; a repo with no hemma block is left without one.
+func TestCheckManagedBlock_StrayBlanketRulesAreAdvisoryOnly(t *testing.T) {
+	stray := "**/data/**\n# >>> shd managed >>>\n!**/data/\n!**/data/**/\n# <<< shd managed <<<\n"
+	gi := filepath.Join(t.TempDir(), ".gitignore")
+	if err := os.WriteFile(gi, []byte(stray), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var problems int
+	out := captureStdout(t, func() { problems = checkManagedBlock(gi, true) })
+	if problems != 0 {
+		t.Errorf("an advisory must not count as a problem, got %d", problems)
+	}
+	if !strings.Contains(out, "blanket data/ rules") || !strings.Contains(out, "!**/data/") {
+		t.Errorf("expected the advisory naming the rules, got %q", out)
+	}
+	if b, _ := os.ReadFile(gi); string(b) != stray {
+		t.Errorf("hemma must not edit rules it does not own:\n%s", b)
+	}
+	// No file at all: nothing to check.
+	if n := checkManagedBlock(filepath.Join(t.TempDir(), "absent"), true); n != 0 {
+		t.Errorf("missing .gitignore: problems = %d", n)
 	}
 }
