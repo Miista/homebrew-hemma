@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -47,6 +48,34 @@ func (s *server) git(timeout time.Duration, args ...string) (string, error) {
 	return string(out), err
 }
 
+// changesCached is changes() for the read-only endpoints: a page load asks /api/changes and /api/diff together, and
+// each needs the same `git status`, which on a big repo (data directories) is the slowest thing the server does.
+// Concurrent callers share one run (the lock is held while it runs), and a result is reused for a couple of
+// seconds. Anything that changes the repo calls invalidateChanges when it is done, and anything that DECIDES on
+// the working tree (the apply/deploy gate, commit, discard) calls changes() for a fresh answer.
+func (s *server) changesCached() changes {
+	s.cc.mu.Lock()
+	defer s.cc.mu.Unlock()
+	if !s.cc.at.IsZero() && time.Since(s.cc.at) < 2*time.Second {
+		return s.cc.val
+	}
+	s.cc.val = s.changes()
+	s.cc.at = time.Now()
+	return s.cc.val
+}
+
+func (s *server) invalidateChanges() {
+	s.cc.mu.Lock()
+	s.cc.at = time.Time{}
+	s.cc.mu.Unlock()
+}
+
+type changesCache struct {
+	mu  sync.Mutex
+	at  time.Time
+	val changes
+}
+
 func (s *server) changes() changes {
 	c := changes{Files: []change{}}
 	if out, err := s.git(10*time.Second, "rev-parse", "--is-inside-work-tree"); err != nil || strings.TrimSpace(out) != "true" {
@@ -74,6 +103,7 @@ func (s *server) changes() changes {
 func (s *server) handlePush(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.invalidateChanges() // "ahead" changes
 	if !s.changes().HasRemote {
 		writeJSON(w, 400, map[string]any{"ok": false, "output": "no upstream configured for this branch — nothing to push to"})
 		return
@@ -84,7 +114,7 @@ func (s *server) handlePush(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleChanges(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, s.changes())
+	writeJSON(w, 200, s.changesCached())
 }
 
 // handleCommit commits every pending change under the operator's message.
@@ -106,6 +136,7 @@ func (s *server) handleCommit(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.invalidateChanges()
 	ch := s.changes()
 	if !ch.Git {
 		writeJSON(w, 400, map[string]any{"ok": false, "output": "the repo is not a git repository"})

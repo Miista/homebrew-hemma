@@ -187,7 +187,7 @@ func (s *server) diff() (diffResult, error) {
 	}
 
 	yamlChanged := false
-	for _, f := range s.changes().Files {
+	for _, f := range s.changesCached().Files {
 		switch {
 		case f.Path == "services.yaml":
 			yamlChanged = true
@@ -224,6 +224,7 @@ func (s *server) isGeneratedChange(f change) bool {
 func (s *server) handleDiscard(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.invalidateChanges()
 	var restore []string
 	removed := 0
 	for _, f := range s.changes().Files {

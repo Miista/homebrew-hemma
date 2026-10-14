@@ -866,22 +866,29 @@ async function openRaw() {
   openModal($("#edlg"));
 }
 
+// The command list, the state, the unsaved changes and their diff are independent reads: all four are asked for at
+// once (the server shares one `git status` between changes and diff), not one after another.
+const cmdsReady = fetch("/api/commands").then(r => r.json()).then(list => list.forEach(c => cmds[c.key] = c));
+let loaded = false;
 async function load() {
+  const chP = fetch("/api/changes").then(r => r.json());
+  const dP = fetch("/api/diff").then(r => r.json()).catch(() => null);
+  chP.catch(() => {}); dP.catch(() => {});   // if state fails below these are never awaited: no unhandled rejection
   const r = await fetch("/api/state"); const s = await r.json();
+  await cmdsReady;
   if (s.error) { await showRecovery(s.error, s.version); return; }
   broken = false;
   state = s;
-  changes = await (await fetch("/api/changes")).json();
-  pending = null;
-  if (changes.files.length) { const d = await (await fetch("/api/diff")).json().catch(() => null); if (d && !d.error) pending = d; }
+  if (!loaded) render();   // first paint as soon as the lists are here; the save bar and badges follow. Later loads wait, so a stale save bar never flashes after a save.
+  changes = await chP;
+  const d = await dP;
+  pending = changes.files.length && d && !d.error ? d : null;
+  loaded = true;
   render();
   checkIssues();   // not awaited: keeps the Issues badge current after every change without making anything wait for doctor
 }
-(async () => {
-  const list = await (await fetch("/api/commands")).json();
-  list.forEach(c => cmds[c.key] = c);
-  render(); load();
-})();
+cmdsReady.then(() => { if (!loaded) render(); });
+load();
 </script>
 </body>
 </html>

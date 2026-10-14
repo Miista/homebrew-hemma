@@ -43,6 +43,7 @@ func (s *server) handleRawSave(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.invalidateChanges()
 	ctx, cancel := workContext(r, false, 2*time.Minute) // a save is not abandoned half-way when the browser goes
 	defer cancel()
 	before := s.configStamp()

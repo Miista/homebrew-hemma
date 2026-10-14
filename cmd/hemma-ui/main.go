@@ -43,6 +43,7 @@ type server struct {
 	repo    string
 	version string     // "hemma <version>", shown in the page footer
 	mu      sync.Mutex // one mutating hemma invocation at a time
+	cc      changesCache
 }
 
 // newGate builds the authy gate from HEMMA_UI_* (OIDC when HEMMA_UI_OIDC_* is
@@ -232,6 +233,7 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 	if !readOnly {
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		defer s.invalidateChanges() // the repo may have changed: the next page load must see it
 	}
 	if gated(c) {
 		if ch := s.changes(); len(ch.Files) > 0 {
