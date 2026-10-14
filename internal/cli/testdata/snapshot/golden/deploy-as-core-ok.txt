@@ -48,7 +48,9 @@ Deployed.
 --- stderr ---
 --- external commands ---
 git -C <repo> status --porcelain
-git -C <repo> rev-list @{u}..HEAD
+git -C <repo> rev-parse --abbrev-ref @{u}
+git -C <repo> fetch
+git -C <repo> rev-list --left-right --count HEAD...@{u}
 ssh -o BatchMode=yes ops@192.0.2.20 true
 ssh -o BatchMode=yes ops@192.0.2.20 git -C ~/docker pull --ff-only
 git -C <repo> pull --ff-only

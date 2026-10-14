@@ -493,7 +493,7 @@ hemma            completion <bash|zsh>
 | `create user` | Interactively hash a new user's password (argon2id) + print the users-database snippet. Print-only. |
 | `list` | The overview of the home: hosts, domains, services (with an `AUTH` column showing `forward` / `oidc` / `external` / `-` and a `PUBLIC` column showing `yes` / `no`), and the auth **groups** — each group's users and the services restricted to it, including orphans (a group with services but no users, or users but no services). The services list defaults to those on **this** host (matched by local IP); `--all` shows every host. Read-only. |
 | `apply` | Make synced config live on THIS host: restart pihole (resolver), `caddy validate` + reload (service hosts), and validate + restart the auth provider (auth host). Refuses on repo drift. Run on each host. |
-| `deploy` | Push-based fan-out over ssh: `git pull --ff-only` on every target host — **any** failure aborts the whole deploy with nothing applied — then `hemma apply` per host, remotes first and this host last. Targets default to every host with a role; names restrict. Refuses if the local repo is dirty or unpushed. See [Deploying the fleet](#deploying-the-fleet-hemma-deploy). |
+| `deploy` | Push-based fan-out over ssh: `git pull --ff-only` on every target host — **any** failure aborts the whole deploy with nothing applied — then `hemma apply` per host, remotes first and this host last. Targets default to every host with a role; names restrict. First syncs this host with origin (`git pull --rebase`, `git push`) and refuses a dirty tree or a drifted repo. See [Deploying the fleet](#deploying-the-fleet-hemma-deploy). |
 | `doctor [--fix]` | Audit the repo: gitignored generated files, Caddyfile imports, generated-file drift, auth config consistency (OIDC clients registered, policies referenced, groups exist on real users). `--fix` reconciles files, .gitignore, and legacy-name migration. |
 | `measure` | Time the request breakdown (dns/connect/tls/ttfb) for a service or URL; `--compare` A/Bs split-horizon vs public. Read-only. |
 | `completion <bash\|zsh>` | Print a static shell completion script to stdout (verbs, nouns, and flags). See [Shell completions](#shell-completions). |
@@ -641,8 +641,11 @@ Targets default to every host with a role (it runs a service, or is the `dns_hos
 to restrict. Each host is reached at its optional `ssh:` destination in `services.yaml` — a
 verbatim ssh value (an ssh_config alias, `user@host`, …; ports/users/keys belong in ssh_config),
 defaulting to the host's name — set via `add host --ssh` / `update host --ssh`. The remote repo
-path is the tool's default `~/docker`. deploy refuses up front if your **local** repo is dirty
-or has unpushed commits: origin must already carry the change you're deploying.
+path is the tool's default `~/docker`. On the **local** (deploy) host, deploy first brings the repo level
+with origin: it refuses a dirty tree, runs `git pull --rebase` if origin has work this checkout lacks
+(other hosts commit to the same repo; a rebase that stops on a real conflict is aborted, nothing changed),
+pushes unpushed commits, and refuses — before any host is touched — if the generated files no longer
+match `services.yaml` (a rebase can leave them stale: run `hemma doctor --fix`, commit, push, deploy again).
 
 ## Development
 

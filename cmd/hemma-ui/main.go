@@ -101,7 +101,6 @@ func (s *server) routes(gate *authy.Gate) (http.Handler, error) {
 	mux.HandleFunc("GET /api/diff", s.handleDiff)
 	mux.HandleFunc("POST /api/discard", s.handleDiscard)
 	mux.HandleFunc("POST /api/commit", s.handleCommit)
-	mux.HandleFunc("POST /api/push", s.handlePush)
 	mux.HandleFunc("POST /api/run", s.runCommand)
 	mux.HandleFunc("GET /api/issues", s.handleIssues)
 	mux.HandleFunc("GET /api/config/raw", s.handleRawGet)

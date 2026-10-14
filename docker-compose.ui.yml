@@ -35,7 +35,7 @@ services:
       - hemma-ui-auth:/data/auth      # authy's session-signing key and sign-out records (and the local account, if used)
       - /var/run/docker.sock:/var/run/docker.sock
       # `deploy` ssh's to every other host in the fleet (hosts[].ssh, default the host name), and
-      # pulls from / the UI pushes to the repo's origin. Both need credentials inside the container;
+      # syncs with the repo's origin (pull --rebase, then push). Both need credentials inside the container;
       # none are baked in. Mount ONLY the files needed (not all of ~/.ssh), read-only. ssh reads
       # them from ~ = /data; the key must be readable by uid 1000 (mode 600, owned by you):
       # - ${HOME}/.ssh/id_ed25519:/data/.ssh/id_ed25519:ro

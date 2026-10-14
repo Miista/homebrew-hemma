@@ -1187,8 +1187,17 @@ two strictly ordered phases:
   `~/docker` (baked-in convention, no per-host override). A target whose IP matches the local
   machine (the same `localHost` rule `apply` uses) runs its commands **locally** — no
   ssh-to-self.
-- **Preflight**: refuses up front if the **local** repo is dirty or has unpushed commits.
-  Deploying means "make the fleet match origin", so origin must already carry the intent.
+- **Preflight** (on the local, deploy, host — before any host is touched): refuses a dirty tree, then brings
+  the checkout level with origin. Deploying means "make the fleet match origin", so origin must carry the
+  intent, and other hosts commit to the same repository too, so origin having work this checkout lacks is
+  ordinary: `git fetch`; `git pull --rebase` when behind (transactional — a rebase that stops on a real
+  conflict is `--abort`ed, the repo exactly as it was, and deploy refuses saying so); `git push` when
+  ahead (a few rounds if origin moves again). The config is then read again, because the sync can change
+  services.yaml and with it the targets. Finally a **drift check**: a rebase can leave generated files that
+  no longer match the merged services.yaml (both sides regenerate the same files), and `apply` refuses a
+  drifted repo on every host — so deploy refuses here, before any host pulls or restarts anything, and says
+  to run `hemma doctor --fix`, commit and push, then deploy again. Host names and "nothing to deploy" are
+  settled from the config alone, before any of this touches git.
 - **Phase 1 — pull everywhere, all-or-nothing at the git layer**: per host,
   `git -C ~/docker pull --ff-only`. `--ff-only` is the safe primitive: it fast-forwards or
   refuses touching nothing. **Any** failure — non-ff/divergence (the host has local commits or

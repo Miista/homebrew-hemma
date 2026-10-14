@@ -243,7 +243,7 @@ func TestRunDeploy_ApplyFailureContinues(t *testing.T) {
 	}
 }
 
-// --- preflight: deploy refuses a dirty or unpushed local repo ---
+// --- preflight: deploy refuses a dirty tree, then brings the checkout level with origin (rebase + push) ---
 
 // gitRepo creates origin (bare) + a pushed clone and returns the clone path.
 func gitRepo(t *testing.T) string {
@@ -301,17 +301,14 @@ func TestDeployPreflight(t *testing.T) {
 		t.Errorf("dirty repo should be refused, got %v", err)
 	}
 
-	// Committed but unpushed → refused.
+	// Committed but unpushed → no longer refused: the deploy host pushes it itself.
 	git("add", "f")
 	git("commit", "-m", "local only")
-	if err := deployPreflight(stdEnv(), clone); err == nil || !strings.Contains(err.Error(), "unpushed") {
-		t.Errorf("unpushed commit should be refused, got %v", err)
-	}
-
-	// Pushed → allowed again.
-	git("push")
 	if err := deployPreflight(stdEnv(), clone); err != nil {
-		t.Errorf("pushed repo should pass preflight: %v", err)
+		t.Errorf("an unpushed commit should be pushed by the preflight, got %v", err)
+	}
+	if out := gitOut(t, clone, "rev-list", "@{u}..HEAD"); out != "" {
+		t.Errorf("after the preflight nothing may be unpushed, got %q", out)
 	}
 
 	// Not a git repo at all → refused.
@@ -341,4 +338,114 @@ func TestSummarizePull(t *testing.T) {
 			t.Errorf("summarizePull(%q) = %q, want %q", c.out, got, c.want)
 		}
 	}
+}
+
+// gitOut runs git in dir and returns its trimmed output.
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
+		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// commitFile writes a file in dir and commits it.
+func commitFile(t *testing.T, dir, name, content, msg string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitOut(t, dir, "add", name)
+	gitOut(t, dir, "commit", "-m", msg)
+}
+
+// otherClone is a second checkout of the same origin: another host committing to the shared repository.
+func otherClone(t *testing.T, clone string) string {
+	t.Helper()
+	origin := gitOut(t, clone, "remote", "get-url", "origin")
+	other := filepath.Join(t.TempDir(), "other")
+	cmd := exec.Command("git", "clone", origin, other)
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git clone: %v\n%s", err, out)
+	}
+	return other
+}
+
+// The deploy host syncs with origin itself. origin having work this checkout lacks is ordinary (another host commits
+// too), so deploy rebases onto it and pushes — and only a real conflict stops it, with the repo left exactly as it was.
+func TestDeployPreflight_SyncsWithOrigin(t *testing.T) {
+	t.Run("behind: pulled", func(t *testing.T) {
+		clone := gitRepo(t)
+		other := otherClone(t, clone)
+		commitFile(t, other, "g", "from elsewhere", "elsewhere")
+		gitOut(t, other, "push")
+		var out strings.Builder
+		if err := deployPreflight(&Env{Out: &out, Err: &out, NoTerminal: true}, clone); err != nil {
+			t.Fatalf("behind origin should be pulled, got %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(clone, "g")); err != nil {
+			t.Error("the commit from elsewhere should be in the checkout")
+		}
+		if !strings.Contains(out.String(), "Pulled 1 new commit") {
+			t.Errorf("should say what it did: %q", out.String())
+		}
+	})
+	t.Run("ahead and behind, no overlap: rebased and pushed", func(t *testing.T) {
+		clone := gitRepo(t)
+		other := otherClone(t, clone)
+		commitFile(t, other, "g", "from elsewhere", "elsewhere")
+		gitOut(t, other, "push")
+		commitFile(t, clone, "h", "mine", "mine") // a different file: no conflict
+		var out strings.Builder
+		if err := deployPreflight(&Env{Out: &out, Err: &out, NoTerminal: true}, clone); err != nil {
+			t.Fatalf("diverged without overlap should be rebased and pushed, got %v", err)
+		}
+		if log := gitOut(t, clone, "log", "--format=%s", "-3"); log != "mine\nelsewhere\ninit" {
+			t.Errorf("my commit should sit on top of origin's: %q", log)
+		}
+		if gitOut(t, clone, "rev-list", "@{u}..HEAD") != "" || gitOut(t, clone, "rev-list", "HEAD..@{u}") != "" {
+			t.Error("after the preflight the checkout must be level with origin")
+		}
+		if !strings.Contains(out.String(), "Rebased your 1 unpushed commit onto 1 new from origin") || !strings.Contains(out.String(), "Pushed 1 commit") {
+			t.Errorf("should say what it did: %q", out.String())
+		}
+	})
+	t.Run("a real conflict: aborted, repo exactly as it was", func(t *testing.T) {
+		clone := gitRepo(t)
+		other := otherClone(t, clone)
+		commitFile(t, other, "f", "theirs", "theirs") // the same file as mine
+		gitOut(t, other, "push")
+		commitFile(t, clone, "f", "mine", "mine")
+		before := gitOut(t, clone, "rev-parse", "HEAD")
+		err := deployPreflight(stdEnv(), clone)
+		if err == nil || !strings.Contains(err.Error(), "nothing was changed") {
+			t.Fatalf("a conflict should be refused with a plain message, got %v", err)
+		}
+		if after := gitOut(t, clone, "rev-parse", "HEAD"); after != before {
+			t.Errorf("HEAD moved: %s -> %s", before, after)
+		}
+		if gitOut(t, clone, "status", "--porcelain") != "" {
+			t.Error("the working tree must be clean after the abort")
+		}
+		if _, statErr := os.Stat(filepath.Join(clone, ".git", "rebase-merge")); statErr == nil {
+			t.Error("a rebase is still in progress")
+		}
+		if b, _ := os.ReadFile(filepath.Join(clone, "f")); string(b) != "mine" {
+			t.Errorf("my content must be intact, got %q", b)
+		}
+	})
+	t.Run("no upstream: refused", func(t *testing.T) {
+		dir := t.TempDir()
+		gitOut(t, dir, "init", "-b", "main")
+		commitFile(t, dir, "f", "1", "init")
+		if err := deployPreflight(stdEnv(), dir); err == nil || !strings.Contains(err.Error(), "upstream") {
+			t.Errorf("no upstream should be refused, got %v", err)
+		}
+	})
 }

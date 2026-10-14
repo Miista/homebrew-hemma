@@ -168,8 +168,10 @@ authy). It is NOT a second implementation of hemma:
   server-side while the tree is dirty, so everything that goes live carries a commit message.
 - **Two phases, deliberately separate:** *saving* (the bottom save bar: Discard / Save, which commits with a message)
   and *deploying* (a standing **Deploy** button, always available — nothing is inferred about what is live, so it
-  works on a freshly set-up machine with nothing to save). Deploy pulls from origin then applies, and offers to
-  push unpushed commits first; with no origin it just applies.
+  works on a freshly set-up machine with nothing to save). Deploy is the kernel's `deploy`, which first brings this
+  checkout level with origin itself (`git pull --rebase`, aborted cleanly on a real conflict; then `git push`; then a
+  drift check), so the UI has no push of its own and "origin moved" is never a dead end for the person. With no origin
+  it just applies.
 - **A file that cannot be loaded is still editable.** Every typed form needs a loadable `services.yaml`, so
   when it is not, `/api/state` reports why and the page shows a recovery screen: **Discard unsaved changes**
   (the usual cause is an unsaved edit) or **Edit services.yaml** as text. The text goes through

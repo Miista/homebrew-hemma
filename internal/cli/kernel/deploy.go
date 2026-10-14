@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"hemma/internal/config"
@@ -52,9 +53,13 @@ import (
 // interactive prompts — auth failures abort in phase 1, where they're
 // harmless.
 //
-// Deploying means "make the fleet match origin", so origin must already carry
-// the intent: deploy refuses up front if the LOCAL repo is dirty or has
-// unpushed commits.
+// Deploying means "make the fleet match origin", so origin must carry the
+// intent. On this (the deploy) host, deploy refuses a dirty tree, then brings
+// the checkout level with origin itself: `git pull --rebase` when origin has
+// work this checkout lacks, `git push` for unpushed commits (a rebase that hits
+// a real conflict is aborted, nothing changed). It then checks that the
+// generated files still match services.yaml — a rebase can leave them stale —
+// and refuses, before any host is touched, if they do not.
 func cmdDeploy(env *Env, repoRoot, cfgPath string, args []string) int {
 	cfg, code := loadExisting(env, cfgPath, "deploy")
 	if cfg == nil {
@@ -79,6 +84,7 @@ func cmdDeploy(env *Env, repoRoot, cfgPath string, args []string) int {
 		hint(env, "Run 'hemma deploy' on %s, or drop the restriction with 'hemma defaults set deploy-host -'.", dh)
 		return 1
 	}
+	// A mistyped host name, or nothing to deploy, is settled from the config alone — before anything touches git.
 	targets, err := resolveDeployTargets(cfg, self, args)
 	if err != nil {
 		errf(env, "%v", err)
@@ -88,10 +94,37 @@ func cmdDeploy(env *Env, repoRoot, cfgPath string, args []string) int {
 		fmt.Fprintln(env.Out, "Nothing to deploy: no host runs a service or is the dns_host.")
 		return 0
 	}
+	// Sync with origin. This machine is the deploy host, and other hosts commit to the same repository too (an
+	// updater on one of them, say), so origin having work this checkout lacks is ordinary, not an error for a person
+	// to resolve. The sync can change services.yaml, and with it the hosts to deploy to, so the config is read again
+	// afterwards.
 	if err := deployPreflight(env, repoRoot); err != nil {
 		errf(env, "%v", err)
-		hint(env, "Deploy means \"make the fleet match origin\" — origin must already carry the change.")
+		hint(env, "Deploy means \"make the fleet match origin\" — origin must carry the change.")
 		return 1
+	}
+	if cfg, code = loadExisting(env, cfgPath, "deploy"); cfg == nil {
+		return code
+	}
+	self = localHost(cfg)
+	// A rebase can leave generated files that no longer match the merged services.yaml (both sides regenerate the
+	// same files). apply refuses a drifted repo on every host, so find out here — before any host pulls or restarts
+	// anything — instead of failing host by host in phase 2.
+	if d := detectDrift(repoRoot, cfg, loadManifest(env, repoRoot, cfg)); d.Any() {
+		errf(env, "The repo has drifted (%d %s out of sync with services.yaml) — deploy would be refused at apply on every host.",
+			d.Count(), plural(d.Count(), "generated file"))
+		printDriftDetail(env, d)
+		fmt.Fprintln(env.Err)
+		hint(env, "Run 'hemma doctor --fix', commit and push the result, then deploy again.")
+		return 1
+	}
+	if targets, err = resolveDeployTargets(cfg, self, args); err != nil {
+		errf(env, "%v", err)
+		return 1
+	}
+	if len(targets) == 0 {
+		fmt.Fprintln(env.Out, "Nothing to deploy: no host runs a service or is the dns_host.")
+		return 0
 	}
 	return runDeploy(env, execRunner{env}, targets, repoRoot)
 }
@@ -175,26 +208,72 @@ func resolveDeployTargets(cfg *config.Config, self string, names []string) ([]de
 	return out, nil
 }
 
-// deployPreflight refuses a deploy from a dirty or unpushed local repo. The
-// fleet pulls from origin, so a local-only change would deploy a state that
-// does not match what this machine shows — origin carries the intent.
+// deployPreflight makes this checkout carry exactly what origin should: refuses a dirty tree (a local-only edit would
+// deploy a state that does not match what this machine shows), then brings it level with origin — `git pull --rebase`
+// when origin has commits this checkout lacks, `git push` when this checkout has commits origin lacks. A rebase is
+// transactional: if it stops on a real conflict it is aborted, leaving the repo exactly as it was, and the error says
+// so. The tree is clean here, so nothing is stashed.
 func deployPreflight(env *Env, repoRoot string) error {
-	out, err := env.command("git", "-C", repoRoot, "status", "--porcelain").CombinedOutput()
+	git := func(args ...string) (string, error) {
+		out, err := env.command("git", append([]string{"-C", repoRoot}, args...)...).CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+	out, err := git("status", "--porcelain")
 	if err != nil {
-		return fmt.Errorf("cannot check the repo's git status in %s: %v\n%s", repoRoot, err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("cannot check the repo's git status in %s: %v\n%s", repoRoot, err, out)
 	}
-	if s := strings.TrimSpace(string(out)); s != "" {
-		return fmt.Errorf("the local repo is dirty — commit and push before deploying:\n%s", s)
+	if out != "" {
+		return fmt.Errorf("the local repo is dirty — commit before deploying:\n%s", out)
 	}
-	out, err = env.command("git", "-C", repoRoot, "rev-list", "@{u}..HEAD").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("cannot compare HEAD against its upstream in %s (no upstream configured?): %v\n%s", repoRoot, err, strings.TrimSpace(string(out)))
+	if out, err := git("rev-parse", "--abbrev-ref", "@{u}"); err != nil {
+		return fmt.Errorf("cannot find the upstream of the current branch in %s (no upstream configured?): %v\n%s", repoRoot, err, out)
 	}
-	if s := strings.TrimSpace(string(out)); s != "" {
-		n := len(strings.Split(s, "\n"))
-		return fmt.Errorf("the local repo has %d unpushed %s — push before deploying", n, plural(n, "commit"))
+	// A few rounds: after our push, someone else's push can land in between and refuse it once more.
+	for round := 0; round < 3; round++ {
+		if out, err := git("fetch"); err != nil {
+			return fmt.Errorf("cannot reach origin to compare with it: %v\n%s", err, out)
+		}
+		ahead, behind := aheadBehind(git)
+		if behind > 0 {
+			if out, err := git("pull", "--rebase"); err != nil {
+				git("rebase", "--abort") // a no-op unless the rebase stopped on a conflict
+				return fmt.Errorf("origin has %d new %s that overlap with your %d unpushed %s, so they could not be combined — nothing was changed here.\n%s\n"+
+					"Resolve it in the repo (git pull --rebase, fix the conflict), then deploy again.",
+					behind, plural(behind, "commit"), ahead, plural(ahead, "commit"), out)
+			}
+			if ahead > 0 {
+				fmt.Fprintf(env.Out, "Rebased your %d unpushed %s onto %d new from origin.\n", ahead, plural(ahead, "commit"), behind)
+			} else {
+				fmt.Fprintf(env.Out, "Pulled %d new %s from origin.\n", behind, plural(behind, "commit"))
+			}
+		}
+		if ahead == 0 {
+			return nil
+		}
+		out, err := git("push")
+		if err == nil {
+			fmt.Fprintf(env.Out, "Pushed %d %s to origin.\n", ahead, plural(ahead, "commit"))
+			return nil
+		}
+		if !strings.Contains(out, "fetch first") && !strings.Contains(out, "non-fast-forward") && !strings.Contains(out, "rejected") {
+			return fmt.Errorf("pushing your %d unpushed %s to origin failed:\n%s", ahead, plural(ahead, "commit"), out)
+		}
+		// origin moved again while we were pushing: take another round
 	}
-	return nil
+	return fmt.Errorf("origin kept changing while pushing — try again")
+}
+
+// aheadBehind counts the commits this checkout has that its upstream lacks (ahead) and the other way round (behind).
+// Output that cannot be read counts as level (0, 0).
+func aheadBehind(git func(args ...string) (string, error)) (ahead, behind int) {
+	out, err := git("rev-list", "--left-right", "--count", "HEAD...@{u}")
+	f := strings.Fields(out)
+	if err != nil || len(f) != 2 {
+		return 0, 0
+	}
+	ahead, _ = strconv.Atoi(f[0])
+	behind, _ = strconv.Atoi(f[1])
+	return ahead, behind
 }
 
 // Per-target argv builders. A local target operates on the local checkout

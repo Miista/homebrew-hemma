@@ -105,7 +105,8 @@ var commands = []command{
 
 	// deploy is the kernel's fleet deploy (design §6.8), exactly as on the CLI: ssh to every other host to
 	// `git pull --ff-only` and apply, then this host last (its own apply runs in-process). It runs on the
-	// deploy host; hemma enforces that, and an upstream plus a clean, pushed repo.
+	// deploy host; hemma enforces that. It first brings this checkout level with origin itself (pull --rebase,
+	// push) and needs an upstream and a clean tree.
 	{Words: []string{"deploy"}, Group: "Operate", Title: "Deploy (pull from origin + apply)", Timeout: 10 * time.Minute,
 		Confirm: "Deploy? This pulls from origin, then makes the saved config live on every host."},
 
