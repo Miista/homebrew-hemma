@@ -25,7 +25,7 @@ type fieldChange struct {
 type entityChange struct {
 	Kind   string        `json:"kind"`   // Service | Host | Domain | Setting
 	Name   string        `json:"name"`   // e.g. "demo"
-	Status string        `json:"status"` // added | removed | changed
+	Status string        `json:"status"` // added | removed | changed | renamed
 	Fields []fieldChange `json:"fields"`
 }
 
@@ -113,6 +113,41 @@ func sortedKeys[V any](m map[string]V) []string {
 	return ks
 }
 
+// findRenames pairs a service that disappeared with one that appeared when it is the same service under a new name,
+// so the dialog can say "renamed" instead of "one removed, one added". It is deliberately strict — a wrong pairing would
+// hide a real removal and a real addition: the two must be on the same host, and each of the address and the backend
+// must either be unchanged or have followed the name (albumreq.example.com → albumarr.example.com,
+// albumreq:8768 → albumarr:8768). Anything else (a service replaced by an unrelated one) stays removed + added.
+func findRenames(old, now map[string]config.Service) map[string]string {
+	out := map[string]string{}
+	used := map[string]bool{}
+	for _, n := range sortedKeys(now) {
+		if _, existed := old[n]; existed {
+			continue
+		}
+		for _, o := range sortedKeys(old) {
+			if _, stillThere := now[o]; stillThere || used[o] {
+				continue
+			}
+			ov, nv := old[o], now[n]
+			if ov.Host == nv.Host && followsName(ov.FQDN, nv.FQDN, o, n, ".") && followsName(ov.Backend, nv.Backend, o, n, ":") {
+				out[n], used[o] = o, true
+				break
+			}
+		}
+	}
+	return out
+}
+
+// followsName: the value is unchanged, or its leading name (up to sep) went from the old service name to the new one
+// with the rest untouched.
+func followsName(oldVal, newVal, oldName, newName, sep string) bool {
+	if oldVal == newVal {
+		return oldVal != "" // two empty values say nothing
+	}
+	return strings.HasPrefix(oldVal, oldName+sep) && newVal == newName+oldVal[len(oldName):]
+}
+
 // headConfig is services.yaml as of the last commit (an empty config if there is none yet).
 func (s *server) headConfig() *config.Config {
 	dir, err := os.MkdirTemp("", "hemma-ui-head")
@@ -144,15 +179,24 @@ func (s *server) diff() (diffResult, error) {
 		}
 		res.Entities = append(res.Entities, entityChange{Kind: kind, Name: name, Status: status, Fields: f})
 	}
+	renamedFrom := findRenames(old.Services, now.Services) // new name → old name
+	wasRenamed := map[string]bool{}
+	for _, from := range renamedFrom {
+		wasRenamed[from] = true
+	}
 	for _, n := range sortedKeys(now.Services) {
 		if o, ok := old.Services[n]; ok {
 			add("Service", n, "changed", serviceKV(o), serviceKV(now.Services[n]))
+		} else if from, ok := renamedFrom[n]; ok {
+			// One thing that changed its name, not one removed and another added: the name first, then whatever else changed.
+			fields := append([]fieldChange{{Field: "Name", Before: from, After: n}}, compare(serviceKV(old.Services[from]), serviceKV(now.Services[n]), "changed")...)
+			res.Entities = append(res.Entities, entityChange{Kind: "Service", Name: from + " → " + n, Status: "renamed", Fields: fields})
 		} else {
 			add("Service", n, "added", nil, serviceKV(now.Services[n]))
 		}
 	}
 	for _, n := range sortedKeys(old.Services) {
-		if _, ok := now.Services[n]; !ok {
+		if _, ok := now.Services[n]; !ok && !wasRenamed[n] {
 			add("Service", n, "removed", serviceKV(old.Services[n]), serviceKV(old.Services[n]))
 		}
 	}
