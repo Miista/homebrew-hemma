@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -129,6 +130,9 @@ func cmdDoctor(env *Env, cfgPath string, args []string) int {
 			fmt.Fprintln(env.Out, "\nRun 'hemma doctor --fix' to add these entries automatically.")
 		}
 	}
+
+	// --- managed block freshness (an older hemma wrote broader rules) ---
+	problems += checkManagedBlock(env, filepath.Join(repoRoot, ".gitignore"), fix)
 
 	// --- Caddyfile import line check ---
 	problems += checkCaddyfileImports(env, repoRoot, cfg, fix)
@@ -389,7 +393,8 @@ func writeManagedBlock(path string, rules []string) error {
 
 	block := giBlockStart + "\n" +
 		"# hemma-generated config under data/ dirs the repo otherwise ignores.\n" +
-		"# Managed by 'hemma doctor --fix'; edit outside these markers.\n" +
+		"# Only the directories hemma writes into are re-included; the rest of every data/ stays\n" +
+		"# ignored and is never walked by git. Managed by 'hemma doctor --fix'; edit outside these markers.\n" +
 		strings.Join(rules, "\n") + "\n" +
 		giBlockEnd + "\n"
 
@@ -409,6 +414,91 @@ func writeManagedBlock(path string, rules []string) error {
 		out = existing + "\n" + block
 	}
 	return config.AtomicWrite(path, []byte(out))
+}
+
+// managedBlockRules returns the rule lines inside hemma's managed block of a
+// .gitignore (comments and blanks dropped), and whether the block exists.
+func managedBlockRules(content string) (rules []string, found bool) {
+	for _, m := range legacyGiBlockStarts {
+		content = strings.ReplaceAll(content, m, giBlockStart)
+	}
+	for _, m := range legacyGiBlockEnds {
+		content = strings.ReplaceAll(content, m, giBlockEnd)
+	}
+	s, e := strings.Index(content, giBlockStart), strings.Index(content, giBlockEnd)
+	if s < 0 || e <= s {
+		return nil, false
+	}
+	for _, line := range strings.Split(content[s+len(giBlockStart):e], "\n") {
+		if l := strings.TrimSpace(line); l != "" && !strings.HasPrefix(l, "#") {
+			rules = append(rules, l)
+		}
+	}
+	return rules, true
+}
+
+// blanketDataRules are the lines older hemma versions (and its predecessor) wrote:
+// they un-ignore every directory under every data/, so git walks all runtime data on
+// every `git status`. The current rules never contain them.
+var blanketDataRules = map[string]bool{"!**/data/": true, "!**/data/**/": true}
+
+// checkManagedBlock keeps hemma's own block current. When the block exists but is not
+// what hemma would write now (an older hemma wrote broader rules), it is reported and
+// `--fix` rewrites it in place — this is not about ignored files, so it also reaches
+// repos whose generated files are already tracked. Blanket rules left OUTSIDE the block
+// (the predecessor tool's) are only advised about: hemma does not edit what it does not
+// own, so that advisory is not counted as a problem. Returns the number of problems.
+func checkManagedBlock(env *Env, giPath string, fix bool) int {
+	b, err := os.ReadFile(giPath)
+	if err != nil {
+		return 0
+	}
+	content := string(b)
+	problems := 0
+	have, found := managedBlockRules(content)
+	want := unignoreRules()
+	if found && strings.Join(have, "\n") != strings.Join(want, "\n") {
+		if fix {
+			if err := writeManagedBlock(giPath, want); err != nil {
+				errf(env, "%v", err)
+				return 1
+			}
+			fmt.Fprintln(env.Out, tick+" Updated hemma's .gitignore block to the current (narrow) rules.")
+		} else {
+			problems++
+			fmt.Fprintln(env.Out, warn+" hemma's .gitignore block is out of date: it re-includes whole data/ directories, so git walks all runtime data on every 'git status' (slow on a Pi).")
+			fmt.Fprintln(env.Out, "  Run 'hemma doctor --fix' to rewrite it.")
+		}
+	} else if found {
+		fmt.Fprintln(env.Out, tick+" .gitignore block is current.")
+	}
+	// Blanket rules outside hemma's block.
+	if s, e := strings.Index(content, giBlockStart), strings.Index(content, giBlockEnd); s >= 0 && e > s {
+		content = content[:s] + content[e+len(giBlockEnd):]
+	}
+	var stray []string
+	for _, line := range strings.Split(content, "\n") {
+		if l := strings.TrimSpace(line); blanketDataRules[l] {
+			stray = append(stray, l)
+		}
+	}
+	if len(stray) > 0 {
+		fmt.Fprintf(env.Out, warn+" .gitignore has blanket data/ rules outside hemma's block (%s): they make git walk all runtime data on every 'git status'. Remove them — hemma's narrow rules replace them.\n",
+			strings.Join(dedupe(stray), ", "))
+	}
+	return problems
+}
+
+func dedupe(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // ignoredPaths returns the subset of repo-relative paths that git would ignore
@@ -445,20 +535,83 @@ func ignoredPaths(env *Env, repoRoot string, relPaths []string) (ignored []strin
 
 // unignoreRules returns the repo-root .gitignore negation block that
 // re-includes hemma's generated files when a broad rule like **/data/** would
-// otherwise ignore them. Git won't re-include a file under an excluded
-// directory, so the directories must be un-ignored first (lines 1–2); then
-// only hemma's outputs are re-included — runtime data (.db, caches,
-// certs, …) stays ignored. The .caddy rule is scoped to caddy data dirs
-// (site files like pihole.caddy carry no .generated marker, so the extension
-// alone would be too broad elsewhere); the .generated.yml rule covers the
-// auth provider's access-control artifact. Host-agnostic; one block at the
-// repo root.
+// otherwise ignore them.
+//
+// Git won't re-include a file under an excluded directory, so each directory
+// between a data/ dir and a generated file is un-ignored first, then only the
+// generated files in it are re-included — runtime data (.db, caches, …) stays
+// ignored. The rules are deliberately NARROW: a blanket "!**/data/**/" would
+// un-ignore every directory under every data/, and git would then walk all of
+// the runtime data on every `git status` (thousands of files, seconds on a Pi,
+// and `git status` is what the web UI runs on each page load). Here git only
+// descends the few directories hemma writes into and skips the rest.
+//
+// The block is FIXED, not derived from what the current config happens to
+// generate: it is the same in every repo and at every moment, so it covers a
+// kind of output from the start (before the first service, or the first auth
+// service, exists), never changes with the config, and needs no write unless
+// hemma itself changes. It is built from the same constants the plan uses for
+// its output paths, plus each registered auth provider's own config directory
+// (where its generated artifact sits); TestUnignoreRules_CoversEveryPlanOutput
+// fails if hemma ever writes under a data/ directory these rules do not cover.
 func unignoreRules() []string {
-	return []string{
-		"!**/data/",
-		"!**/data/**/",
-		"!**/data/**/*.generated.conf",
-		"!**/caddy/data/**/*.caddy",
-		"!**/data/**/*.generated.yml",
+	// One representative file per kind of output. Only the directory and the
+	// file's marker (".generated.<ext>", or the extension) matter.
+	shapes := []string{
+		path.Join(config.DefaultCaddyDataDir, render.CaddyImportFilename),
+		path.Join(config.DefaultCaddySitesDir, "service.caddy"),
+		path.Join(config.DefaultCaddyTLSDir, render.TLSSnippetName("domain")+".caddy"),
+		path.Join(config.DefaultDnsmasqDir, "service.generated.conf"),
 	}
+	for _, name := range auth.Names() {
+		if prov, ok := auth.Lookup(name); ok {
+			shapes = append(shapes, path.Join(path.Dir(prov.ConfigPath()), "artifact.generated.yml"))
+		}
+	}
+	return rulesForOutputs(shapes)
+}
+
+// rulesForOutputs turns output file paths into narrow, host-agnostic negation
+// rules: described from the service directory in front of data/ (caddy, pihole,
+// authelia) onward, so one block covers every host. A file is matched by what
+// marks it as generated — its ".generated.<ext>" tail, or else (caddy site
+// files carry no marker) its extension. Paths with no data/ segment need no
+// rule. The result is sorted and deduplicated, so it is stable.
+func rulesForOutputs(outputPaths []string) []string {
+	set := map[string]bool{}
+	for _, p := range outputPaths {
+		segs := strings.Split(filepath.ToSlash(p), "/")
+		di := -1
+		for i, s := range segs {
+			if s == "data" && i > 0 && i < len(segs)-1 {
+				di = i
+				break
+			}
+		}
+		if di < 0 {
+			continue
+		}
+		base := "!**/" + segs[di-1] + "/data/"
+		file := segs[len(segs)-1]
+		dirs := segs[di+1 : len(segs)-1]
+		for k := 1; k <= len(dirs); k++ {
+			set[base+strings.Join(dirs[:k], "/")+"/"] = true
+		}
+		match := file
+		if i := strings.Index(file, ".generated."); i >= 0 {
+			match = "*" + file[i:]
+		} else if ext := filepath.Ext(file); ext != "" {
+			match = "*" + ext
+		}
+		if len(dirs) > 0 {
+			match = strings.Join(dirs, "/") + "/" + match
+		}
+		set[base+match] = true
+	}
+	rules := make([]string, 0, len(set))
+	for r := range set {
+		rules = append(rules, r)
+	}
+	sort.Strings(rules)
+	return rules
 }
