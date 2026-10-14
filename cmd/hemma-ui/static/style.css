@@ -168,26 +168,32 @@ dialog button { border-radius: 10px; }
 .issues-head strong { font-size: 18px; }
 .issues-head .row { display: flex; gap: 8px; flex-wrap: wrap; }
 .issuelist { margin: 8px 0 4px; }
-.issue { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--border); border-left: 4px solid var(--amber-line); border-radius: 12px; background: var(--surface); }
-.issue.err { border-left-color: var(--red); }
-.issue.note { border-left-color: var(--border-2); }
-/* a finding is laid out as the page's own text (see findingEl): headline, supporting text, labelled rows, code chips */
-.issue { overflow-wrap: anywhere; }
-.issue .fhead { font-size: 15px; font-weight: 600; line-height: 1.4; }
-.issue.note .fhead { font-weight: 500; color: var(--muted); }
-.issue .fwhy { margin-top: 4px; font-size: 14px; line-height: 1.5; color: var(--muted); }
-.issue .frow { display: flex; gap: 10px; margin-top: 8px; font-size: 14px; line-height: 1.5; }
-.issue .flabel { flex: none; min-width: 3.4em; padding-top: 3px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
-.issue .ftext { min-width: 0; }
-.issue ul { margin: 6px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.5; color: var(--muted); }
-.issue code, .plist code { padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text); font-size: 12.5px; white-space: normal; }
-.issue .cmd code, .issue .ftext.cmd, .issue li.item { font-family: var(--mono); font-size: 13px; }
-details.passed { margin: 10px 0; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
-details.passed summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+/* the Issues checklist: a failing check is a row (its title); what is behind it shows when it is expanded (see issueRow) */
+.chk { margin: 8px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow-wrap: anywhere; }
+.chk > summary { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; list-style: none; font-size: 15px; font-weight: 600; line-height: 1.4; }
+.chk > summary::-webkit-details-marker { display: none; }
+.chk > summary::after { content: ""; flex: none; margin-left: auto; width: 7px; height: 7px; border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint); transform: rotate(45deg); transition: transform .15s; }
+.chk[open] > summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
+.chk > summary:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; border-radius: 12px; }
+.chk .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--amber-text); }
+.chk.err .dot { background: var(--red); }
+.chk .ctitle { min-width: 0; }
+.chk .cbadge { flex: none; padding: 2px 9px; border-radius: 999px; background: var(--violet-bg); color: var(--violet-text); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chk .cbody { padding: 0 14px 14px 34px; font-size: 14px; line-height: 1.5; }
+.chk .cwhy { margin: 0 0 8px; color: var(--muted); }
+.chk .clist { margin: 2px 0 8px; padding-left: 18px; color: var(--muted); font-family: var(--mono); font-size: 13px; }
+.chk .chead { margin: 12px 0 2px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.chk .frow { display: flex; gap: 10px; margin-top: 6px; }
+.chk .flabel { flex: none; min-width: 3.4em; padding-top: 3px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.chk .ftext { min-width: 0; }
+.chk .ftext.cmd { font-family: var(--mono); font-size: 13px; }
+.chk .cfix { margin-top: 14px; }
+.chk .cnote { margin: 6px 0 0; font-size: 13px; color: var(--faint); }
+.chk code, .plist code { padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text); font-family: var(--mono); font-size: 12.5px; white-space: normal; }
 .plist { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 14px; line-height: 1.5; color: var(--muted); }
 .plist li { display: flex; gap: 8px; overflow-wrap: anywhere; }
 .plist .tickmark { flex: none; color: var(--green-text); font-weight: 700; }
-.noissues { margin: 18px 0 6px; font-size: 15px; }
+.plist li.info .tickmark { color: var(--faint); }
 .subhead { margin: 28px 0 0; font-size: 16px; }
 nav .count.warn { background: var(--red-fill); }
 

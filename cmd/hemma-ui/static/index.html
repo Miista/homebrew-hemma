@@ -711,27 +711,14 @@ function openService(name) {
   openModal($("#vdlg"));
 }
 
-// ── Issues: exactly what `hemma doctor` says ──────────────────────────────────────────────────────────────────
-// The server runs doctor (read-only) and returns its output verbatim, plus whether doctor itself says `--fix` can
-// help. This lists it as it is; the Fix button runs `hemma doctor --fix` and appears only when there is something
-// for it to do. What --fix cannot resolve (doctor's advisories, known_hosts, …) is simply listed.
-let issues = { loaded: false, busy: false, again: false, fixing: false, fixable: false, groups: [], count: 0, error: "" };
-function parseDoctor(out) {
-  const groups = []; let cur = null;
-  for (const line of (out || "").split("\n")) {
-    if (!line.trim()) { cur = null; continue; }
-    const g = line[0];
-    const kind = g === "✓" ? "ok" : g === "⚠" ? "warn" : (g === "✗" || line.startsWith("Error:")) ? "err" : null;
-    if (kind) { cur = { kind, lines: [line] }; groups.push(cur); }
-    else if (cur) cur.lines.push(line);        // an indented continuation of the finding above it
-    else { cur = { kind: "note", lines: [line] }; groups.push(cur); }   // a line of doctor's own, between findings
-  }
-  return groups;
-}
-// How a finding LOOKS. doctor's words are shown untouched; only their layout changes, so the page reads as the page
-// and not as a console dump: the headline in the UI font, what explains it as supporting text, 'quoted commands' as
-// code chips, and `fix:` / `then:` lines as labelled rows. All text goes in as text nodes (never as markup).
-const GLYPH = /^[✓⚠✗]\s*/;
+// ── Issues: a checklist of what `hemma doctor` checks ─────────────────────────────────────────────────────────
+// The server runs doctor (read-only) and reads its output into items (issueitems.go): one per check, with a status,
+// a title, and — for a failing one — why, the files it is about, how to fix it by hand, and whether
+// `hemma doctor --fix` resolves it. A failing item is a row that expands; where --fix helps it has a Fix button,
+// and where it does not, the how-to is the item. Passed checks are listed quietly below. All text goes in as text
+// nodes (never as markup).
+let issues = { loaded: false, busy: false, again: false, fixing: false, fixable: false, items: [], count: 0, error: "", open: new Set() };
+// 'quoted commands' become code chips; a quote that opens a word only, so the apostrophe in "hemma's" is left alone.
 function withCode(text) {
   const frag = document.createDocumentFragment();
   const re = /(^|[\s(])'([^']+)'(?=[\s.,;:)]|$)/g;   // a quote that opens a word, so the apostrophe in "hemma's" is left alone
@@ -744,53 +731,48 @@ function withCode(text) {
   return frag;
 }
 const withText = (tag, cls, text) => { const e = el(tag, null, { className: cls }); e.append(withCode(text)); return e; };
-// The lines of a finding after its headline: labelled rows (fix: / then:), bullets, and indented lines (a list of
-// files or rules) as list items; anything else is supporting text.
-function addLines(card, lines) {
-  let row = null, list = null;
-  for (const raw of lines) {
-    const t = raw.trim(); if (!t) continue;
-    const lab = /^(fix|then|run|hint|try|see)\s*:\s*(.*)$/i.exec(t), bullet = /^[•*-]\s+(.*)$/.exec(t);
-    const indented = /^\s{2,}\S/.test(raw) && !/\s/.test(t);   // an indented single token is a path or a rule (a list item); an indented sentence is just text
-    if (lab) {
-      list = null; row = el("div", null, { className: "frow" });
-      const body = withText("span", "ftext" + (/^(then|run)$/i.test(lab[1]) ? " cmd" : ""), lab[2]);
-      row.append(el("span", lab[1], { className: "flabel" }), body); card.append(row);
-    } else if (bullet || indented) {
-      row = null; if (!list) { list = el("ul"); card.append(list); }
-      const li = el("li", null, { className: bullet ? "" : "item" }); li.append(withCode(bullet ? bullet[1] : t)); list.append(li);   // "item": a path or a rule, so monospace
-    } else if (row) {                              // a deeper-indented line continues the row above it
-      row.lastChild.append(" ", withCode(t));
-    } else { list = null; card.append(withText("div", "fwhy", t)); }
+// A failing check: its title is the row; what is behind it shows when it is expanded. Which rows are open survives
+// a re-check (kept by title), so running the checks again does not fold away what you were reading.
+function issueRow(it) {
+  const d = el("details", null, { className: `chk ${it.status}` });
+  d.open = issues.open.has(it.title);
+  d.addEventListener("toggle", () => { if (d.open) issues.open.add(it.title); else issues.open.delete(it.title); });
+  const sum = el("summary");
+  sum.append(el("span", null, { className: "dot" }), el("span", it.title, { className: "ctitle" }));
+  if (it.fixable) sum.append(el("span", "Can be fixed automatically", { className: "cbadge" }));
+  d.append(sum);
+  const body = el("div", null, { className: "cbody" });
+  if (it.summary) body.append(withText("p", "cwhy", it.summary));
+  (it.notes || []).forEach(n => body.append(withText("p", "cwhy", n)));
+  if (it.list && it.list.length) {
+    const ul = el("ul", null, { className: "clist" });
+    it.list.forEach(x => { const li = el("li"); li.append(withCode(x)); ul.append(li); });
+    body.append(ul);
   }
-}
-function findingEl(g) {
-  const card = el("div", null, { className: `issue ${g.kind}` });
-  const first = g.lines[0].replace(GLYPH, "").trim();
-  let head = first, why = "";
-  const i = first.indexOf(": ");
-  if (first.length > 100 && i > 0 && i <= 90) { head = first.slice(0, i); why = first.slice(i + 2); }   // a long sentence: the claim, then its explanation
-  card.append(withText("div", "fhead", head));
-  if (why) card.append(withText("div", "fwhy", why));
-  addLines(card, g.lines.slice(1));
-  return card;
-}
-// doctor's own lines between findings ("Run 'hemma doctor --fix' to …", the rules to add) belong to the finding above
-// them: they join its card instead of standing alone.
-function findingEls(groups) {
-  const cards = []; let prev = null;
-  for (const g of groups) {
-    if (prev && g.kind === "note" && (prev.kind === "note" || /^\s*Run\b/.test(g.lines[0]))) { addLines(prev.card, g.lines); continue; }
-    const card = findingEl(g); cards.push(card); prev = { kind: g.kind, card };
+  if (it.steps && it.steps.length) {
+    body.append(el("div", it.steps.length === 1 ? "How to fix it" : "How to fix it, in order", { className: "chead" }));
+    it.steps.forEach(s => {
+      const row = el("div", null, { className: "frow" });
+      row.append(el("span", s.label, { className: "flabel" }), withText("span", "ftext" + (/^(then|run)$/.test(s.label) ? " cmd" : ""), s.text));
+      body.append(row);
+    });
   }
-  return cards;
+  if (it.fixable) {
+    const fx = btn(issues.fixing ? "Fixing…" : "Fix automatically", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing;
+    const bar = el("div", null, { className: "cfix" }); bar.append(fx);
+    body.append(bar, el("p", "Fixes everything on this page that can be fixed automatically.", { className: "cnote" }));
+  }
+  if (!body.children.length) body.append(el("p", "Nothing more to show for this one.", { className: "cwhy" }));
+  d.append(body);
+  return d;
 }
-function passedEl(passed) {
+// The checks that passed (and doctor's own notes), as the quiet part of the checklist.
+function passedEl(items) {
   const ul = el("ul", null, { className: "plist" });
-  passed.forEach(g => {
-    const li = el("li"), tick = el("span", "✓", { className: "tickmark" });
-    tick.setAttribute("aria-hidden", "true");   // decorative: the sentence says it passed (it sits under "N checks passed")
-    li.append(tick, withText("span", "", g.lines.map(l => l.replace(GLYPH, "").trim()).join(" "))); ul.append(li);
+  items.forEach(it => {
+    const li = el("li", null, { className: it.status === "ok" ? "" : "info" }), mark = el("span", it.status === "ok" ? "✓" : "•", { className: "tickmark" });
+    mark.setAttribute("aria-hidden", "true");   // decorative: the section heading says these passed
+    li.append(mark, withText("span", "", it.title)); ul.append(li);
   });
   return ul;
 }
@@ -799,8 +781,8 @@ async function checkIssues() {
   issues.busy = true; if (tab === "Issues") render();
   try {
     const r = await fetch("/api/issues"); const j = await r.json();
-    const groups = parseDoctor(j.output);
-    issues = { ...issues, loaded: true, error: j.error || "", fixable: !!j.fixable, groups, count: groups.filter(g => g.kind === "warn" || g.kind === "err").length };
+    const items = j.items || [];
+    issues = { ...issues, loaded: true, error: j.error || "", fixable: !!j.fixable, items, count: items.filter(g => g.status === "warn" || g.status === "err").length };
   } catch (e) { issues = { ...issues, loaded: true, error: String(e) }; }
   issues.busy = false;
   if (tab === "Issues") render(); else refreshIssueBadge();   // off the Issues page only the badge changes: don't redraw (and disturb) the page you are on
@@ -817,7 +799,7 @@ async function fixIssues() {
   issues.fixing = false;
   await load();   // what --fix changed shows up as unsaved changes
   await checkIssues();
-  toast(res.ok ? "Fixed" : "Ran hemma doctor --fix — what it can fix is fixed; the rest is listed below", res.ok ? "ok" : "warn");
+  toast(res.ok ? "Fixed" : "Fixed what can be fixed automatically — the rest needs a manual step, see the list", res.ok ? "ok" : "warn");
 }
 
 const VIEWS = {
@@ -860,20 +842,18 @@ const VIEWS = {
   Issues() {
     // Checks you can run yourself: tools, not issues, so they sit under their own heading.
     const tools = [el("h2", "Tools", { className: "subhead" }), cards(["verify", "measure"].map(k => cmdBtn(k)))];
-    // Nothing wrong: say so in one quiet line and show nothing else (no passed-checks list, no buttons to press).
-    if (issues.loaded && !issues.error && issues.count === 0) return [el("p", "No issues", { className: "meta noissues" }), ...tools];
+    const failing = issues.items.filter(it => it.status === "warn" || it.status === "err");
+    const passed = issues.items.filter(it => it.status === "ok" || it.status === "info");
     const head = el("div", null, { className: "issues-head" });
-    const summary = !issues.loaded ? "Checking…" : issues.error ? "Could not run the checks" : `${issues.count} ${issues.count === 1 ? "issue" : "issues"}`;
+    const summary = !issues.loaded ? "Checking…" : issues.error ? "Could not run the checks" : failing.length === 0 ? "All checks passed" : `${failing.length} ${failing.length === 1 ? "issue" : "issues"}`;
     const acts = el("div", null, { className: "row" });
     const re = btn(issues.busy ? "Checking…" : "Re-check", () => checkIssues()); re.disabled = issues.busy || issues.fixing; acts.append(re);
-    if (issues.fixable) { const fx = btn(issues.fixing ? "Fixing…" : "Fix with hemma doctor --fix", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing; acts.append(fx); }
+    if (issues.fixable) { const fx = btn(issues.fixing ? "Fixing…" : "Fix automatically", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing; acts.append(fx); }
     head.append(el("strong", summary), acts);
     const body = el("div", null, { className: "issuelist" });
-    if (issues.error) body.append(el("pre", issues.error, { className: "reason" }));
-    const passed = issues.groups.filter(g => g.kind === "ok");
-    // doctor's words as they are, laid out as the page's own text: each finding in its own card (see findingEl)
-    body.append(...findingEls(issues.groups.filter(g => g.kind !== "ok")));
-    if (passed.length) { const d = el("details", null, { className: "passed" }); d.append(el("summary", `${passed.length} ${passed.length === 1 ? "check" : "checks"} passed`), passedEl(passed)); body.append(d); }
+    if (issues.error) body.append(el("p", issues.error, { className: "err" }));
+    failing.forEach(it => body.append(issueRow(it)));
+    if (passed.length) body.append(el("h2", `Passed (${passed.length})`, { className: "subhead" }), passedEl(passed));
     return [head, body, ...tools];
   },
 };
