@@ -466,7 +466,7 @@ func checkManagedBlock(env *Env, giPath string, fix bool) int {
 			fmt.Fprintln(env.Out, tick+" Updated hemma's .gitignore block to the current (narrow) rules.")
 		} else {
 			problems++
-			fmt.Fprintln(env.Out, warn+" hemma's .gitignore block is out of date: it re-includes whole data/ directories, so git walks all runtime data on every 'git status' (slow on a Pi).")
+			fmt.Fprintln(env.Out, warn+" hemma's .gitignore block is out of date: this version of hemma writes narrower rules and no longer re-includes whole data/ directories.")
 			fmt.Fprintln(env.Out, "  Run 'hemma doctor --fix' to rewrite it.")
 		}
 	} else if found {
