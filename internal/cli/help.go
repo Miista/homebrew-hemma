@@ -382,8 +382,14 @@ Makes the fleet match origin, in three strictly ordered phases:
   Phase 0 — probe:  'ssh <dest> true' to every REMOTE host. ANY host
                     unreachable over ssh aborts before anything is pulled —
                     a clear "unreachable" instead of git-pull noise later.
-  Phase 1 — pull:   'git -C ~/docker pull --ff-only' on every target host.
-                    ANY failure (divergence, dirty remote tree, unreachable
+  Phase 1 — pull:   first each REMOTE host is brought level with origin the
+                    same way as this host (below): its own unpushed commits are
+                    pushed, origin's new ones are pulled with --rebase, and
+                    uncommitted edits there are left alone — stashed around the
+                    rebase only when origin's commits touch none of those files,
+                    otherwise the deploy stops naming them. If a remote pushed,
+                    this host syncs again. Then 'git -C ~/docker pull --ff-only'
+                    on every target host. ANY failure (a clash, unreachable
                     host, ssh auth) aborts the ENTIRE deploy before phase 2 —
                     no runtime state changed anywhere. After the pulls, every
                     host must be on the same commit (a racing push aborts too).

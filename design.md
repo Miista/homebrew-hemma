@@ -1198,6 +1198,14 @@ two strictly ordered phases:
   drifted repo on every host — so deploy refuses here, before any host pulls or restarts anything, and says
   to run `hemma doctor --fix`, commit and push, then deploy again. Host names and "nothing to deploy" are
   settled from the config alone, before any of this touches git.
+- **Phase 1a — bring every remote level with origin** (before the pulls): each remote checkout gets the same
+  sync as the local one (`git fetch`; `pull --rebase` when behind; `push` when ahead; the same three rounds and
+  transactional abort), so commits made there (an updater's, say) reach origin and origin's reach it. A remote
+  may hold **uncommitted edits** (someone mid-change): they are left alone, and `--autostash` is used around the
+  rebase only when none of those files is also changed by origin's new commits (`git diff --name-only
+  HEAD...@{u}` against `git status --porcelain`) — then re-applying cannot conflict. If one is, nothing is
+  touched and the deploy stops naming the files. When any remote pushed, origin gained commits this host lacks,
+  so this host syncs again and re-checks drift before the pulls. Nothing is applied or restarted in 1a.
 - **Phase 1 — pull everywhere, all-or-nothing at the git layer**: per host,
   `git -C ~/docker pull --ff-only`. `--ff-only` is the safe primitive: it fast-forwards or
   refuses touching nothing. **Any** failure — non-ff/divergence (the host has local commits or
