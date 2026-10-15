@@ -41,6 +41,7 @@ func TestGate_EveryRouteRefusedWithoutASession(t *testing.T) {
 		{"POST", "/api/discard", "{}"},
 		{"POST", "/api/commit", `{"message":"x"}`},
 		{"POST", "/api/run", `{"command":"verify","values":{}}`},
+		{"POST", "/api/deploy", `{"command":"deploy"}`},
 		{"GET", "/api/issues", ""},
 	}
 	for _, r := range routes {
