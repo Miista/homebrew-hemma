@@ -202,6 +202,25 @@ nav .count.warn { background: var(--red-fill); }
 #etext { width: 100%; height: min(52vh, 420px); margin: 10px 0 4px; padding: 12px; font: 13px/1.55 var(--mono); tab-size: 4; white-space: pre; overflow: auto; resize: vertical;
          border: 1px solid var(--border); border-radius: 12px; background: var(--field); color: var(--text); }
 dialog:focus { outline: none; }   /* the box itself takes focus when it opens; only the controls inside show a focus ring */
+/* Deploy as a checklist (the progress dialog): a step is waiting, under way, done or failed. Status is never icon-only:
+   each row also carries it as text for screen readers. */
+.steps, .substeps { list-style: none; margin: 14px 0 6px; padding: 0; }
+.substeps { margin: 6px 0 2px 32px; }
+.step { margin: 0; padding: 5px 0; }
+.srow { display: flex; align-items: center; gap: 12px; font-size: 15px; line-height: 1.4; }
+.substeps .srow { font-size: 14px; }
+.step.pending .stitle { color: var(--faint); }
+.step.running .stitle { font-weight: 600; }
+.step.failed .stitle { color: var(--red-text); font-weight: 600; }
+.sicon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%;
+         font-size: 12px; font-weight: 700; color: var(--faint); border: 1.5px solid var(--border-2); box-sizing: border-box; }
+.sicon.done { color: #fff; background: oklch(0.5 0.14 155); border-color: oklch(0.5 0.14 155); }   /* the same green as the "added" badge: white on it is AA in both themes */
+.sicon.failed { color: #fff; background: var(--red-fill); border-color: var(--red-fill); }
+.sicon.running { border-color: var(--border-2); border-top-color: var(--violet); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sicon.running { animation: none; border-top-color: var(--violet); border-right-color: var(--violet); } }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+#pdlg .row { margin-top: 12px; }
 @media (min-width: 641px) { #kdlg { width: min(440px, calc(100vw - 32px)); } }   /* the confirmation: a short question, narrower than the forms (on a phone every dialog shares one width) */
 #kdlg p { margin: 8px 0 22px; line-height: 1.5; }
 /* A destructive confirmation is red AT REST: a phone has no hover, so "red on hover" would never tell you. */

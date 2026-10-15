@@ -59,6 +59,14 @@
   <div class="row"><button type="button" id="rclose">Close</button></div>
 </dialog>
 
+<!-- Deploy as a checklist: each step as it happens (syncing hosts, restarting services, …), then the outcome. -->
+<dialog id="pdlg" tabindex="-1" autofocus aria-labelledby="ptitle">
+  <h2 id="ptitle">Deploying…</h2>
+  <ul id="psteps" class="steps" aria-live="polite"></ul>
+  <p class="meta" id="pnote">You can close this: the deploy carries on.</p>
+  <div class="row"><button type="button" id="pdetails" hidden>Details</button><button type="button" id="pclose" class="primary">Hide</button></div>
+</dialog>
+
 <dialog id="dlg" tabindex="-1" autofocus>
   <form method="dialog" id="form">
     <h2 id="dtitle"></h2>
@@ -530,12 +538,61 @@ function deployFailedHosts(out) {
 // so there is nothing to push from here.
 async function deployNow(key, done, failed) {
   deploying = true; renderDeploy();
+  const dlg = $("#pdlg");
+  renderSteps([]); $("#ptitle").textContent = "Deploying…"; $("#pdetails").hidden = true; $("#pnote").hidden = false;
+  $("#pclose").textContent = "Hide"; $("#pclose").onclick = () => dlg.close();
+  openModal(dlg);
   try {
-    const res = await post("/api/run", { command: key, values: {} });
+    const res = await streamDeploy(key, renderSteps);
     const text = res.output || res.error || "";
-    if (!res.ok) { const on = deployFailedHosts(text); toast((failed || "Deploy failed") + (on.length ? ` on ${on.join(", ")}` : ""), "err", { title: "Deploy", text }); }
-    else toast(done, "ok");
+    const on = res.ok ? [] : deployFailedHosts(text);
+    const title = res.ok ? done : (failed || "Deploy failed") + (on.length ? ` on ${on.join(", ")}` : "");
+    $("#ptitle").textContent = title; $("#pnote").hidden = true; $("#pclose").textContent = "Close";
+    if (text) { $("#pdetails").hidden = false; $("#pdetails").onclick = () => { dlg.close(); showResult("Deploy", text); }; }
+    if (!dlg.open) toast(title, res.ok ? "ok" : "err", res.ok || !text ? undefined : { title: "Deploy", text });   // closed meanwhile: say how it ended
   } finally { deploying = false; await load(); }
+}
+// renderSteps draws the checklist: a step is waiting (an empty ring), under way (a spinner), done (✓) or failed (✗); the servers of
+// a step are listed beneath it.
+function renderSteps(steps) {
+  const ul = $("#psteps"); ul.replaceChildren();
+  const icon = st => { const i = el("span", st === "done" ? "✓" : st === "failed" ? "✗" : "", { className: "sicon " + st }); i.setAttribute("aria-hidden", "true"); return i; };
+  const label = st => ({ pending: "waiting", running: "in progress", done: "done", failed: "failed" })[st];
+  for (const s of steps) {
+    const li = el("li", null, { className: "step " + s.status });
+    const row = el("div", null, { className: "srow" });
+    row.append(icon(s.status), el("span", s.title, { className: "stitle" }), el("span", label(s.status), { className: "sr-only" }));
+    li.append(row);
+    if (s.sub && s.sub.length) {
+      const sub = el("ul", null, { className: "substeps" });
+      s.sub.forEach(x => { const sl = el("li", null, { className: "step " + x.status }), sr = el("div", null, { className: "srow" }); sr.append(icon(x.status), el("span", x.title, { className: "stitle" }), el("span", label(x.status), { className: "sr-only" })); sl.append(sr); sub.append(sl); });
+      li.append(sub);
+    }
+    ul.append(li);
+  }
+}
+// streamDeploy runs deploy (or apply) and follows it: the server answers with events, one each time a step changes and a
+// last one with the outcome. Resolves with {ok, output}.
+async function streamDeploy(command, onSteps) {
+  const r = await fetch("/api/deploy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command }) });
+  if (r.status === 409 || !r.ok || !r.body) {
+    const j = await r.json().catch(() => ({}));
+    return { ok: false, output: j.output || `Deploy could not start (${r.status}).` };
+  }
+  const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "", final = null;
+  for (;;) {
+    const { value, done } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+      const line = chunk.split("\n").find(l => l.startsWith("data: ")); if (!line) continue;
+      const ev = JSON.parse(line.slice(6));
+      if (ev.steps) onSteps(ev.steps);
+      if (ev.type === "done") final = ev;
+    }
+  }
+  return final || { ok: false, output: "The connection ended before the deploy reported back — check the servers." };
 }
 
 // discard puts hemma's own output back to the last save; files hemma doesn't manage are left alone.

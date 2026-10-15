@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -102,6 +103,7 @@ func (s *server) routes(gate *authy.Gate) (http.Handler, error) {
 	mux.HandleFunc("POST /api/discard", s.handleDiscard)
 	mux.HandleFunc("POST /api/commit", s.handleCommit)
 	mux.HandleFunc("POST /api/run", s.runCommand)
+	mux.HandleFunc("POST /api/deploy", s.handleDeploy)
 	mux.HandleFunc("GET /api/issues", s.handleIssues)
 	mux.HandleFunc("GET /api/config/raw", s.handleRawGet)
 	mux.HandleFunc("POST /api/config/raw", s.handleRawSave)
@@ -300,15 +302,22 @@ func (s *server) runKernel(ctx context.Context, argv []string) (code int, output
 // command cannot take the whole UI down. what only names the work in the log.
 func (s *server) inKernel(ctx context.Context, what string, fn func(*kernel.Env) int) (code int, output string) {
 	var buf syncBuf
-	kenv := &kernel.Env{Out: &buf, Err: &buf, Ctx: ctx, NoTerminal: true}
+	code = s.inKernelTo(ctx, what, &buf, fn)
+	return code, buf.String()
+}
+
+// inKernelTo is inKernel writing to w (stdout and stderr both, so the output reads in order) — for a command whose
+// output the page follows as it is produced.
+func (s *server) inKernelTo(ctx context.Context, what string, w io.Writer, fn func(*kernel.Env) int) (code int) {
+	kenv := &kernel.Env{Out: w, Err: w, Ctx: ctx, NoTerminal: true}
 	defer func() {
 		if p := recover(); p != nil {
 			log.Printf("kernel panic running %q: %v", what, p)
-			code, output = 70, buf.String()+"\ninternal error\n"
+			fmt.Fprint(w, "\ninternal error\n")
+			code = 70
 		}
 	}()
-	code = fn(kenv)
-	return code, buf.String()
+	return fn(kenv)
 }
 
 // syncBuf is a mutex-guarded buffer: a command's external processes may write
