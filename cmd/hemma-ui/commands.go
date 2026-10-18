@@ -68,7 +68,7 @@ func serviceFields(add bool) []field {
 		nameRef = "svcname"
 	}
 	return []field{
-		ref(pos("name", "Name", true), nameRef),
+		inSection(ref(pos("name", "Name", true), nameRef), "General"),
 		{Name: "host", Label: "Host", Kind: "str", Ref: "host", Required: add},
 		{Name: "backend", Label: "Backend (name:port)", Kind: "str", Ref: "backend", Required: add},
 		inSection(field{Name: "fqdn", Label: "Address", Kind: "str", Ref: "fqdn", Required: add}, "Network"),
