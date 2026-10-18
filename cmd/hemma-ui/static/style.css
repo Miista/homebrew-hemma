@@ -153,8 +153,13 @@ tr.off td { opacity: .5; }
 #dlg .row { position: sticky; bottom: 0; z-index: 3; margin: 16px 0 0; padding: 10px; border: 1px solid var(--border-2); border-radius: 16px;
             background: color-mix(in srgb, var(--surface) 86%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); box-shadow: 0 6px 20px rgba(0,0,0,.25); }
 #dlg .row button { flex: 1 1 0; }
-.sect { margin: 22px 0 0; padding-top: 14px; border-top: 1px solid var(--border); font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
-.sect + label, .sect + .fld, .sect + .switchrow { margin-top: 8px; }
+.card { margin: 14px 0 0; padding: 0 16px 16px; border: 1px solid var(--border-2); border-radius: 14px; }   /* one bordered card per group of fields */
+.sect { display: flex; align-items: center; gap: 10px; margin: 16px 0 0; font-size: 15px; font-weight: 700; letter-spacing: -.01em; color: var(--text); }
+.sect::before { content: ""; flex: none; width: 4px; height: 16px; border-radius: 2px; background: var(--violet); }   /* a violet tab marks where a group starts */
+.sect + label, .sect + .fld, .sect + .switchrow { margin-top: 12px; }
+.rmsvc, .rmsvc:hover:not(:disabled) { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; margin-top: 26px; padding: 12px 16px; font-weight: 600; color: #fff;
+  background: var(--red-fill); border: 1px solid color-mix(in srgb, var(--red-fill) 70%, #fff); }   /* last in the form: a solid red button with a trash icon */
+.rmsvc:hover:not(:disabled) { filter: brightness(1.1); }
 .svclist .switch { flex: none; }
 /* the track is 44x26, too small a target for a thumb: the invisible checkbox laid over it reaches the row's height (and a little sideways).
    Explicit width/height, NOT inset + auto: a checkbox is a replaced element and Safari does not stretch it between insets (it collapsed to 12px). */
