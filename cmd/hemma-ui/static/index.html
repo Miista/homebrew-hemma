@@ -35,6 +35,13 @@
   </form>
 </dialog>
 
+<!-- A service's details, read only. Edit / Rename / Remove are in its "⋯" menu, so the list itself stays just a name and a switch. -->
+<dialog id="vdlg" tabindex="-1" autofocus aria-labelledby="vtitle">
+  <h2 id="vtitle"></h2>
+  <div id="vfields"></div>
+  <div class="row" id="vactions"></div>
+</dialog>
+
 <!-- The recovery editor: services.yaml as text, for when the file cannot be loaded and no typed form can run. -->
 <dialog id="edlg" tabindex="-1" autofocus aria-labelledby="etitle">
   <form method="dialog" id="eform">
@@ -236,7 +243,7 @@ function picker(options, current, blank) {
   return sel;
 }
 
-// A list of validated values: one entry per row with a Remove button, and an add box below.
+// A list of validated values: an add box, then one entry per row with a trash button.
 function listEditor(initial, check, placeholder, onchange) {
   let items = (initial || []).filter(Boolean);
   const wrap = el("div"), rows = el("ul", null, { className: "items" }), adder = el("div", null, { className: "adder" });
@@ -244,7 +251,10 @@ function listEditor(initial, check, placeholder, onchange) {
   const msg = el("div", null, { className: "err small" });
   const draw = () => rows.replaceChildren(...(items.length ? items.map((v, i) => {
     const li = el("li", null, { className: "item" });
-    li.append(el("span", v), el("button", "Remove", { type: "button", className: "danger", onclick: () => { items.splice(i, 1); draw(); onchange && onchange(); } }));
+    const del = el("button", null, { type: "button", className: "danger icon", title: `Remove ${v}`, onclick: () => { items.splice(i, 1); draw(); onchange && onchange(); } });
+    del.setAttribute("aria-label", `Remove ${v}`);
+    del.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v5M14 11v5"/></svg>';   // static markup, no user text
+    li.append(el("span", v), del);
     return li;
   }) : [el("li", "None yet", { className: "muted" })]));
   const commit = () => {   // returns false if the box holds an invalid value
@@ -256,7 +266,7 @@ function listEditor(initial, check, placeholder, onchange) {
   };
   inp.onkeydown = e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commit(); } };
   adder.append(inp, el("button", "Add", { type: "button", onclick: commit }));
-  draw(); wrap.append(rows, adder, msg);
+  draw(); wrap.append(adder, msg, rows);   // the add box first: it stays put while the list grows beneath it
   return { node: wrap, flush: commit, get: () => items.join(",") };
 }
 
@@ -373,6 +383,7 @@ function openCmd(key, prefill = {}) {
     if (fd.kind === "list") lab.append(el("div", title, { className: "fl" }), k.node);
     else if (k.inline) { lab.className = "switchrow"; lab.append(el("span", fd.label), k.node); }   // label on the left, the switch on the right
     else lab.append(k.node);
+    if (fd.section) box.append(el("h3", fd.section, { className: "sect" }));   // a heading for the group of fields that follows
     box.append(lab); ctl.push({ fd, k, lab });
   }
   // Fields that only mean something for some value of another field (auth groups, bypass paths and policy
@@ -382,14 +393,6 @@ function openCmd(key, prefill = {}) {
   const syncShown = () => ctl.forEach(x => { if (x.fd.shows) x.lab.hidden = !offered(x); });
   for (const dep of new Set(ctl.filter(x => x.fd.shows).map(x => x.fd.shows.split("=")[0]))) byName[dep]?.k.node.addEventListener("change", syncShown);
   syncShown();
-  // Editing a service: Rename and Remove sit under the fields (they are not fields), so the list stays a name and a switch.
-  if (key === "update service") {
-    const row = el("div", null, { className: "row" });
-    row.append(
-      btn("Rename", () => { $("#dlg").close(); openCmd("rename service", { old: prefill.name, __lock: "old" }); }),
-      btn("Remove", () => { $("#dlg").close(); run("remove service", { name: prefill.name }, cmds["remove service"].confirm); }, "danger"));
-    box.append(row);
-  }
   // A new service: the name is usually the address too ("paperless" → paperless.example.com), so offer it as a courtesy.
   if (key === "add service") {
     const name = ctl.find(x => x.fd.name === "name"), addr = ctl.find(x => x.k.suggest);
@@ -721,7 +724,7 @@ function renderBar() {
 // ── Services: a plain list. The name opens the service's details; the switch on the right enables/disables it. ──
 function serviceRow(s) {
   const li = el("li", null, { className: s.disabled ? "off" : "" });
-  const open = el("button", s.name, { type: "button", className: "svcopen", onclick: () => openCmd("update service", { ...s, __lock: "name" }) });   // the name is a real button that opens the edit form directly; Rename/Remove are buttons in that form
+  const open = el("button", s.name, { type: "button", className: "svcopen", onclick: () => openService(s.name) });   // the name is a real button: keyboard and screen readers open it too
   const sw = el("span", null, { className: "switch" });
   const cb = el("input", null, { type: "checkbox", checked: !s.disabled });
   cb.setAttribute("role", "switch"); cb.setAttribute("aria-label", `${s.name} enabled`);
@@ -737,6 +740,38 @@ function serviceRow(s) {
   li.append(open, sw);
   return li;
 }
+// openService: the service's details, read only (the fields look like the edit form's, but you cannot change them
+// here — Edit opens the form). Read-only inputs, so the values can still be selected and copied.
+function openService(name) {
+  const s = state.services.find(x => x.name === name); if (!s) return;
+  const mode = s["auth-mode"] || "";
+  const field = (label, value) => { const l = el("label", label); l.append(el("input", null, { type: "text", value: value || "—", readOnly: true })); return l; };
+  // (no Name field: the title already is the name)
+  const sect = t => el("h3", t, { className: "sect" });
+  // The same groups, in the same order, as the edit form: general (no heading), Network, Authentication.
+  const fields = [field("Host", s.host), field("Backend (name:port)", s.backend), field("Status", s.disabled ? "Disabled" : "Enabled"),
+    sect("Network"), field("Address", s.fqdn), field("Reachable from the internet (tunnel)", s.tunnel ? "yes" : "no"),
+    sect("Authentication"), field("Auth mode", mode || "none")];
+  // Only the auth detail that applies to this mode (the edit form shows the same ones).
+  if (mode === "forward" || mode === "oidc") fields.push(field("Auth groups", s["auth-groups"]), field("Bypass paths", s["bypass-paths"]));
+  if (mode === "forward") fields.push(field("Policy: local horizon", s["auth-policy-local"]), field("Policy: public horizon", s["auth-policy-public"]));
+  $("#vtitle").textContent = s.name; $("#vfields").replaceChildren(...fields);
+  // Edit / Rename / Remove live in a "⋯" menu at the top right (native <details>); the footer is just Close.
+  $("#vdlg .kebab")?.remove();
+  const item = (label, fn, cls) => btn(label, () => { $("#vdlg").close(); fn(); }, cls);
+  const menu = el("div", null, { className: "menu" });
+  menu.append(
+    item("Edit", () => openCmd("update service", { ...s, __lock: "name" })),
+    item("Rename", () => openCmd("rename service", { old: s.name, __lock: "old" })),
+    item("Remove", () => run("remove service", { name: s.name }, cmds["remove service"].confirm), "danger"));
+  const kebab = el("details", null, { className: "kebab" });
+  const sum = el("summary", "⋯"); sum.setAttribute("aria-label", "More actions");
+  kebab.append(sum, menu);
+  $("#vdlg").prepend(kebab);
+  $("#vactions").replaceChildren(btn("Close", () => $("#vdlg").close()));
+  openModal($("#vdlg"));
+}
+
 // ── Issues: a checklist of what `hemma doctor` checks ─────────────────────────────────────────────────────────
 // The server runs doctor (read-only) and reads its output into items (issueitems.go): one per check, with a status,
 // a title, and — for a failing one — why, the files it is about, how to fix it by hand, and whether
