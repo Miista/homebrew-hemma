@@ -35,13 +35,6 @@
   </form>
 </dialog>
 
-<!-- A service's details, read only. Edit / Rename / Remove are buttons here, so the list itself stays just a name and a switch. -->
-<dialog id="vdlg" tabindex="-1" autofocus aria-labelledby="vtitle">
-  <h2 id="vtitle"></h2>
-  <div id="vfields"></div>
-  <div class="row" id="vactions"></div>
-</dialog>
-
 <!-- The recovery editor: services.yaml as text, for when the file cannot be loaded and no typed form can run. -->
 <dialog id="edlg" tabindex="-1" autofocus aria-labelledby="etitle">
   <form method="dialog" id="eform">
@@ -389,6 +382,14 @@ function openCmd(key, prefill = {}) {
   const syncShown = () => ctl.forEach(x => { if (x.fd.shows) x.lab.hidden = !offered(x); });
   for (const dep of new Set(ctl.filter(x => x.fd.shows).map(x => x.fd.shows.split("=")[0]))) byName[dep]?.k.node.addEventListener("change", syncShown);
   syncShown();
+  // Editing a service: Rename and Remove sit under the fields (they are not fields), so the list stays a name and a switch.
+  if (key === "update service") {
+    const row = el("div", null, { className: "row" });
+    row.append(
+      btn("Rename", () => { $("#dlg").close(); openCmd("rename service", { old: prefill.name, __lock: "old" }); }),
+      btn("Remove", () => { $("#dlg").close(); run("remove service", { name: prefill.name }, cmds["remove service"].confirm); }, "danger"));
+    box.append(row);
+  }
   // A new service: the name is usually the address too ("paperless" → paperless.example.com), so offer it as a courtesy.
   if (key === "add service") {
     const name = ctl.find(x => x.fd.name === "name"), addr = ctl.find(x => x.k.suggest);
@@ -720,7 +721,7 @@ function renderBar() {
 // ── Services: a plain list. The name opens the service's details; the switch on the right enables/disables it. ──
 function serviceRow(s) {
   const li = el("li", null, { className: s.disabled ? "off" : "" });
-  const open = el("button", s.name, { type: "button", className: "svcopen", onclick: () => openService(s.name) });   // the name is a real button: keyboard and screen readers open it too
+  const open = el("button", s.name, { type: "button", className: "svcopen", onclick: () => openCmd("update service", { ...s, __lock: "name" }) });   // the name is a real button that opens the edit form directly; Rename/Remove are buttons in that form
   const sw = el("span", null, { className: "switch" });
   const cb = el("input", null, { type: "checkbox", checked: !s.disabled });
   cb.setAttribute("role", "switch"); cb.setAttribute("aria-label", `${s.name} enabled`);
@@ -736,31 +737,6 @@ function serviceRow(s) {
   li.append(open, sw);
   return li;
 }
-// openService: the service's details, read only (the fields look like the edit form's, but you cannot change them
-// here — Edit opens the form). Read-only inputs, so the values can still be selected and copied.
-function openService(name) {
-  const s = state.services.find(x => x.name === name); if (!s) return;
-  const mode = s["auth-mode"] || "";
-  const field = (label, value) => { const l = el("label", label); l.append(el("input", null, { type: "text", value: value || "—", readOnly: true })); return l; };
-  // (no Name field: the title already is the name)
-  const fields = [
-    field("Address", s.fqdn), field("Host", s.host), field("Backend (name:port)", s.backend),
-    field("Auth mode", mode || "none"),
-  ];
-  // Only the auth detail that applies to this mode (the edit form shows the same ones).
-  if (mode === "forward" || mode === "oidc") fields.push(field("Auth groups", s["auth-groups"]), field("Bypass paths", s["bypass-paths"]));
-  if (mode === "forward") fields.push(field("Policy: local horizon", s["auth-policy-local"]), field("Policy: public horizon", s["auth-policy-public"]));
-  fields.push(field("Reachable from the internet (tunnel)", s.tunnel ? "yes" : "no"), field("Status", s.disabled ? "Disabled" : "Enabled"));
-  $("#vtitle").textContent = s.name; $("#vfields").replaceChildren(...fields);
-  const act = (label, fn, cls) => btn(label, () => { $("#vdlg").close(); fn(); }, cls);
-  $("#vactions").replaceChildren(
-    btn("Close", () => $("#vdlg").close()),
-    act("Rename", () => openCmd("rename service", { old: s.name, __lock: "old" })),
-    act("Remove", () => run("remove service", { name: s.name }, cmds["remove service"].confirm), "danger"),
-    act("Edit", () => openCmd("update service", { ...s, __lock: "name" }), "primary"));
-  openModal($("#vdlg"));
-}
-
 // ── Issues: a checklist of what `hemma doctor` checks ─────────────────────────────────────────────────────────
 // The server runs doctor (read-only) and reads its output into items (issueitems.go): one per check, with a status,
 // a title, and — for a failing one — why, the files it is about, how to fix it by hand, and whether

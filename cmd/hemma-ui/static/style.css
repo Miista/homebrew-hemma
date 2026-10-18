@@ -142,12 +142,11 @@ tr.off td { opacity: .5; }
 /* the track is 44x26, too small a target for a thumb: the invisible checkbox laid over it reaches the row's height (and a little sideways).
    Explicit width/height, NOT inset + auto: a checkbox is a replaced element and Safari does not stretch it between insets (it collapsed to 12px). */
 .svclist .switch input { inset: auto; left: -10px; top: -14px; width: calc(100% + 20px); height: calc(100% + 28px); }
-#vdlg input[readonly] { background: var(--surface-2); cursor: text; }
 /* the actions stay pinned to the bottom of the dialog: the details can be long, and Edit / Remove (or Cancel / Save, under a long
    list of changes) must never need a scroll */
-#vdlg .row, #cdlg .row { flex-wrap: wrap; position: sticky; bottom: -18px; margin: 14px 0 -18px; padding: 12px 0 18px; background: var(--surface-b); border-top: 1px solid var(--border); }   /* surface-b: where the dialog's gradient ends */
-#vdlg .row button { flex: 1 1 auto; }
-@media (min-width: 641px) { #vdlg .row, #cdlg .row { bottom: -22px; margin-bottom: -22px; padding-bottom: 22px; } }
+#cdlg .row { flex-wrap: wrap; position: sticky; bottom: -18px; margin: 14px 0 -18px; padding: 12px 0 18px; background: var(--surface-b); border-top: 1px solid var(--border); }   /* surface-b: where the dialog's gradient ends */
+#cdlg .row button { flex: 1 1 auto; }
+@media (min-width: 641px) { #cdlg .row { bottom: -22px; margin-bottom: -22px; padding-bottom: 22px; } }
 td button { margin-right: 6px; padding: 6px 12px; font-size: 13px; }
 td .help { display: block; max-width: 34rem; margin-top: 2px; font-size: 13px; font-weight: 400; color: var(--muted); }
 td strong { font-weight: 600; }
