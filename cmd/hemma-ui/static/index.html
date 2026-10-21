@@ -777,8 +777,11 @@ function openService(name) {
   const kebab = el("details", null, { className: "kebab" });
   const sum = el("summary", "⋯"); sum.setAttribute("aria-label", "More actions");
   kebab.append(sum, menu);
-  $("#vdlg").prepend(kebab);
+  // On a phone the menu sits in the footer next to Close, under the thumb (and opens upward); on a wide screen, top right.
+  const foot = matchMedia("(max-width: 640px)").matches;
+  kebab.classList.toggle("foot", foot);
   $("#vactions").replaceChildren(btn("Close", () => $("#vdlg").close()));
+  if (foot) $("#vactions").append(kebab); else $("#vdlg").prepend(kebab);
   openModal($("#vdlg"));
 }
 
