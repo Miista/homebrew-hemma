@@ -204,14 +204,15 @@ authy). It is NOT a second implementation of hemma:
   form's own command the page runs `enable`/`disable service`). History, Rename and Remove are buttons at the left of
   the footer (Remove still confirms). **On a phone** an edit form's footer is just **Close** with a chevron menu button (History, Rename,
   Remove; up while shut, turning down when open) to its right, and a floating **Cancel / Save** bar slides up above it once the form has changed (`setFloaty`):
-  Cancel resets the form to how it opened, Close leaves it; Verify and the other run-forms keep their normal footer. **History** is a view under Services (`#/history/<name>`, linkable): `GET
-  /api/history?service=` (`history.go`) walks the commits that touched `services.yaml` and compares that one service
-  between consecutive versions — who, when, the Save message, and the fields that changed — following the service back
-  through a rename. Entries start folded (a single entry starts open). Because Save messages follow `<host>/<service>: <message>`, an entry's own `host/service:` prefix is
-  dropped from its title on that service's page (the full message stays as the tooltip and is still searched); each entry carries
-  the service's name as of that commit, so entries from before a rename lose the old name's prefix. The search box on that page matches the message, author,
-  date, field names and **both the old and the new values** (every word must match); matching entries open and the matches are
-  marked. Nothing is stored by hemma; it is all git. Unsaved changes are not in it, and there is no Restore
+  Cancel resets the form to how it opened, Close leaves it; Verify and the other run-forms keep their normal footer. **History** is a tab (`#/history`; `#/history/<service>` is the same list filtered to one service — the service dialog's
+  History button opens that, and an "All history" button clears it): `GET /api/history` (`history.go`) walks the commits that
+  touched `services.yaml` and compares each version with the one before (`diffEntities`, shared with the unsaved-changes diff), so
+  an entry is a Save: its message, who, when, and everything it changed (services, hosts, domains, settings). With `?service=` it
+  follows that one service back through a rename. Entries start folded (a single entry starts open). The search box matches the
+  message, author, date, entity and field names and **both the old and the new values** (every word must match); it narrows the
+  list and marks the matches, and does not open anything (what you opened stays open). On a service's own history the entry's `host/service:` prefix is dropped from the title (the full message
+  stays as the tooltip and is still searched). Removed services show up as entries, so their history is reachable by searching for
+  them. Nothing is stored by hemma; it is all git. Unsaved changes are not in it, and there is no Restore
   (yet). A row's chip (Added / Changed / Removed) comes from the diff. Something removed but not saved
   (a service, host or domain) shows struck through with an **Undo**, which re-runs the matching `add …` with the values the
   diff recorded (`undoRemoved`), so no state lives only in the page. Host and domain rows open on a click; hemma cannot
@@ -231,8 +232,8 @@ authy). It is NOT a second implementation of hemma:
   `TestIssues_…` pins it to the real output) — what `--fix` cannot resolve (advisories, known_hosts, …) is just
   listed. Successful changes are confirmed with a plain toast: the warnings a sync prints are repo-wide advisories,
   not about that change, and belong on Issues.
-- **Three pages and a dialog:** Services (the list), Infrastructure (hosts, domains and — under them — the repo-wide Settings, the
-  defaults), Issues (doctor). **Tools** (Verify, Measure, Recovery → Redeploy everything) is a dialog, not a page — rarely needed —
+- **Four pages and a dialog:** Services (the list), Infrastructure (hosts, domains and — under them — the repo-wide Settings, the
+  defaults), History (every Save), Issues (doctor). **Tools** (Verify, Measure, Recovery → Redeploy everything) is a dialog, not a page — rarely needed —
   opened from the burger in the phone's top bar or the Tools button in the sidebar's foot; choosing a tool closes the dialog first,
   so dialogs never stack, and Redeploy asks for its confirmation inside it. The burger menu also carries the version and Sign out.
   `#/settings` (Settings used to be a page) redirects to Infrastructure; the old `#/tools` lands on Services. The unsaved-change

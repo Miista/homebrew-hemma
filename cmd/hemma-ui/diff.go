@@ -163,14 +163,11 @@ func (s *server) headConfig() *config.Config {
 	return cfg
 }
 
-func (s *server) diff() (diffResult, error) {
-	res := diffResult{Entities: []entityChange{}, Generated: []string{}}
-	now, err := config.Load(filepath.Join(s.repo, "services.yaml"))
-	if err != nil {
-		return res, err
-	}
-	old := s.headConfig()
-
+// diffEntities compares two versions of the config as things — services (a rename is one change), hosts, domains and the
+// defaults — with the fields that differ. The unsaved-changes diff compares HEAD with the working tree; a service's and the
+// whole history compare consecutive commits.
+func diffEntities(old, now *config.Config) []entityChange {
+	res := diffResult{Entities: []entityChange{}}
 	add := func(kind, name, status string, before, after []kv) {
 		f := compare(before, after, status)
 		if status == "changed" && len(f) == 0 {
@@ -228,6 +225,19 @@ func (s *server) diff() (diffResult, error) {
 				Fields: []fieldChange{{Field: d.Label, Before: orNone(ov[d.Key]), After: orNone(nv[d.Key])}}})
 		}
 	}
+
+	return res.Entities
+}
+
+func (s *server) diff() (diffResult, error) {
+	res := diffResult{Entities: []entityChange{}, Generated: []string{}}
+	now, err := config.Load(filepath.Join(s.repo, "services.yaml"))
+	if err != nil {
+		return res, err
+	}
+	old := s.headConfig()
+
+	res.Entities = diffEntities(old, now)
 
 	// changes() lists only hemma's own files, so everything but services.yaml is something it generated.
 	yamlChanged := false
