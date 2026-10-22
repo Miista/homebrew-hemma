@@ -74,3 +74,56 @@ func TestHistory_FollowsOneServiceThroughARename(t *testing.T) {
 		t.Errorf("history of nope: %+v", r3.Entries)
 	}
 }
+
+// The whole history is every Save with everything it changed, newest first; a commit that changed no value is left out.
+func TestHistoryAll_EveryCommitWithItsChanges(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "repo")
+	s := &server{repo: dir}
+	if out, err := exec.Command("git", "init", "-q", "-b", "main", dir).CombinedOutput(); err != nil {
+		t.Skipf("git not available: %v %s", err, out)
+	}
+	commit := func(msg, yaml string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "services.yaml"), []byte(yaml), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range [][]string{{"add", "-A"}, {"commit", "-q", "-m", msg}} {
+			if out, err := s.git(time.Minute, a...); err != nil {
+				t.Fatalf("git %v: %v %s", a, err, out)
+			}
+		}
+	}
+	hosts := "hosts:\n    pi:\n        ip: 192.0.2.10\ndomains:\n    - example.com\nservices:\n"
+	svc := func(name, backend string) string {
+		return "    " + name + ":\n        fqdn: " + name + ".example.com\n        host: pi\n        backend: " + backend + "\n"
+	}
+	commit("pi/a: add", hosts+svc("a", "a:1"))
+	commit("pi/a: port", hosts+svc("a", "a:2"))
+	commit("whitespace only", "# a comment\n"+hosts+svc("a", "a:2"))
+	commit("pi/b: add one and move a", hosts+svc("a", "a:3")+svc("b", "b:1"))
+
+	res, err := s.historyAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range res.Entries {
+		var ch []string
+		for _, c := range e.Changes {
+			ch = append(ch, c.Status+" "+c.Kind+" "+c.Name)
+		}
+		got = append(got, e.Subject+" => "+strings.Join(ch, ", "))
+	}
+	want := []string{
+		"pi/b: add one and move a => changed Service a, added Service b",
+		"pi/a: port => changed Service a",
+		"pi/a: add => added Service a, added Host pi, added Domain example.com",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("history of everything:\n got  %q\n want %q", got, want)
+	}
+	if e := res.Entries[1]; e.Author == "" || e.When == "" || len(e.Short) != 7 {
+		t.Errorf("who, when, which commit: %+v", e)
+	}
+}

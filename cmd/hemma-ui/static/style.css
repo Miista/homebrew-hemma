@@ -463,3 +463,8 @@ button.primary.deploy:hover:not(:disabled) { background: var(--go); filter: brig
 #top { position: relative; }
 @media (max-width: 719px) { #burger { display: grid; } #side { display: none; } }
 @media (min-width: 720px) { #bmenu { display: none !important; } }
+
+/* a commit in the history can hold several changes: each is told apart by a small header, then its own table */
+.cblk + .cblk { border-top: 1px solid var(--line); }
+.chgh { display: flex; align-items: center; gap: 10px; padding: 10px 14px 8px 36px; }
+.chgh .ek { color: var(--muted); font-size: 13px; } .chgh .en { font-weight: 600; overflow-wrap: anywhere; }

@@ -111,20 +111,20 @@ const $ = s => document.querySelector(s);
 let changes = { git: false, files: [] };
 let state = { services: [], hosts: [], domains: [], settings: [] };
 let cmds = {};
-const TABS = ["Services", "Infrastructure", "Issues"];   // Infrastructure = hosts, domains and the repo-wide settings. Tools is a dialog, opened from the menu.
+const TABS = ["Services", "Infrastructure", "History", "Issues"];   // Infrastructure = hosts, domains and the repo-wide settings. Tools is a dialog, opened from the menu.
 // The page you are on lives in the URL (#/issues), so reload, back/forward and a pasted link all land on the same page.
-const tabFromHash = () => location.hash === "#/settings" ? "Infrastructure" : TABS.find(t => "#/" + t.toLowerCase() === location.hash) || "Services";   // Settings used to be a page of its own: an old link lands on Infrastructure
+const tabFromHash = () => location.hash.startsWith("#/history") ? "History" : location.hash === "#/settings" ? "Infrastructure" : TABS.find(t => "#/" + t.toLowerCase() === location.hash) || "Services";   // Settings used to be a page of its own: an old link lands on Infrastructure
 let tab = tabFromHash();
-// A service's history is a view under Services, reached from the service's dialog: #/history/<name>. `hist` is null elsewhere.
+// History is a tab: every Save, newest first. #/history is all of it, #/history/<service> is filtered to one service (the History
+// button in a service's dialog opens that). `hist` holds what is loaded for it.
 const histHash = () => { const m = location.hash.match(/^#\/history\/(.+)$/); return m ? decodeURIComponent(m[1]) : null; };
-let hist = null, pendingHist = histHash();
-if (pendingHist) tab = "Services";
+let hist = null, pendingHist = tab === "History";
 window.addEventListener("popstate", () => {
   if (broken) return;
-  const h = histHash();
-  if (h) { openHistory(h, false); return; }
-  const t = tabFromHash(); if (t === tab && !hist) return;
-  hist = null; tab = t; render(); if (t === "Issues") checkIssues();
+  const t = tabFromHash();
+  if (t === "History") { openHistory(histHash(), false); return; }
+  if (t === tab) return;
+  tab = t; render(); if (t === "Issues") checkIssues();
 });
 const isPhone = () => matchMedia("(max-width: 719px)").matches;
 // Tab icons (shown above the label on a phone; the wide screen's sidebar is text only).
@@ -132,6 +132,7 @@ const ICON = (inner) => `<svg width="24" height="24" viewBox="0 0 24 24" fill="n
 const ICONS = {
   Services: ICON('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>'),
   Infrastructure: ICON('<rect x="3" y="4" width="18" height="6.5" rx="1.8"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.8"/><path d="M7 7.25h.01M7 16.75h.01"/>'),
+  History: ICON('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/>'),
   Issues: ICON('<path d="M12 3.5L2.5 20h19L12 3.5z"/><path d="M12 10v4M12 17h.01"/>'),
 };
 const TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v5M14 11v5"/></svg>';
@@ -980,16 +981,20 @@ function hlText(text, terms) {
 }
 let histQ = "";   // the history page's search
 
-// openHistory shows a service's history (a view under Services, reachable and linkable as #/history/<name>).
+// openHistory loads the History tab: everything (name null) or one service. It is reachable and linkable as #/history[/<name>].
 async function openHistory(name, push = true) {
   if (!hist || hist.name !== name) histQ = "";
-  hist = { name, loading: true, entries: [] }; tab = "Services";
-  if (push) history.pushState(null, "", "#/history/" + encodeURIComponent(name));
+  hist = { name, loading: true, entries: [] }; tab = "History";
+  if (push) history.pushState(null, "", "#/history" + (name ? "/" + encodeURIComponent(name) : ""));
   render(); $("#main").scrollTop = 0;
   let next;
-  try { const j = await (await fetch("/api/history?service=" + encodeURIComponent(name))).json(); next = { name, loading: false, error: j.error || "", entries: j.entries || [], truncated: !!j.truncated }; }
-  catch (e) { next = { name, loading: false, error: String(e), entries: [] }; }
-  if (hist && hist.name === name && !broken) { hist = next; render(); }
+  try {
+    const j = await (await fetch("/api/history" + (name ? "?service=" + encodeURIComponent(name) : ""))).json();
+    // one shape for both: a commit with the things it changed. A service's own history has one change per commit.
+    const entries = (j.entries || []).map(e => e.changes ? e : { ...e, changes: [{ kind: "Service", name: e.from ? `${e.from} → ${e.name}` : e.name, svc: e.name, status: e.status, fields: e.fields }] });
+    next = { name, loading: false, error: j.error || "", entries, truncated: !!j.truncated };
+  } catch (e) { next = { name, loading: false, error: String(e), entries: [] }; }
+  if (hist && hist.name === name && tab === "History" && !broken) { hist = next; render(); }
 }
 
 // ── Services: grouped by host, a row per service; a row opens its form ────────────────────────────────────────────
@@ -1107,70 +1112,87 @@ const VIEWS = {
     return [pageHead("Infrastructure", "Hosts run your services. Every service address must end in one of your domains."),
             sec("Hosts", btn("Add host", () => openCmd("add host")), hosts), sec("Domains", btn("Add domain", () => openCmd("add domain")), domains), setSec];
   },
-  // A service's history, read from git (GET /api/history): a commit per entry, newest first, with what changed in it.
-  // Entries start folded (a single one starts open); a search opens the entries that match and marks what matched.
+  // History: every Save, newest first, read from git (GET /api/history) — or, filtered, one service's own changes. An entry is a commit:
+  // its message, who and when, and everything it changed. Entries start folded (a single one starts open); a search narrows the list and marks what
+  // matched, without opening anything.
   History() {
-    const h = hist;
-    const back = btn("← Services", () => { hist = null; history.pushState(null, "", "#/services"); render(); });
-    const search = el("input", null, { type: "search", id: "search", placeholder: "Search old and new values", value: histQ, autocomplete: "off" });
-    search.setAttribute("aria-label", "Search this service's history");
+    const h = hist || { name: null, loading: true, entries: [] };
+    const search = el("input", null, { type: "search", id: "search", placeholder: "Search changes, old and new values", value: histQ, autocomplete: "off" });
+    search.setAttribute("aria-label", "Search the history");
     const body = el("div", null, { className: "hist", style: "display:flex;flex-direction:column;gap:12px" });
-    const note = el("div", null, { className: "sub", hidden: true, style: "margin-top:6px;color:var(--muted)" });   // only used while searching: "2 of 4 changes match"
+    const note = el("div", null, { className: "sub", hidden: true, style: "margin-top:6px;color:var(--muted)" });   // only while searching: "2 of 4 changes match"
     const when = iso => { const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); };
     const terms = () => histQ.toLowerCase().split(/\s+/).filter(Boolean);
-    // every search term must appear somewhere in the entry: the message, who, when, the field names, and BOTH the old and the new values
-    const hay = e => [e.subject, e.body, e.author, e.short, e.status, e.from, when(e.when), ...e.fields.flatMap(f => [f.field, f.before, f.after])].join("\n").toLowerCase();
-    const opened = new Set();   // entries the person has opened (or that a search opened)
+    // every search term must appear somewhere in the entry: the message, who, when, what changed, the field names, and BOTH the old and the new values
+    const hay = e => [e.subject, e.body, e.author, e.short, when(e.when), ...e.changes.flatMap(c => [c.kind, c.name, c.status, ...c.fields.flatMap(f => [f.field, f.before, f.after])])].join("\n").toLowerCase();
+    const statusLabel = c => c[0].toUpperCase() + c.slice(1);
+    // "pi/jellyfin: change fqdn" on jellyfin's own history reads "change fqdn": the prefix says what the filter already says
+    const subjectOf = e => {
+      let t = e.subject || "";
+      if (h.name && e.changes.length === 1 && e.changes[0].svc) { const re = new RegExp("^[^\\s/]+/" + e.changes[0].svc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ":\\s*"); t = t.replace(re, "") || t; }
+      return t || "(no message)";
+    };
+    const opened = new Set();
     const draw = () => {
       body.replaceChildren();
       if (h.loading) { body.append(el("p", "Reading the history…", { className: "meta" })); return; }
       if (h.error) { body.append(el("p", h.error, { className: "err" })); return; }
-      if (!h.entries.length) { body.append(el("div", `No saved changes to ${h.name} yet. Unsaved changes are not in the history until you save them.`, { className: "empty" })); return; }
+      if (!h.entries.length) { body.append(el("div", h.name ? `No saved changes to ${h.name} yet. Unsaved changes are not in the history until you save them.` : "No saved changes yet. Unsaved changes are not in the history until you save them.", { className: "empty" })); return; }
       const t = terms();
       const shown = h.entries.filter(e => !t.length || t.every(x => hay(e).includes(x)));
-      note.textContent = t.length ? `${shown.length} of ${h.entries.length} changes match` : ""; note.hidden = !t.length;
-      if (!shown.length) { body.append(el("div", `No change to ${h.name} matches “${histQ.trim()}”.`, { className: "empty" })); return; }
+      note.textContent = t.length ? `${shown.length} of ${h.entries.length} saves match` : ""; note.hidden = !t.length;
+      if (!shown.length) { body.append(el("div", `Nothing in the history matches “${histQ.trim()}”.`, { className: "empty" })); return; }
       const list = el("div", null, { className: "list" });
       shown.forEach(e => {
         const open = opened.has(e.commit);
         const ent = el("div", null, { className: "ent" });
         const head = el("button", null, { type: "button", className: "eh" }); head.setAttribute("aria-expanded", String(open));
-        const main = el("span", null, { className: "main" }), sub = el("span", null, { className: "sub" }), hm = el("span", null, { className: "hm", title: e.when });
-        // "pi/jellyfin: change fqdn" on jellyfin's own history reads "change fqdn": the prefix says what the page already says
-        const subj = (() => { const re = new RegExp("^[^\\s/]+/" + e.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ":\\s*"); return (e.subject || "").replace(re, "") || e.subject || ""; })();
-        sub.title = e.subject || "";   // the full message, as committed
-        sub.append(hlText(subj || "(no message)", t));
+        const main = el("span", null, { className: "main" }), sub = el("span", null, { className: "sub", title: e.subject || "" }), hm = el("span", null, { className: "hm", title: e.when });
+        sub.append(hlText(subjectOf(e), t));
         hm.append(hlText(`${e.author} · ${when(e.when)} · `, t), el("code", e.short));
         main.append(sub, hm);
-        head.append(el("span", null, { className: "chev" }), el("span", e.status[0].toUpperCase() + e.status.slice(1), { className: "chip " + e.status }), main);
+        if (!h.name && e.changes.length) {   // on the whole feed, say what the save was about
+          const what = el("span", null, { className: "hm" }), names = e.changes.slice(0, 3).map(c => c.name).join(", ") + (e.changes.length > 3 ? `, +${e.changes.length - 3} more` : "");
+          what.append(hlText(names, t)); main.append(what);
+        }
+        const one = e.changes.length === 1;
+        head.append(el("span", null, { className: "chev" }), one ? el("span", statusLabel(e.changes[0].status), { className: "chip " + e.changes[0].status }) : el("span", `${e.changes.length} changes`, { className: "chip" }), main);
         const tab2 = el("div", null, { className: "etab", hidden: !open });
         if (e.body) { const bd = el("p", null, { className: "hbody", style: "padding-top:10px" }); bd.append(hlText(e.body, t)); tab2.append(bd); }
-        const rows = e.fields.filter(f => e.status === "changed" || e.status === "renamed" || (e.status === "added" ? f.after !== "—" : f.before !== "—"));
-        const hdr = el("div", null, { className: "ehdr" }); ["Field", "Before", "After"].forEach(x => hdr.append(el("div", x))); tab2.append(hdr);
-        for (const f of rows) {
-          const diff = f.before !== f.after, r = el("div", null, { className: "erow" });
-          const c1 = el("div"), c2 = el("div", null, { className: "cur" + (diff && f.before !== "—" ? " diff" : "") }), c3 = el("div", null, { className: "nxt" + (diff ? (e.status === "removed" ? " del" : " add") : "") });
-          c1.append(hlText(f.field, t)); c2.append(hlText(f.before, t)); c3.append(hlText(f.after, t));
-          r.append(c1, c2, c3); tab2.append(r);
-        }
+        e.changes.forEach(c => {
+          const blk = el("div", null, { className: "cblk" });
+          if (!one || !c.fields.length) {   // a lone change is already named by the entry's header; several are told apart here
+            const ch = el("div", null, { className: "chgh" }), nm = el("span", null, { className: "en" });
+            nm.append(hlText(c.name, t));
+            ch.append(el("span", statusLabel(c.status), { className: "chip " + c.status }), el("span", c.kind, { className: "ek" }), nm); blk.append(ch);
+          }
+          const rows = c.fields.filter(f => c.status === "changed" || c.status === "renamed" || (c.status === "added" ? f.after !== "—" : f.before !== "—"));
+          if (rows.length) {
+            const hdr = el("div", null, { className: "ehdr" }); ["Field", "Before", "After"].forEach(x => hdr.append(el("div", x))); blk.append(hdr);
+            for (const f of rows) {
+              const diff = f.before !== f.after, r = el("div", null, { className: "erow" });
+              const c1 = el("div"), c2 = el("div", null, { className: "cur" + (diff && f.before !== "—" ? " diff" : "") }), c3 = el("div", null, { className: "nxt" + (diff ? (c.status === "removed" ? " del" : " add") : "") });
+              c1.append(hlText(f.field, t)); c2.append(hlText(f.before, t)); c3.append(hlText(f.after, t));
+              r.append(c1, c2, c3); blk.append(r);
+            }
+          }
+          tab2.append(blk);
+        });
         head.onclick = () => { const o = tab2.hidden; tab2.hidden = !o; head.setAttribute("aria-expanded", String(o)); if (o) opened.add(e.commit); else opened.delete(e.commit); };   // in place, so the chevron turns
         ent.append(head, tab2); list.append(ent);
       });
       body.append(list);
       if (h.truncated && !t.length) body.append(el("p", "Older changes exist beyond the most recent 400 saves to services.yaml.", { className: "meta" }));
     };
-    // what is open follows the search: with one, the matches are open so you see what matched; without, all folded unless there is a single entry
-    const resetOpen = () => {
-      opened.clear();
-      const t = terms();
-      if (!h.entries) return;
-      if (t.length) h.entries.filter(e => t.every(x => hay(e).includes(x))).forEach(e => opened.add(e.commit));
-      else if (h.entries.length === 1) opened.add(h.entries[0].commit);
-    };
-    resetOpen(); draw();
-    search.oninput = () => { histQ = search.value; resetOpen(); draw(); };
-    search.onkeydown = e => { if (e.key === "Escape") { if (histQ) { histQ = ""; search.value = ""; resetOpen(); draw(); } else search.blur(); } };
-    const head = pageHead(`History for ${h.name}`, "", search, back);
+    // everything starts folded unless there is a single entry; searching only narrows the list and marks the matches — it does not open
+    // them, and what you have opened stays open
+    if (h.entries && h.entries.length === 1) opened.add(h.entries[0].commit);
+    draw();
+    search.oninput = () => { histQ = search.value; draw(); };
+    search.onkeydown = e => { if (e.key === "Escape") { if (histQ) { histQ = ""; search.value = ""; draw(); } else search.blur(); } };
+    const tools = [search];
+    if (h.name) tools.push(btn("All history", () => openHistory(null)));   // filtered to one service: the way back to everything
+    const head = pageHead(h.name ? `History for ${h.name}` : "History", "", ...tools);
     head.querySelector(".sub").replaceWith(note);
     return [head, body];
   },
@@ -1327,7 +1349,11 @@ function renderTabs() {
     TABS.forEach(t => {
       let b = nav.querySelector(`button[data-tab="${t}"]`);
       if (!b) {
-        b = el("button", null, { type: "button", onclick: () => { hist = null; if (t !== tab || histHash()) { history.pushState(null, "", "#/" + t.toLowerCase()); } tab = t; render(); $("#main").scrollTop = 0; if (t === "Issues") checkIssues(); } });   // opening Issues re-runs the checks
+        b = el("button", null, { type: "button", onclick: () => {
+          if (t === "History") { openHistory(null, location.hash !== "#/history"); return; }   // History loads fresh each time you open it
+          if (t !== tab || histHash()) history.pushState(null, "", "#/" + t.toLowerCase());
+          tab = t; render(); $("#main").scrollTop = 0; if (t === "Issues") checkIssues();   // opening Issues re-runs the checks
+        } });
         b.dataset.tab = t;
         const ic = el("span", null, { className: "ic" }); ic.innerHTML = ICONS[t];   // static markup defined above
         b.append(ic, el("span", t === "Infrastructure" && nav.id === "mtabs" ? "Infra" : t, { className: "label" }));
@@ -1365,7 +1391,7 @@ $("#burger").onclick = () => {
 $("#top").addEventListener("keydown", e => { if (e.key === "Escape" && !$("#bmenu").hidden) { e.preventDefault(); closeBurger(); $("#burger").focus(); } });
 function render() {
   renderTabs();
-  $("#view").replaceChildren(...(hist ? VIEWS.History() : VIEWS[tab]()));
+  $("#view").replaceChildren(...VIEWS[tab]());
   renderMenus();
   renderHint();
   renderBars();
@@ -1376,7 +1402,7 @@ window.addEventListener("keydown", e => {
   if (document.querySelector("dialog[open]")) return;
   e.preventDefault();
   const focus = () => { const s = $("#search"); if (s) { s.focus(); s.select(); } };
-  if (tab !== "Services") { tab = "Services"; history.pushState(null, "", "#/services"); render(); requestAnimationFrame(focus); } else focus();
+  if (tab !== "Services" && tab !== "History") { tab = "Services"; history.pushState(null, "", "#/services"); render(); requestAnimationFrame(focus); } else focus();
 });
 // ── Recovery: services.yaml cannot be loaded ──────────────────────────────────────────────────────────────────
 // Every typed form needs a loadable file, so none of them can fix this. Offer what can: put back the last saved
@@ -1442,7 +1468,7 @@ async function load() {
   pending = changes.files.length && d && !d.error ? d : null;
   loaded = true;
   render();
-  if (pendingHist) { const n = pendingHist; pendingHist = null; openHistory(n, false); }   // a link straight to a service's history
+  if (pendingHist) { pendingHist = false; openHistory(histHash(), false); }   // a link straight to History (or one service's)
   checkIssues();   // not awaited: keeps the Issues badge current after every change without making anything wait for doctor
 }
 cmdsReady.then(() => { if (!loaded) render(); });
