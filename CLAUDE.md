@@ -201,8 +201,10 @@ authy). It is NOT a second implementation of hemma:
   form directly. The form is the existing typed form drawn as three cards (General, Network, Authentication) with
   Host and Auth mode as segmented choices; **Enabled** is a switch in it (not a field of `update service`: after the
   form's own command the page runs `enable`/`disable service`). Rename and Remove sit at the left of the footer
-  (Remove still confirms). A row's chip (Added / Changed / Removed) comes from the diff, and a removed-but-unsaved
-  service shows struck through. There is no read-only details dialog any more.
+  (Remove still confirms). A row's chip (Added / Changed / Removed) comes from the diff. Something removed but not saved
+  (a service, host or domain) shows struck through with an **Undo**, which re-runs the matching `add …` with the values the
+  diff recorded (`undoRemoved`), so no state lives only in the page. Host and domain rows open on a click; hemma cannot
+  rename a domain, so a domain's dialog only shows it and offers Remove. There is no read-only details dialog any more.
 - **Issues lists exactly what `hemma doctor` says.** `GET /api/issues` runs doctor read-only (no write lock, so it
   can run after every change to keep the tab's badge current) and returns its output verbatim; the page splits it
   into findings without altering a line. A **Fix** button runs `hemma doctor --fix` and appears only when doctor itself
@@ -215,7 +217,7 @@ authy). It is NOT a second implementation of hemma:
   entities (`diff.go` kinds: Service → Services, Host/Domain → Infrastructure, Setting → Settings).
 - **Phones are the primary screen:** keep fields at 16px (iOS zoom), the shell switches to the phone layout under 720px, and
   nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
-- **Look and feel:** the "direction c" design handoff (`form-redesign-request/` in the checkout, not committed):
+- **Look and feel:** the "direction c" design handoff (`form-redesign-request-*/` in the checkout, not committed; the latest numbered one wins):
   Instrument Sans + JetBrains Mono, a blue accent, a sidebar on a wide screen and a top bar + bottom tab bar under
   720px, bordered cards, soft change chips. It follows the system light/dark setting. All colours are tokens with a
   light and a dark value in `static/style.css` — never hard-code a colour in the page. The page (`static/index.html`)
