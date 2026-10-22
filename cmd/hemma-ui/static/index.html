@@ -82,7 +82,7 @@
   <form method="dialog" id="cform">
     <div class="dhd"><div class="tt"><h2 id="ctitle">Save changes</h2><p class="meta">Saving records these changes with your message.</p></div><button type="button" class="x" id="cx" aria-label="Close">×</button></div>
     <div class="dbd">
-      <label><span>Change message <span class="err" aria-hidden="true">*</span></span><textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
+      <label><span>Change message</span><textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
       <div id="cdiff" class="chgs"></div>
       <div id="cadv" class="adv" hidden></div>
       <p class="err" id="cerr"></p>
@@ -433,7 +433,7 @@ function openCmd(key, prefill = {}) {
   const c = cmds[key];
   $("#dtitle").textContent = formTitle(c, prefill); $("#dhelp").textContent = c.help || ""; $("#dhelp").hidden = !c.help; $("#derr").textContent = "";
   // The Defaults editor leaves Save disabled until something changes: reset the shared buttons.
-  $("#dclear").hidden = true; $("#go").textContent = dialogLabel(c); $("#go").disabled = false;
+  $("#dclear").hidden = true; $("#go").hidden = false; $("#cancel").textContent = "Cancel"; $("#go").textContent = dialogLabel(c); $("#go").disabled = false;
   const left = $("#dleft"); left.replaceChildren();
   const box = $("#fields"); box.replaceChildren();
   const ctl = [];
@@ -442,7 +442,7 @@ function openCmd(key, prefill = {}) {
   for (const fd of c.fields) {
     const k = control(fd, prefill, prefill.__lock === fd.name);
     if (fd.name === "name" && k.node.tagName === "INPUT" && !k.node.readOnly) k.node.placeholder = key === "add host" ? "e.g. nas" : "e.g. paperless";
-    const title = fd.label + (fd.required ? " *" : "");
+    const title = fd.label;
     // A list holds buttons, so it must not live inside a <label> (tapping the title would press one).
     const stack = fd.kind === "list" || fd.name === "auth-mode" || fd.name === "host" && k.node.classList?.contains("seg");
     const lab = stack ? el("div", null, { className: "fld" }) : el("label", k.inline ? "" : title);
@@ -534,7 +534,7 @@ async function openSetting(s) {
   $("#dtitle").textContent = s.label; $("#dhelp").textContent = s.help; $("#dhelp").hidden = !s.help; $("#derr").textContent = "";
   $("#dleft").replaceChildren();
   const box = $("#fields"); box.replaceChildren();
-  const save = $("#go"); save.textContent = "Save"; save.disabled = true;
+  const save = $("#go"); save.hidden = false; $("#cancel").textContent = "Cancel"; save.textContent = "Save"; save.disabled = true;
   const changed = () => { save.disabled = ctl.get() === (s.value || ""); };
   let ctl;
   if (s.kind === "cidrs") {
@@ -572,6 +572,19 @@ async function openSetting(s) {
   clear.onclick = async () => { if (await ask(`Clear ${s.label}?`, "The setting goes back to unset.", { ok: "Clear", danger: true })) apply("-"); };
   const init = ctl.get();
   $("#dlg").oncancel = e => { if (ctl.get() !== init) e.preventDefault(); };
+  openModal($("#dlg"));
+}
+
+// openDomain: a domain's dialog. hemma can add and remove a domain but not rename one, so there is nothing to save here:
+// it shows the domain and how many services use it, and offers Remove (refused by hemma while a service still uses it).
+function openDomain(name, uses) {
+  $("#dtitle").textContent = "Domain"; $("#dhelp").textContent = ""; $("#dhelp").hidden = true; $("#derr").textContent = "";
+  const left = $("#dleft"); left.replaceChildren(btn("Remove domain", () => { $("#dlg").close(); run("remove domain", { name }, cmds["remove domain"].confirm); }, "linkdanger"));
+  const box = $("#fields"); box.replaceChildren();
+  const lab = el("label", "Domain"); lab.append(el("input", null, { type: "text", className: "mono", value: name, readOnly: true }));
+  box.append(lab, el("p", uses ? `${plural(uses, "service")} use${uses === 1 ? "s" : ""} this domain, so it can't be removed until they move.` : "No service uses this domain.", { className: "meta" }));
+  $("#go").hidden = true; $("#cancel").textContent = "Close"; $("#dclear").hidden = true;
+  $("#dlg").oncancel = null;
   openModal($("#dlg"));
 }
 
@@ -825,6 +838,25 @@ function renderBars() {
   $("#toast").classList.toggle("up", barsUp());
 }
 
+// Undo for something removed but not saved yet: put it back with the values the diff recorded for it. Nothing here is
+// special — it is the same `add …` the forms run (plus `disable service` for one that was off).
+async function undoRemoved(e) {
+  const f = Object.fromEntries(e.fields.map(x => [x.field, x.before === "—" ? "" : x.before]));
+  const list = v => (v || "").split(",").map(x => x.trim()).filter(Boolean).join(",");
+  let key, values;
+  if (e.kind === "Service") {
+    key = "add service";
+    values = { name: e.name, fqdn: f["Address"], host: f["Host"], backend: f["Backend"], "auth-mode": f["Auth mode"] || "none", "auth-groups": list(f["Auth groups"]),
+               "bypass-paths": list(f["Bypass paths"]), "auth-policy-local": f["Policy: local"] || "", "auth-policy-public": f["Policy: public"] || "", tunnel: f["Reachable from the internet"] === "yes" };
+  } else if (e.kind === "Host") { key = "add host"; values = { name: e.name, ip: f["IP address"], "trusted-proxies": list(f["Extra trusted proxies"]) };
+  } else if (e.kind === "Domain") { key = "add domain"; values = { name: e.name };
+  } else return;
+  const res = await post("/api/run", { command: key, values });
+  if (res.ok && e.kind === "Service" && f["Status"] === "disabled") await post("/api/run", { command: "disable service", values: { name: e.name } });
+  await load(); toastResult("Undo", res, `${e.name} is back`);
+}
+const removedOf = kind => (pending ? pending.entities : []).filter(e => e.kind === kind && e.status === "removed");
+
 // ── Services: grouped by host, a row per service; a row opens its form ────────────────────────────────────────────
 let q = "";
 const collapsed = {};
@@ -840,6 +872,7 @@ function svcRow(s, ent) {
   const tags = [];
   if (s.disabled && !gone) tags.push(el("span", "Disabled", { className: "tag" }));
   if (tags.length) { const t = el("div", null, { className: "tags" }); t.append(...tags); r.append(t); }
+  if (gone) r.append(btn("Undo", () => undoRemoved(s.ent), "undobtn"));
   if (!gone) {
     r.tabIndex = 0; r.setAttribute("role", "button");
     const open = () => openCmd("update service", { ...s, __lock: "name" });
@@ -853,7 +886,7 @@ function drawGroups(box) {
   const rows = state.services.map(s => ({ ...s }));
   // services removed but not saved yet: shown struck through, so the page agrees with the bar ("1 unsaved change")
   (pending ? pending.entities : []).filter(e => e.kind === "Service" && e.status === "removed").forEach(e =>
-    rows.push({ name: e.name, host: fieldBefore(e, "Host"), fqdn: fieldBefore(e, "Address"), ghost: true }));
+    rows.push({ name: e.name, host: fieldBefore(e, "Host"), fqdn: fieldBefore(e, "Address"), ghost: true, ent: e }));
   const hosts = [...new Set(rows.map(s => s.host).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const groups = hosts.map(h => {
     const all = rows.filter(s => s.host === h);
@@ -897,23 +930,31 @@ const VIEWS = {
   Infrastructure() {
     const em = entMap();
     const chip = e => e ? el("span", e.status[0].toUpperCase() + e.status.slice(1), { className: "chip " + e.status }) : "";
+    // a row that opens on a click (or Enter / Space), like a service's
+    const clickable = (r, open) => { r.classList.add("click"); r.tabIndex = 0; r.setAttribute("role", "button"); r.onclick = open; r.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }; };
     const hosts = el("div", null, { className: "list" });
-    [...state.hosts].sort((a, b) => a.name.localeCompare(b.name)).forEach(h => {
-      const n = state.services.filter(s => s.host === h.name).length;
-      const r = el("div", null, { className: "hrow" });
+    const hostRows = state.hosts.map(h => ({ name: h.name, ip: h.ip, px: h["trusted-proxies"] || "", h }))
+      .concat(removedOf("Host").map(e => ({ name: e.name, ip: fieldBefore(e, "IP address"), px: fieldBefore(e, "Extra trusted proxies").replace("—", ""), ghost: true, ent: e })));
+    hostRows.sort((a, b) => a.name.localeCompare(b.name)).forEach(h => {
+      const n = h.ghost ? 0 : state.services.filter(s => s.host === h.name).length;
+      const r = el("div", null, { className: "hrow" + (h.ghost ? " gone" : "") });
       const nm = el("div", null, { className: "a-name" }), line = el("div", null, { style: "display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px" });
-      line.append(el("span", h.name, { className: "nm" }), chip(em["Host:" + h.name])); nm.append(line, el("div", plural(n, "service"), { className: "n" }));
+      line.append(el("span", h.name, { className: "nm" }), chip(h.ghost ? h.ent : em["Host:" + h.name])); nm.append(line, el("div", plural(n, "service"), { className: "n" }));
       const ip = el("div", null, { className: "a-ip" }); ip.append(el("div", "IP", { className: "k" }), el("div", h.ip, { className: "v" }));
-      const px = el("div", null, { className: "a-px" }); px.append(el("div", "Extra trusted proxies", { className: "k" }), el("div", (h["trusted-proxies"] || "").split(",").filter(Boolean).join(", ") || "—", { className: "v" }));
-      const act = el("div", null, { className: "act" }); act.append(btn("Edit", () => openCmd("update host", { ...h, name: h.name, __lock: "name" })));
+      const px = el("div", null, { className: "a-px" }); px.append(el("div", "Extra trusted proxies", { className: "k" }), el("div", h.px.split(",").filter(Boolean).join(", ") || "—", { className: "v" }));
+      const act = el("div", null, { className: "act" });
+      if (h.ghost) act.append(btn("Undo", () => undoRemoved(h.ent), "undo"));
+      else { act.append(el("span", "Edit", { className: "etext" })); clickable(r, () => openCmd("update host", { ...h.h, name: h.name, __lock: "name" })); }
       r.append(nm, ip, px, act); hosts.append(r);
     });
     const domains = el("div", null, { className: "list" });
-    state.domains.slice().sort().forEach(d => {
-      const n = state.services.filter(s => s.fqdn === d || (s.fqdn || "").endsWith("." + d)).length;
-      const r = el("div", null, { className: "drow" });
-      r.append(el("span", d, { className: "nm" }), chip(em["Domain:" + d]), el("span", plural(n, "service"), { className: "n" }),
-               btn("Remove", () => run("remove domain", { name: d }, cmds["remove domain"].confirm), "linkdanger"));
+    const domRows = state.domains.map(d => ({ name: d })).concat(removedOf("Domain").map(e => ({ name: e.name, ghost: true, ent: e })));
+    domRows.sort((a, b) => a.name.localeCompare(b.name)).forEach(d => {
+      const n = d.ghost ? 0 : state.services.filter(s => s.fqdn === d.name || (s.fqdn || "").endsWith("." + d.name)).length;
+      const r = el("div", null, { className: "drow" + (d.ghost ? " gone" : "") });
+      r.append(el("span", d.name, { className: "nm" }), chip(d.ghost ? d.ent : em["Domain:" + d.name]), el("span", plural(n, "service"), { className: "n" }));
+      if (d.ghost) r.append(btn("Undo", () => undoRemoved(d.ent), "undo"));
+      else { r.append(el("span", "Edit", { className: "etext" })); clickable(r, () => openDomain(d.name, n)); }
       domains.append(r);
     });
     const sec = (title, add, list) => { const s = el("section", null, { className: "section" }); s.append(sectionHead(title, add), list); return s; };
