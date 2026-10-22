@@ -21,6 +21,8 @@
   <header id="top">
     <div class="brand"><span class="brand-tile" aria-hidden="true">h</span><span class="brand-name">hemma</span></div>
     <span id="hint"><span class="dot"></span><span id="hinttext"></span></span>
+    <button type="button" id="burger" aria-label="Menu" aria-haspopup="menu" aria-expanded="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div id="bmenu" role="menu" hidden></div>
   </header>
   <main id="main"><div id="page"><section id="view"></section></div></main>
   <div id="deploybar" class="bar" aria-live="polite"></div>
@@ -63,6 +65,13 @@
   <div class="dft"><div class="grp"><button type="button" id="pdetails" hidden>Details</button><button type="button" id="pclose" class="primary">Hide</button></div></div>
 </dialog>
 
+<!-- Tools: checks and recovery, rarely needed, so not a page of their own. Picking one closes this first, so dialogs never stack. -->
+<dialog id="tdlg" tabindex="-1" autofocus aria-labelledby="ttitle">
+  <div class="dhd"><div class="tt"><h2 id="ttitle">Tools</h2><p class="meta">Run checks against what is live right now.</p></div><button type="button" class="x" id="tx" aria-label="Close">×</button></div>
+  <div class="dbd" id="tbody"></div>
+  <div class="dft"><div class="grp"><button type="button" id="tclose">Close</button></div></div>
+</dialog>
+
 <dialog id="dlg" tabindex="-1" autofocus aria-labelledby="dtitle">
   <form method="dialog" id="form">
     <div class="dhd"><div class="tt"><h2 id="dtitle"></h2><p class="meta" id="dhelp"></p></div><button type="button" class="x" id="dx" aria-label="Close">×</button></div>
@@ -102,7 +111,7 @@ const $ = s => document.querySelector(s);
 let changes = { git: false, files: [] };
 let state = { services: [], hosts: [], domains: [], settings: [] };
 let cmds = {};
-const TABS = ["Services", "Infrastructure", "Issues", "Tools"];   // Infrastructure = hosts, domains and the repo-wide settings
+const TABS = ["Services", "Infrastructure", "Issues"];   // Infrastructure = hosts, domains and the repo-wide settings. Tools is a dialog, opened from the menu.
 // The page you are on lives in the URL (#/issues), so reload, back/forward and a pasted link all land on the same page.
 const tabFromHash = () => location.hash === "#/settings" ? "Infrastructure" : TABS.find(t => "#/" + t.toLowerCase() === location.hash) || "Services";   // Settings used to be a page of its own: an old link lands on Infrastructure
 let tab = tabFromHash();
@@ -124,7 +133,6 @@ const ICONS = {
   Services: ICON('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>'),
   Infrastructure: ICON('<rect x="3" y="4" width="18" height="6.5" rx="1.8"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.8"/><path d="M7 7.25h.01M7 16.75h.01"/>'),
   Issues: ICON('<path d="M12 3.5L2.5 20h19L12 3.5z"/><path d="M12 10v4M12 17h.01"/>'),
-  Tools: ICON('<path d="M14.7 6.3a4 4 0 0 0-5 5L3.5 17.5a1.8 1.8 0 0 0 2.5 2.5l6.2-6.2a4 4 0 0 0 5-5l-2.5 2.5-2.2-.5-.5-2.2 2.5-2.3z"/>'),
 };
 const TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v5M14 11v5"/></svg>';
 // A badge says where the unsaved changes are: services on Services, hosts and domains on Infrastructure, defaults on Settings.
@@ -195,7 +203,7 @@ function actionsMenu(items) {
   items.forEach(([label, fn, cls]) => { const b = btn(label, () => { close(); fn(); }, cls); b.setAttribute("role", "menuitem"); menu.append(b); });
   toggle.onclick = () => {
     if (!menu.hidden) return close();
-    menu.hidden = false; toggle.setAttribute("aria-expanded", "true"); setTimeout(() => document.addEventListener("click", away, true));
+    menu.hidden = false; toggle.setAttribute("aria-expanded", "true"); document.addEventListener("click", away, true);
     menu.querySelector("button").focus();   // focus goes into the menu (Safari does not focus a button on click), so Esc and the arrow keys reach it
   };
   wrap.addEventListener("keydown", e => { if (e.key === "Escape" && !menu.hidden) { e.preventDefault(); e.stopPropagation(); close(); } });   // Esc closes the menu, not the dialog
@@ -1096,33 +1104,8 @@ const VIEWS = {
       settings.append(r);
     });
     const setSec = sec("Settings", null, settings); setSec.insertBefore(el("p", "Apply to every service and host.", { className: "meta", style: "margin:-4px 0 0" }), settings);
-    // a phone has no sidebar to carry the version and Sign out (for now they sit at the end of this page)
-    const out = el("div", null, { className: "signout" }); out.append(state.version || "", " · ", Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" }));
     return [pageHead("Infrastructure", "Hosts run your services. Every service address must end in one of your domains."),
-            sec("Hosts", btn("Add host", () => openCmd("add host")), hosts), sec("Domains", btn("Add domain", () => openCmd("add domain")), domains), setSec, ...(isPhone() ? [out] : [])];
-  },
-  Tools() {
-    const tools = [["verify", "Verify live DNS/Caddy", "Checks that each enabled service resolves and that Caddy answers on its address."],
-                   ["measure", "Measure request timing", "Times a request to each service through DNS, TLS and auth."]];
-    const list = el("div", null, { className: "list" });
-    tools.forEach(([key, title, desc]) => {
-      const r = el("div", null, { className: "trow" }), tx = el("div", null, { className: "tx" });
-      tx.append(el("div", title, { className: "tt" }), el("div", desc, { className: "td" }));
-      r.append(tx, btn("Run", () => cmds[key].fields.length ? openCmd(key) : run(key, {}, cmds[key].confirm)));
-      list.append(r);
-    });
-    // Recovery: push everything to every host, whether or not anything changed (after a failed deploy, a rebuilt host…).
-    // It is the always-there Deploy; with unsaved changes it is off, like Deploy everywhere.
-    const rec = el("section", null, { className: "section" }), row = el("div", null, { className: "card-row" }), tx = el("div", null, { className: "tx" });
-    const d = dirty();
-    tx.append(el("div", "Redeploy everything", { className: "tt" }), el("div", d ? "Save or discard your changes first." : deploying ? "Deploying…" : "Pushes every generated file to every host, even when nothing has changed. Use it after a failed deploy or a rebuilt host.", { className: "td" }));
-    row.append(tx);
-    if (redeployAsk && !d && !deploying) {
-      const hosts = deployMany() ? `all ${state.hosts.length} hosts` : "this host";
-      row.append(btn("Cancel", () => { redeployAsk = false; render(); }), btn(`Redeploy to ${hosts}`, () => { redeployAsk = false; deployNow(changes.has_remote ? "deploy" : "apply", "Deployed"); }, "primary"));
-    } else { const b = btn("Redeploy…", () => { redeployAsk = true; render(); }); b.disabled = d || deploying || broken; if (d) b.title = "Save or discard your changes first"; row.append(b); }
-    rec.append(sectionHead("Recovery"), row);
-    return [pageHead("Tools", "Run checks against what is live right now."), list, rec];
+            sec("Hosts", btn("Add host", () => openCmd("add host")), hosts), sec("Domains", btn("Add domain", () => openCmd("add domain")), domains), setSec];
   },
   // A service's history, read from git (GET /api/history): a commit per entry, newest first, with what changed in it.
   // Entries start folded (a single one starts open); a search opens the entries that match and marks what matched.
@@ -1207,7 +1190,40 @@ const VIEWS = {
     return [pageHead("Issues", summary, ...tools), body];
   },
 };
-let redeployAsk = false;
+// openTools: the Tools dialog (Verify, Measure, and Recovery → Redeploy everything). Choosing one closes the dialog first and then
+// does it, so no dialog sits on top of another. Redeploy asks for its confirmation inside the dialog.
+function openTools() {
+  const body = $("#tbody"); body.replaceChildren();
+  const tools = [["verify", "Verify live DNS/Caddy", "Checks that each enabled service resolves and that Caddy answers on its address."],
+                 ["measure", "Measure request timing", "Times a request to each service through DNS, TLS and auth."]];
+  const list = el("div", null, { className: "list" });
+  tools.forEach(([key, title, desc]) => {
+    const r = el("div", null, { className: "trow" }), tx = el("div", null, { className: "tx" });
+    tx.append(el("div", title, { className: "tt" }), el("div", desc, { className: "td" }));
+    r.append(tx, btn("Run", () => { $("#tdlg").close(); if (cmds[key].fields.length) openCmd(key); else run(key, {}, cmds[key].confirm); }));
+    list.append(r);
+  });
+  // Recovery: push everything to every host, whether or not anything changed (after a failed deploy, a rebuilt host…). It is
+  // the always-there Deploy; with unsaved changes it is off, like Deploy everywhere.
+  const rec = el("section", null, { className: "section" }), row = el("div", null, { className: "card-row" });
+  let confirming = false;
+  const draw = () => {
+    row.replaceChildren();
+    const d = dirty(), tx = el("div", null, { className: "tx" });
+    tx.append(el("div", "Redeploy everything", { className: "tt" }), el("div", d ? "Save or discard your changes first." : deploying ? "Deploying…" : "Pushes every generated file to every host, even when nothing has changed. Use it after a failed deploy or a rebuilt host.", { className: "td" }));
+    row.append(tx);
+    if (confirming && !d && !deploying) {
+      const hosts = deployMany() ? `all ${state.hosts.length} hosts` : "this host";
+      row.append(btn("Cancel", () => { confirming = false; draw(); }), btn(`Redeploy to ${hosts}`, () => { $("#tdlg").close(); deployNow(changes.has_remote ? "deploy" : "apply", "Deployed"); }, "primary"));
+    } else { const b = btn("Redeploy…", () => { confirming = true; draw(); }); b.disabled = d || deploying || broken; if (d) b.title = "Save or discard your changes first"; row.append(b); }
+  };
+  draw();
+  rec.append(sectionHead("Recovery"), row);
+  body.append(list, rec);
+  openModal($("#tdlg"));
+}
+$("#tx").onclick = $("#tclose").onclick = () => $("#tdlg").close();
+closeOnBackdrop($("#tdlg"), () => false);
 
 // ── Issues: a checklist of what `hemma doctor` checks ─────────────────────────────────────────────────────────
 // The server runs doctor (read-only) and reads its output into items (issueitems.go): one per check, with a status,
@@ -1311,7 +1327,7 @@ function renderTabs() {
     TABS.forEach(t => {
       let b = nav.querySelector(`button[data-tab="${t}"]`);
       if (!b) {
-        b = el("button", null, { type: "button", onclick: () => { hist = null; if (t !== tab || histHash()) { history.pushState(null, "", "#/" + t.toLowerCase()); redeployAsk = false; } tab = t; render(); $("#main").scrollTop = 0; if (t === "Issues") checkIssues(); } });   // opening Issues re-runs the checks
+        b = el("button", null, { type: "button", onclick: () => { hist = null; if (t !== tab || histHash()) { history.pushState(null, "", "#/" + t.toLowerCase()); } tab = t; render(); $("#main").scrollTop = 0; if (t === "Issues") checkIssues(); } });   // opening Issues re-runs the checks
         b.dataset.tab = t;
         const ic = el("span", null, { className: "ic" }); ic.innerHTML = ICONS[t];   // static markup defined above
         b.append(ic, el("span", t === "Infrastructure" && nav.id === "mtabs" ? "Infra" : t, { className: "label" }));
@@ -1326,11 +1342,31 @@ function renderTabs() {
     placeTabIndicator(nav);
   }
 }
+// The menus that carry Tools and Sign out: the sidebar's foot on a wide screen, the burger in the phone's top bar.
+const signOut = () => Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" });
+function renderMenus() {
+  const tools = btn("Tools", () => openTools(), "sidetools");
+  $("#sidefoot").replaceChildren(tools, el("div", null, { className: "ver" }));
+  $("#sidefoot .ver").append(state.version || "", " · ", signOut());
+  const menu = $("#bmenu"); menu.replaceChildren();
+  const item = el("button", "Tools", { type: "button", onclick: () => { closeBurger(); openTools(); } }); item.setAttribute("role", "menuitem");
+  const ver = el("div", null, { className: "mver" }); ver.append(state.version || "");
+  const out = signOut(); out.setAttribute("role", "menuitem"); out.className = "only-with-gate mout";
+  menu.append(item, el("hr"), ver, out);
+}
+function closeBurger() { const m = $("#bmenu"); if (m.hidden) return; m.hidden = true; $("#burger").setAttribute("aria-expanded", "false"); document.removeEventListener("click", burgerAway, true); }
+const burgerAway = e => { if (!$("#bmenu").contains(e.target) && !$("#burger").contains(e.target)) closeBurger(); };
+$("#burger").onclick = () => {
+  const m = $("#bmenu");
+  if (!m.hidden) return closeBurger();
+  m.hidden = false; $("#burger").setAttribute("aria-expanded", "true"); document.addEventListener("click", burgerAway, true);   // burgerAway ignores clicks on the button and the menu itself
+  m.querySelector("button").focus();   // focus goes into the menu (Safari does not focus a button on click), so Esc reaches it
+};
+$("#top").addEventListener("keydown", e => { if (e.key === "Escape" && !$("#bmenu").hidden) { e.preventDefault(); closeBurger(); $("#burger").focus(); } });
 function render() {
   renderTabs();
   $("#view").replaceChildren(...(hist ? VIEWS.History() : VIEWS[tab]()));
-  const foot = [state.version || "", " · ", Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" })];
-  $("#sidefoot").replaceChildren(...foot);
+  renderMenus();
   renderHint();
   renderBars();
 }
@@ -1362,7 +1398,7 @@ async function showRecovery(error, version) {
   card.append(row);
   if (changes.git && changes.files.length) card.append(el("p", "Discard puts services.yaml back to how it was when you last saved. The unsaved change is what broke it, if you made one.", { className: "meta" }));
   $("#view").replaceChildren(card);
-  $("#sidefoot").replaceChildren(state.version || "", " · ", Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" }));
+  renderMenus();
   $("#hinttext").textContent = "services.yaml can't be read"; $("#hint .dot").className = "dot warn";
 }
 async function openRaw() {
