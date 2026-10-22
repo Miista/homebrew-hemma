@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"hemma/internal/auth"
 	"hemma/internal/config"
 )
 
@@ -22,7 +23,8 @@ import (
 //
 //	Phase 0 — probe reachability: ssh <dest> true  (remotes only)
 //	Phase 1 — pull everywhere:    git -C ~/docker pull --ff-only
-//	Phase 2 — apply everywhere:   hemma apply   (remotes first, self LAST)
+//	Phase 2 — validate auth:      the auth provider's config validate, on the auth host
+//	Phase 3 — apply everywhere:   hemma apply   (remotes first, self LAST)
 //
 // Phase 0 aborts up front if any remote is unreachable over ssh, so a
 // mis-wired host (missing key, unknown host key) fails before anything is
@@ -30,14 +32,19 @@ import (
 //
 // Phase 1 is all-or-nothing: `pull --ff-only` either fast-forwards or refuses
 // touching nothing, so ANY failure (divergence, dirty remote tree, unreachable
-// host, ssh auth) aborts the entire deploy before phase 2 starts — no runtime
+// host, ssh auth) aborts the entire deploy before phase 3 starts — no runtime
 // state has changed anywhere. Pulled-but-not-applied checkouts are the normal
 // intermediate state of the manual workflow, so an abort leaves nothing to
 // undo. After the pulls, every host must be on the SAME commit (a push racing
 // between pulls would silently deploy different states) — a mismatch also
 // aborts.
 //
-// Phase 2 is per-host best-effort: each host's `apply` is internally
+// Phase 2 requires the auth host to hold a valid auth config: the provider's validate runs there (locally or over
+// ssh) once every checkout is on the new commit, and a failure aborts the deploy before anything is applied. The auth
+// provider is what signs people in, so a config it would refuse must never reach its restart — and must not cost the
+// other hosts a reload either. `apply` still validates again before it restarts (that guard stays).
+//
+// Phase 3 is per-host best-effort: each host's `apply` is internally
 // consistent (it validates before restarting anything), so a failure on one
 // host is reported and the fan-out CONTINUES — stopping mid-fan-out would just
 // leave a less converged fleet. Remotes go first and self LAST: applying on
@@ -133,12 +140,12 @@ func cmdDeploy(env *Env, repoRoot, cfgPath string, args []string) int {
 		}
 		return nil
 	}
-	return runDeploy(env, execRunner{env}, targets, repoRoot, resync)
+	return runDeploy(env, execRunner{env}, targets, repoRoot, planAuthCheck(cfg), resync)
 }
 
 // driftRefusal reports (and says why) when the generated files no longer match services.yaml. A rebase can leave them
 // stale — both sides regenerate the same files — and apply refuses a drifted repo on every host, so find out here,
-// before any host pulls or restarts anything, instead of failing host by host in phase 2.
+// before any host pulls or restarts anything, instead of failing host by host in phase 3.
 func driftRefusal(env *Env, repoRoot string, cfg *config.Config) bool {
 	d := detectDrift(repoRoot, cfg, loadManifest(env, repoRoot, cfg))
 	if !d.Any() {
@@ -509,9 +516,9 @@ func deployProbe(env *Env, r deployRunner, targets []deployTarget) int {
 	return 0
 }
 
-// runDeploy executes the two phases against resolved, ordered targets.
+// runDeploy executes the phases against resolved, ordered targets.
 // Factored off cmdDeploy so the phase logic runs under a fake runner in tests.
-func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo string, resync func() error) int {
+func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo string, auth *authCheck, resync func() error) int {
 	fmt.Fprintf(env.Out, "Deploying to %d %s: %s.\n", len(targets), plural(len(targets), "host"), joinTargetNames(targets))
 
 	// Phase 0 — probe ssh reachability to every REMOTE target; ANY failure
@@ -541,7 +548,7 @@ func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo strin
 		pushed, err := reconcileRemote(env, r, t)
 		if err != nil {
 			fmt.Fprintln(env.Out)
-			errf(env, "Could not bring %q level with origin — deploy aborted, phase 2 (apply) never started.\n%v", t.Name, err)
+			errf(env, "Could not bring %q level with origin — deploy aborted, phase 3 (apply) never started.\n%v", t.Name, err)
 			hint(env, "No runtime state was changed anywhere.")
 			return 1
 		}
@@ -566,7 +573,7 @@ func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo strin
 		printIndented(env, out)
 		{
 			fmt.Fprintln(env.Out)
-			errf(env, "Pull failed on %q — deploy aborted, phase 2 (apply) never started.", t.Name)
+			errf(env, "Pull failed on %q — deploy aborted, phase 3 (apply) never started.", t.Name)
 			hint(env, "Either the host is unreachable over ssh, or its checkout has diverged from")
 			hint(env, "origin (local commits or edits origin doesn't have). Hosts must not fork the")
 			hint(env, "repo — reconcile that host manually, then re-run 'hemma deploy'.")
@@ -585,7 +592,7 @@ func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo strin
 		if err != nil {
 			fmt.Fprintln(env.Out)
 			printIndented(env, out)
-			errf(env, "rev-parse failed on %q — deploy aborted, phase 2 (apply) never started.", t.Name)
+			errf(env, "rev-parse failed on %q — deploy aborted, phase 3 (apply) never started.", t.Name)
 			hint(env, "No runtime state was changed anywhere.")
 			return 1
 		}
@@ -605,10 +612,17 @@ func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo strin
 	}
 	fmt.Fprintf(env.Out, "  all hosts at %s\n", shortCommit(heads[0]))
 
-	// Phase 2 — apply per host, remotes first, self LAST. A failure is
+	// Phase 2 — the auth host must hold a valid auth config. Every checkout is on the new commit now, so the
+	// provider validates what apply would restart it with; a failure aborts before ANY host is applied.
+	fmt.Fprintf(env.Out, "\n%s== Phase 2: validate auth ==%s\n", boldOn, boldOff)
+	if code := validateAuth(env, r, targets, auth); code != 0 {
+		return code
+	}
+
+	// Phase 3 — apply per host, remotes first, self LAST. A failure is
 	// reported and the fan-out continues: each host's apply is internally
 	// consistent, and stopping here would only leave a less converged fleet.
-	fmt.Fprintf(env.Out, "\n%s== Phase 2: apply ==%s\n", boldOn, boldOff)
+	fmt.Fprintf(env.Out, "\n%s== Phase 3: apply ==%s\n", boldOn, boldOff)
 	status := make(map[string]string, len(targets))
 	failed := 0
 	for _, t := range targets {
@@ -638,6 +652,55 @@ func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo strin
 		return 1
 	}
 	fmt.Fprintln(env.Out, "Deployed.")
+	return 0
+}
+
+// authCheck is the auth provider's config validation and the host it must run on.
+type authCheck struct {
+	Service  string   // the auth_service name (the provider's container)
+	Host     string   // the host that runs it
+	Validate []string // argv, run on Host
+}
+
+// planAuthCheck says what phase 2 validates: nil when no auth service is set, it is disabled, or its provider has
+// nothing to validate. The host is the auth service's own host, which need not be the deploy host.
+func planAuthCheck(cfg *config.Config) *authCheck {
+	name := cfg.Defaults.AuthService
+	s, ok := cfg.Services[name]
+	if name == "" || !ok || s.Disabled {
+		return nil
+	}
+	validate, _ := auth.Default().ApplyCommands(name)
+	if validate == nil {
+		return nil
+	}
+	return &authCheck{Service: name, Host: s.Host, Validate: validate}
+}
+
+// validateAuth runs the provider's validate on the auth host and returns the exit code to stop with (0: carry on). A
+// deploy that does not target the auth host restarts nothing there, so there is nothing to hold back.
+func validateAuth(env *Env, r deployRunner, targets []deployTarget, a *authCheck) int {
+	if a == nil {
+		fmt.Fprintln(env.Out, "  no auth service to validate")
+		return 0
+	}
+	for _, t := range targets {
+		if t.Name != a.Host {
+			continue
+		}
+		out, err := r.run(t, a.Validate)
+		if err != nil {
+			fmt.Fprintf(env.Out, "\n%s== %s ==%s\n", boldOn, t.Name, boldOff)
+			printIndented(env, out)
+			fmt.Fprintln(env.Out, "  "+cross+" "+a.Service+" config validate FAILED")
+			fmt.Fprintln(env.Out)
+			errf(env, "The auth config on %q is not valid — deploy aborted, nothing was applied or restarted anywhere.", t.Name)
+			return 1
+		}
+		fmt.Fprintf(env.Out, "  "+tick+" %s config validates on %s\n", a.Service, t.Name)
+		return 0
+	}
+	fmt.Fprintf(env.Out, "  auth host %q is not part of this deploy — skipped\n", a.Host)
 	return 0
 }
 

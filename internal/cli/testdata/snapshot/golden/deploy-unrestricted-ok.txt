@@ -14,7 +14,10 @@ Deploying to 2 hosts: core, edge.
   ✓ edge: pulled
   all hosts at 
 
-== Phase 2: apply ==
+== Phase 2: validate auth ==
+  ✓ sso config validates on core
+
+== Phase 3: apply ==
 
 == core ==
 
@@ -41,6 +44,7 @@ ssh -o BatchMode=yes core git -C ~/docker pull --ff-only
 ssh -o BatchMode=yes ops@192.0.2.20 git -C ~/docker pull --ff-only
 ssh -o BatchMode=yes core git -C ~/docker rev-parse HEAD
 ssh -o BatchMode=yes ops@192.0.2.20 git -C ~/docker rev-parse HEAD
+ssh -o BatchMode=yes core docker exec sso authelia config validate
 ssh -o BatchMode=yes core hemma apply
 ssh -o BatchMode=yes ops@192.0.2.20 hemma apply
 --- files ---

@@ -12,7 +12,10 @@ Deploying to 1 host: edge.
   ✓ edge: pulled
   all hosts at 
 
-== Phase 2: apply ==
+== Phase 2: validate auth ==
+  auth host "core" is not part of this deploy — skipped
+
+== Phase 3: apply ==
 
 == edge ==
 
