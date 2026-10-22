@@ -40,6 +40,12 @@ release workflow; there is no deploy script in this repo.
 
 Per the user's global convention: build and live-verify on the Mac before committing/pushing in this repo.
 
+**Never build Go inside a Docker image.** The `hemma-ui` image (`Dockerfile.ui`) only COPIES `dist/hemma-ui` in; cross-compile it with Go on
+the Mac first — `make ui-binary` (`CGO_ENABLED=0 GOOS=linux GOARCH=$(UI_ARCH) go build`, `UI_ARCH` defaults to arm64: the pi and Colima on
+Apple silicon). `make ui-image` and `make fixture-redeploy` do that for you, and `.dockerignore` sends Docker nothing but the binary. A build
+stage in the image recompiles every dependency each time and its cache once filled a whole Docker disk. To put the UI on the pi: `make
+ui-binary`, build the image from it, `docker save | ssh pi docker load`, `docker compose up -d hemma` in `~/docker/pi`.
+
 ## Architecture — the sync pipeline
 
 Data flows one direction through six packages. The layering is deliberate; respect it.
@@ -205,7 +211,7 @@ authy). It is NOT a second implementation of hemma:
   the footer (Remove still confirms). **On a phone** an edit form's footer is just **Close** with a chevron menu button (History, Rename,
   Remove; up while shut, turning down when open) to its right, and a floating **Cancel / Save** bar slides up above it once the form has changed (`setFloaty`):
   Cancel resets the form to how it opened, Close leaves it; Verify and the other run-forms keep their normal footer. **History** is a tab (`#/history`; `#/history/<service>` is the same list filtered to one service — the service dialog's
-  History button opens that, and an "All history" button clears it): `GET /api/history` (`history.go`) walks the commits that
+  History button opens that, and an "All history" button clears it; leaving the tab and coming back keeps the filter and the search): `GET /api/history` (`history.go`) walks the commits that
   touched `services.yaml` and compares each version with the one before (`diffEntities`, shared with the unsaved-changes diff), so
   an entry is a Save: its message, who, when, and everything it changed (services, hosts, domains, settings). With `?service=` it
   follows that one service back through a rename. Entries start folded (a single entry starts open). The search box matches the
@@ -214,7 +220,7 @@ authy). It is NOT a second implementation of hemma:
   a lone change just shows its table. On a service's own history the entry's `host/service:` prefix is dropped from the title (the full message
   stays as the tooltip and is still searched). Removed services show up as entries, so their history is reachable by searching for
   them. Recent saves are dated "Today, 22:31" / "Yesterday, …" and by weekday for the rest of the week; a week or more ago is a date (in the
-  browser's language; the exact time is the tooltip, and both forms are searched). It is read a page at a time (30 saves, then a **Load older** button; one service's changes are read in chunks of 40 commits until 20 are
+  browser's language; the exact time is the tooltip, and both forms are searched). While it loads, a clock-face spinner (`spinner()`) sits in the middle of the page (the hand sweeps; still under `prefers-reduced-motion`). It is read a page at a time (30 saves, then a **Load older** button; one service's changes are read in chunks of 40 commits until 20 are
   found, the page carrying the name the service had at that point so a rename is followed across pages). Nothing is stored by hemma; it is all
   git. Unsaved changes are not in it, and there is no Restore
   (yet). A row's chip (Added / Changed / Removed) comes from the diff. Something removed but not saved
