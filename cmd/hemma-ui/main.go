@@ -35,7 +35,7 @@ import (
 	"hemma/internal/config"
 )
 
-// The page, its stylesheet and the Geist font files (SIL OFL-1.1, license alongside) are compiled into the binary.
+// The page, its stylesheet and the Instrument Sans / JetBrains Mono font files (SIL OFL-1.1, licenses alongside) are compiled into the binary.
 //
 //go:embed static
 var static embed.FS
