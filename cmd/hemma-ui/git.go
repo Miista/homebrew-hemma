@@ -32,6 +32,9 @@ type changes struct {
 	// HasRemote/Ahead: deploy pulls from origin and refuses unpushed commits.
 	HasRemote bool `json:"has_remote"`
 	Ahead     int  `json:"ahead"`
+	// AheadHemma: some of those unpushed commits change a file hemma owns, so there is something to deploy. Commits to
+	// anything else in the repo (a compose file, say) are ahead of origin too, but hemma has nothing to make live for them.
+	AheadHemma bool `json:"ahead_hemma"`
 }
 
 func (s *server) git(timeout time.Duration, args ...string) (string, error) {
@@ -102,6 +105,17 @@ func (s *server) changes() changes {
 	if n, err := s.git(5*time.Second, "rev-list", "--count", "@{u}..HEAD"); err == nil {
 		c.HasRemote = true
 		c.Ahead, _ = strconv.Atoi(strings.TrimSpace(n))
+		if c.Ahead > 0 {
+			// --no-renames: a rename touches both its old and its new path
+			if names, err := s.git(20*time.Second, "diff", "--name-only", "--no-renames", "-z", "@{u}..HEAD"); err == nil {
+				for _, f := range strings.Split(names, "\x00") {
+					if owned[f] {
+						c.AheadHemma = true
+						break
+					}
+				}
+			}
+		}
 	}
 	return c
 }

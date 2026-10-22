@@ -169,7 +169,8 @@ authy). It is NOT a second implementation of hemma:
 - **Two phases, deliberately separate:** *saving* (the warn bar at the bottom while there are unsaved changes: Discard —
   which asks inline, Keep / Discard N changes — and Review & save, which commits with a message) and *deploying*: an
   accent bar ("Saved, not live yet" + Deploy) after a save that was not deployed — remembered in `localStorage`, plus
-  commits origin lacks — and **Tools → Recovery → Redeploy everything**, which is always there, so deploy still works
+  unpushed commits that change a file hemma owns (`ahead_hemma`; a commit to a compose file is ahead of origin too, but
+  hemma has nothing to make live for it) — and **Tools → Recovery → Redeploy everything**, which is always there, so deploy still works
   on a freshly set-up machine with nothing to save (nothing about what is LIVE is ever inferred from the page). Deploy is the kernel's `deploy`, which first brings this
   checkout level with origin itself (`git pull --rebase`, aborted cleanly on a real conflict; then `git push`; then a
   drift check), so the UI has no push of its own and "origin moved" is never a dead end for the person. With no origin

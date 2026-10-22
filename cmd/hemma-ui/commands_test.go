@@ -3,6 +3,7 @@ package main
 import (
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -440,5 +441,55 @@ func TestCommit_LeavesOtherFilesAlone(t *testing.T) {
 	out, _ := s.git(time.Minute, "status", "--porcelain")
 	if !strings.Contains(out, "pi/docker-compose.yml") || !strings.Contains(out, "pi/restic/") {
 		t.Errorf("the other files must still be uncommitted edits, status: %q", out)
+	}
+}
+
+// "Ahead of origin" only means something to deploy when a commit touches a file hemma owns: a commit to a compose file is
+// ahead too, but there is nothing for hemma to make live.
+func TestChanges_AheadHemmaOnlyForOwnedFiles(t *testing.T) {
+	root := t.TempDir()
+	origin, dir := filepath.Join(root, "origin.git"), filepath.Join(root, "repo")
+	s := &server{repo: dir}
+	git := func(args ...string) {
+		t.Helper()
+		if out, err := s.git(time.Minute, args...); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	if out, err := exec.Command("git", "init", "--bare", "-q", "-b", "main", origin).CombinedOutput(); err != nil {
+		t.Skipf("git not available: %v %s", err, out)
+	}
+	if out, err := exec.Command("git", "clone", "-q", origin, dir).CombinedOutput(); err != nil {
+		t.Fatalf("clone: %v %s", err, out)
+	}
+	write := func(rel, body string) {
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("services.yaml", "services: {}\n")
+	write("pi/docker-compose.yml", "services: {}\n")
+	git("add", "-A")
+	git("commit", "-q", "-m", "init")
+	git("push", "-q", "-u", "origin", "main")
+
+	if c := s.changes(); !c.HasRemote || c.Ahead != 0 || c.AheadHemma {
+		t.Fatalf("level with origin: %+v", c)
+	}
+	// a commit to somebody else's file: ahead, but nothing for hemma to deploy
+	write("pi/docker-compose.yml", "services: {x: {}}\n")
+	git("commit", "-q", "-am", "pi/homepage: follow the moving tag")
+	if c := s.changes(); c.Ahead != 1 || c.AheadHemma {
+		t.Fatalf("a compose-only commit must not count as something to deploy: %+v", c)
+	}
+	// a commit to hemma's own file: now there is
+	write("services.yaml", "hosts: {}\nservices: {}\n")
+	git("commit", "-q", "-am", "add a host")
+	if c := s.changes(); c.Ahead != 2 || !c.AheadHemma {
+		t.Fatalf("a commit to services.yaml is something to deploy: %+v", c)
 	}
 }

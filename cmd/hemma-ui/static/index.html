@@ -614,8 +614,8 @@ function openDomain(name, uses) {
 let deploying = false;
 let pending = null;   // /api/diff summary of the unsaved changes (null when there are none)
 const dirty = () => changes.git && changes.files.length > 0;
-// "Saved, not live yet": a save that was not deployed (remembered across reloads), or commits origin does not have yet.
-const undeployed = () => !deploying && !dirty() && (localStorage.getItem("hemma.undeployed") === "1" || (changes.has_remote && changes.ahead > 0));
+// "Saved, not live yet": a save that was not deployed (remembered across reloads), or unpushed commits that change a file hemma owns. A commit to anything else (a compose file) is ahead of origin too, but hemma has nothing to make live for it.
+const undeployed = () => !deploying && !dirty() && (localStorage.getItem("hemma.undeployed") === "1" || (changes.has_remote && changes.ahead_hemma));
 const barsUp = () => dirty() || deploying || undeployed();
 function renderHint() {
   const [text, cls] = deploying ? ["Deploying…", "busy"] : dirty() ? ["Save changes to deploy", "warn"] : undeployed() ? ["Saved, not live yet", "busy"] : ["No unsaved changes", ""];
