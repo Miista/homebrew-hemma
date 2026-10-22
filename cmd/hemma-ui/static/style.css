@@ -195,6 +195,9 @@ nav .ic { display: none; } nav .ic svg { display: block; }
 .issue { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r2); overflow: hidden; }
 .ihead { display: flex; align-items: flex-start; gap: 12px; width: 100%; height: auto; padding: 16px; border: 0; border-radius: 0; background: none; color: var(--ink); text-align: left; white-space: normal; }
 .ihead:hover:not(:disabled) { background: none; }
+/* an issue's chevron points down when folded and up when open (the other folds point right, then down) */
+.ihead .chev::before { transform: translateY(-2px) rotate(45deg); }
+.ihead[aria-expanded=true] .chev::before { transform: translateY(2px) rotate(225deg); }
 .ihead .ttl { flex: 1; min-width: 0; } .ihead .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .sev { flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--p-warn-bg); color: var(--p-warn-fg); }
 .sev.err { background: var(--p-error-bg); color: var(--p-error-fg); }
@@ -208,7 +211,15 @@ nav .ic { display: none; } nav .ic svg { display: block; }
 .fix { display: flex; flex-direction: column; gap: 8px; }
 .fix .lbl { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .fix .step { display: flex; gap: 10px; } .fix .step .sl { flex: none; min-width: 3.4em; padding-top: 2px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.fix .step .st { min-width: 0; text-wrap: pretty; } .fix .step .st.cmd { font-family: var(--mono); font-size: 13px; }
+.fix .step .st { min-width: 0; text-wrap: pretty; }
+.cmdbox { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: var(--r); background: var(--code-bg); border: 1px solid var(--line); }
+.cmdbox .ps { color: var(--muted); font-family: var(--mono); font-size: 13px; } .cmdbox code { flex: 1; min-width: 0; font-size: 13px; overflow-wrap: anywhere; border: 0; background: none; padding: 0; }
+.cmdbox button { flex: none; height: 32px; padding: 0 12px; font-size: 13px; font-weight: 500; }
+.prefixed { display: flex; align-items: center; height: var(--h); border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--field); overflow: hidden; }
+.prefixed:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
+.prefixed span { padding: 0 2px 0 12px; font-family: var(--mono); font-size: 14px; color: var(--muted); }
+.prefixed input { flex: 1; height: 100%; padding: 0 12px 0 0; border: 0; background: none; outline: none; }
+.prefixed input:focus { outline: none; }
 .fixrow { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; } .fixrow .hint { font-size: 13px; }
 
 /* Tools, Settings */
@@ -244,20 +255,22 @@ nav .ic { display: none; } nav .ic svg { display: block; }
 .toast button:hover:not(:disabled) { background: rgba(255, 255, 255, .24); }
 
 /* ---------- dialogs: a header, a scrolling body, a footer ---------- */
-dialog { width: min(560px, calc(100vw - 32px)); max-height: min(880px, calc(100dvh - 64px)); padding: 0; color: var(--ink); border: 1px solid var(--line); border-radius: var(--r2);
-         background: color-mix(in oklch, var(--surface) 95%, black); box-shadow: var(--shadow); overflow: hidden; }
-dialog[open] { display: flex; flex-direction: column; animation: dialog-in .18s ease-out; }
+dialog { width: min(560px, calc(100vw - 32px)); max-height: min(880px, calc(100vh - 64px)); padding: 0; color: var(--ink); border: 1px solid var(--line); border-radius: var(--r2);
+         background: color-mix(in oklch, var(--surface) 95%, black); box-shadow: var(--shadow); overflow: auto; }
+dialog[open] { display: block; animation: dialog-in .18s ease-out; }   /* plain block layout: nested flex sizing inside a dialog (no definite height) collapsed the body to 0 in Safari */
 dialog::backdrop { background: var(--scrim); }
 dialog:focus { outline: none; }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
-dialog form { display: flex; flex-direction: column; min-height: 0; flex: 1; margin: 0; }
+dialog form { margin: 0; }
 #cdlg { width: min(780px, calc(100vw - 32px)); }
 .dhd { flex: none; display: flex; gap: 8px; align-items: flex-start; padding: 22px 24px 0; }
 .dhd .tt { flex: 1; min-width: 0; } .dhd h2 { font-size: 20px; line-height: 1.25; font-weight: 700; letter-spacing: -.01em; overflow-wrap: anywhere; }
 .dhd .meta { margin: 6px 0 0; text-wrap: pretty; }
 .dhd .x { flex: none; width: 36px; height: 36px; margin: -6px -10px 0 0; padding: 0; border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; }
 .dhd .x:hover:not(:disabled) { background: var(--surface-2); }
-.dbd { flex: 1; min-height: 0; overflow: auto; padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 18px; }
+/* the body scrolls when the dialog would not fit: its height is capped (the dialog's own cap, less room for the header and footer) */
+.dbd { max-height: calc(min(880px, 100vh - 64px) - 190px); overflow: auto; padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 18px; }
+.dbd > * { flex-shrink: 0; }
 .dbd > p { margin: 0; }
 .dft { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 14px 24px; border-top: 1px solid var(--line); background: var(--surface-2); }
 .dft .left { display: flex; gap: 4px; margin-left: -12px; } .dft .grp { display: flex; gap: 8px; margin-left: auto; }
@@ -291,8 +304,8 @@ dialog form { display: flex; flex-direction: column; min-height: 0; flex: 1; mar
 
 /* Save: what changes, entity by entity (current against after save), then the generated files */
 .chgs { display: flex; flex-direction: column; gap: 8px; }
-.chgs .top { display: flex; align-items: center; justify-content: space-between; } .chgs .top .lbl { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.chgs .top button { height: 28px; padding: 0 8px; border: 0; background: none; color: var(--accent-text); font-weight: 600; font-size: 13px; }
+.chgs .top { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; } .chgs .top b { font-size: 13px; font-weight: 600; } .chgs .top .bd { font-size: 13px; color: var(--muted); }
+.chgs .top button { margin-left: auto; height: 28px; padding: 0 8px; border: 0; background: none; color: var(--accent-text); font-weight: 600; font-size: 13px; }
 .ent { background: var(--surface); }
 .ent > button.eh { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; height: auto; padding: 10px 14px; border: 0; border-radius: 0; background: none; color: var(--ink); text-align: left; white-space: normal; font-weight: 400; }
 .ent > button.eh:hover:not(:disabled) { background: var(--hover); }
@@ -354,7 +367,8 @@ dialog form { display: flex; flex-direction: column; min-height: 0; flex: 1; mar
   .setrow { grid-template-columns: minmax(0, 1fr) auto; }
   .svc { flex-wrap: wrap; } .svc .tags { flex-basis: 100%; justify-content: flex-start; }
   /* dialogs are sheets at the bottom: their buttons are under the thumb */
-  dialog { width: 100vw; max-width: none; max-height: calc(100dvh - 24px); margin: auto 0 0; border-radius: var(--r2) var(--r2) 0 0; }
+  dialog { width: 100vw; max-width: none; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); margin: auto 0 0; border-radius: var(--r2) var(--r2) 0 0; }
+  .dbd { max-height: calc(100vh - 24px - 220px); max-height: calc(100dvh - 24px - 220px); }
   #cdlg, #kdlg { width: 100vw; }
   .dft .grp { flex: 1 1 100%; } .dft .grp button { flex: 1 1 0; }
   .erow, .ehdr { grid-template-columns: minmax(0, 1fr); } .ehdr { display: none; }

@@ -267,8 +267,12 @@ function segmented(options, current) {
 }
 
 // A list of validated values: an add box, then one entry per row with a trash button.
-function listEditor(initial, check, placeholder, onchange) {
+// IP addresses and ranges read in numeric order: 10.0.0.0/8 before 192.168.1.0/24.
+const ipKey = v => { const [ip, pre] = v.split("/"); return [ip.split(".").reduce((a, o) => a * 256 + (+o || 0), 0), pre == null ? 32 : +pre]; };
+const ipOrder = (a, b) => { const x = ipKey(a), y = ipKey(b); return x[0] - y[0] || x[1] - y[1]; };
+function listEditor(initial, check, placeholder, onchange, sortIP) {
   let items = (initial || []).filter(Boolean);
+  if (sortIP) items.sort(ipOrder);
   const wrap = el("div", null, { style: "display:flex;flex-direction:column;gap:8px" }), rows = el("ul", null, { className: "items" }), adder = el("div", null, { className: "adder" });
   const inp = el("input", null, { type: "text", className: "mono", placeholder: placeholder || "", autocomplete: "off", autocapitalize: "off" });
   const msg = el("div", null, { className: "err small" });
@@ -285,6 +289,7 @@ function listEditor(initial, check, placeholder, onchange) {
     const r = check(v);
     if (r !== true) { msg.textContent = `"${v}": ${r}`; return false; }
     if (!items.includes(v)) items.push(v);
+    if (sortIP) items.sort(ipOrder);
     inp.value = ""; msg.textContent = ""; draw(); onchange && onchange(); return true;
   };
   inp.onkeydown = e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commit(); } };
@@ -371,7 +376,7 @@ function control(fd, prefill, locked) {
   if (fd.kind === "int") { const i = el("input", null, { type: "number", min: 0, max: 1000, value: v ?? "" });
     return { node: i, get: () => i.value === "" ? "" : Number(i.value), check: () => "" }; }
   if (fd.kind === "list") {
-    const cl = listEditor(String(v || "").split(",").filter(Boolean), CHECK[fd.ref] || (() => true), HINT[fd.ref]);
+    const cl = listEditor(String(v || "").split(",").filter(Boolean), CHECK[fd.ref] || (() => true), HINT[fd.ref], null, fd.ref === "ipcidr" || fd.ref === "cidr");
     return { node: cl.node, get: () => cl.get(), check: () => cl.flush() ? "" : "fix or clear the value in the box" };
   }
   if (fd.ref === "fqdn") { const c = fqdnControl(v, fd.required); return { node: c.node, suggest: c.suggest, get: c.get, check: c.check }; }
@@ -436,6 +441,7 @@ function openCmd(key, prefill = {}) {
   const hideName = key === "update service" && prefill.__lock === "name";   // the title already is the name
   for (const fd of c.fields) {
     const k = control(fd, prefill, prefill.__lock === fd.name);
+    if (fd.name === "name" && k.node.tagName === "INPUT" && !k.node.readOnly) k.node.placeholder = key === "add host" ? "e.g. nas" : "e.g. paperless";
     const title = fd.label + (fd.required ? " *" : "");
     // A list holds buttons, so it must not live inside a <label> (tapping the title would press one).
     const stack = fd.kind === "list" || fd.name === "auth-mode" || fd.name === "host" && k.node.classList?.contains("seg");
@@ -516,6 +522,9 @@ function openCmd(key, prefill = {}) {
       if (flipFailed) toast("Saved, but the service could not be switched " + (enabled.get() ? "on" : "off"), "warn");
     } finally { $("#go").disabled = false; }
   };
+  const snap = () => JSON.stringify([ctl.map(x => x.k.get()), enabled && enabled.get()]);
+  const init = snap();
+  $("#dlg").oncancel = e => { if (snap() !== init) e.preventDefault(); };   // Esc keeps a form with typed work; Cancel and × still close it
   openModal($("#dlg"));
 }
 $("#cancel").onclick = () => $("#dlg").close();
@@ -529,7 +538,7 @@ async function openSetting(s) {
   const changed = () => { save.disabled = ctl.get() === (s.value || ""); };
   let ctl;
   if (s.kind === "cidrs") {
-    const cl = listEditor((s.value || "").split(",").filter(Boolean), CHECK.cidr, HINT.cidr, changed);
+    const cl = listEditor((s.value || "").split(",").filter(Boolean), CHECK.cidr, HINT.cidr, changed, true);
     ctl = { node: cl.node, get: () => cl.get(), check: () => cl.flush() ? "" : "fix or clear the value in the box" };
   } else if (s.kind === "host" || s.kind === "service") {
     // Unset shows a placeholder, not the first item — which would read as if it were the current value.
@@ -540,8 +549,10 @@ async function openSetting(s) {
     const ft = fileTree(s.value, changed);
     ctl = { node: ft.node, get: () => ft.get(), check: () => ft.get() ? "" : "Choose a file" };
   } else {
-    const i = el("input", null, { type: "text", className: "mono", value: s.value || "", placeholder: HINT.relpath, autocomplete: "off", autocapitalize: "off" });
-    i.oninput = changed; ctl = { node: i, get: () => i.value.trim(), check: () => { const r = CHECK.relpath(i.value.trim()); return r === true ? "" : r; } };
+    const i = el("input", null, { type: "text", className: "mono", value: s.value || "", placeholder: s.key === "tunnel-dir" ? "cloudflared" : HINT.relpath, autocomplete: "off", autocapitalize: "off" });
+    i.oninput = changed;
+    const field = el("div", null, { className: "prefixed" }); field.append(el("span", "<host>/"), i);   // the folder sits inside each host's directory
+    ctl = { node: field, get: () => i.value.trim(), check: () => { const r = CHECK.relpath(i.value.trim()); return r === true ? "" : r; } };
   }
   const heading = s.kind === "cidrs" ? "Ranges" : s.kind === "file" ? "Choose a file from the repo" : s.kind === "relpath" ? "Folder name (inside each host's directory)" : s.kind === "host" ? "Host" : s.kind === "service" ? "Service" : s.label;
   // Lists and the file tree contain buttons: inside a <label>, tapping the heading would press the first one.
@@ -559,6 +570,8 @@ async function openSetting(s) {
   const clear = $("#dclear");
   clear.hidden = !(s.clearable && s.value);
   clear.onclick = async () => { if (await ask(`Clear ${s.label}?`, "The setting goes back to unset.", { ok: "Clear", danger: true })) apply("-"); };
+  const init = ctl.get();
+  $("#dlg").oncancel = e => { if (ctl.get() !== init) e.preventDefault(); };
   openModal($("#dlg"));
 }
 
@@ -679,38 +692,37 @@ function renderDiff(d) {
   const root = el("div", null, { style: "display:contents" });
   if (!d.entities.length) { root.append(el("p", d.reformatted ? "services.yaml was rewritten by hemma, but no value in it changed — only its formatting. You can commit it or discard it." : "No changes.", { className: "meta" })); return root; }
   const key = e => e.kind + ":" + e.name;
-  const list = el("div", null, { className: "list" });
-  const draw = () => {
-    list.replaceChildren(...d.entities.map(e => {
-      const open = openEnt.has(key(e));
-      const ent = el("div", null, { className: "ent" + (open ? " open" : "") });
-      const head = el("button", null, { type: "button", className: "eh" }); head.setAttribute("aria-expanded", String(open));
-      head.append(el("span", null, { className: "chev" }), el("span", e.status[0].toUpperCase() + e.status.slice(1), { className: "chip " + e.status }), el("span", e.kind, { className: "ek" }), el("span", e.name, { className: "en" }));
-      head.onclick = () => { if (open) openEnt.delete(key(e)); else openEnt.add(key(e)); draw(); };
-      ent.append(head);
-      if (open) {
-        const tab = el("div", null, { className: "etab" });
-        const rows = e.fields.filter(f => e.status === "changed" || e.status === "renamed" || (e.status === "added" ? f.after !== "—" : f.before !== "—"));
-        const hdr = el("div", null, { className: "ehdr" }); ["Field", "Current", "After save"].forEach(h => hdr.append(el("div", h))); tab.append(hdr);
-        for (const f of rows) {
-          const diff = f.before !== f.after;
-          const r = el("div", null, { className: "erow" });
-          r.append(el("div", f.field), el("div", f.before, { className: "cur" + (diff && f.before !== "—" ? " diff" : "") }),
-                   el("div", f.after, { className: "nxt" + (diff ? (e.status === "removed" ? " del" : " add") : "") }));
-          tab.append(r);
-        }
-        ent.append(tab);
-      }
-      return ent;
-    }));
-  };
   if (d.entities.length === 1) openEnt = new Set([key(d.entities[0])]);
-  draw();
-  const top = el("div", null, { className: "top" }); top.append(el("span", "Changes", { className: "lbl" }));
-  if (d.entities.length > 1) {
-    const all = btn("", () => { const everyOpen = d.entities.every(e => openEnt.has(key(e))); openEnt = new Set(everyOpen ? [] : d.entities.map(key)); all.textContent = everyOpen ? "Expand all" : "Collapse all"; draw(); });
-    all.textContent = "Expand all"; top.append(all);
-  }
+  const heads = [];   // [head button, table, entity]: toggled in place, so the chevrons turn
+  const list = el("div", null, { className: "list" });
+  d.entities.forEach(e => {
+    const open = openEnt.has(key(e));
+    const ent = el("div", null, { className: "ent" });
+    const head = el("button", null, { type: "button", className: "eh" }); head.setAttribute("aria-expanded", String(open));
+    head.append(el("span", null, { className: "chev" }), el("span", e.status[0].toUpperCase() + e.status.slice(1), { className: "chip " + e.status }), el("span", e.kind, { className: "ek" }), el("span", e.name, { className: "en" }));
+    const tab = el("div", null, { className: "etab", hidden: !open });
+    const rows = e.fields.filter(f => e.status === "changed" || e.status === "renamed" || (e.status === "added" ? f.after !== "—" : f.before !== "—"));
+    const hdr = el("div", null, { className: "ehdr" }); ["Field", "Current", "After save"].forEach(h => hdr.append(el("div", h))); tab.append(hdr);
+    for (const f of rows) {
+      const diff = f.before !== f.after;
+      const r = el("div", null, { className: "erow" });
+      r.append(el("div", f.field), el("div", f.before, { className: "cur" + (diff && f.before !== "—" ? " diff" : "") }),
+               el("div", f.after, { className: "nxt" + (diff ? (e.status === "removed" ? " del" : " add") : "") }));
+      tab.append(r);
+    }
+    const set = o => { if (o) openEnt.add(key(e)); else openEnt.delete(key(e)); head.setAttribute("aria-expanded", String(o)); tab.hidden = !o; };
+    head.onclick = () => set(tab.hidden);
+    heads.push({ set, isOpen: () => !tab.hidden });
+    ent.append(head, tab); list.append(ent);
+  });
+  // "3 unsaved changes · 2 services · 1 host", and a fold-all switch on the right
+  const by = k => d.entities.filter(e => e.kind === k).length;
+  const parts = [[by("Service"), "service"], [by("Host"), "host"], [by("Domain"), "domain"], [by("Setting"), "setting"]].filter(x => x[0]).map(x => plural(x[0], x[1])).join(" · ");
+  const top = el("div", null, { className: "top" });
+  const all = btn("", () => { const everyOpen = heads.every(h => h.isOpen()); heads.forEach(h => h.set(!everyOpen)); sync(); });
+  const sync = () => { all.textContent = heads.every(h => h.isOpen()) ? "Collapse all" : "Expand all"; };
+  sync();
+  top.append(el("b", plural(d.entities.length, "unsaved change")), el("span", parts, { className: "bd" }), all);
   root.append(top, list);
   if (d.reformatted) root.append(el("p", "services.yaml was also rewritten without a value changing — only its formatting.", { className: "meta" }));
   return root;
@@ -739,6 +751,7 @@ function openCommit() {
   fetch("/api/diff").then(r => r.json()).then(d => { $("#cdiff").replaceChildren(d.error ? el("p", d.error, { className: "err" }) : renderDiff(d)); if (!d.error) fillAdvanced(d); })
     .catch(() => $("#cdiff").replaceChildren(el("p", "Could not load the changes.", { className: "err" })));
   $("#cmsg").value = ""; $("#cerr").textContent = "";
+  $("#cdlg").oncancel = e => { if ($("#cmsg").value.trim()) e.preventDefault(); };   // Esc keeps a message you have started
   // Saving can deploy straight away. The choice is the person's to make once and is remembered; it is OFF until
   // they turn it on, because deploying restarts things.
   const dep = $("#cdep"), act = changes.has_remote ? "deploy" : "apply";
@@ -853,9 +866,10 @@ function drawGroups(box) {
     const g = el("div", null, { className: "group" });
     const head = el("button", null, { type: "button", className: "ghead" }); head.setAttribute("aria-expanded", String(open));
     head.append(el("span", null, { className: "chev" }), el("span", h, { className: "gname" }), el("span", needle ? `${items.length} of ${all.length}` : plural(all.length, "service"), { className: "gcount" }));
-    head.onclick = () => { collapsed[h] = open; drawGroups(box); };
-    g.append(head);
-    if (open) { const list = el("div", null, { className: "list" }); items.forEach(s => list.append(svcRow(s, em["Service:" + s.name]))); g.append(list); }
+    const list = el("div", null, { className: "list", hidden: !open }); items.forEach(s => list.append(svcRow(s, em["Service:" + s.name])));
+    // toggled in place (not redrawn), so the chevron turns instead of being replaced
+    head.onclick = () => { if (needle) return; collapsed[h] = !collapsed[h]; const o = !collapsed[h]; head.setAttribute("aria-expanded", String(o)); list.hidden = !o; };
+    g.append(head, list);
     box.append(g);
   });
   if (needle && !groups.length) box.append(el("div", `No services match “${q}”.`, { className: "empty" }));
@@ -987,10 +1001,13 @@ function issueRow(it, only) {
   line.append(el("span", it.status === "err" ? "Error" : "Warning", { className: "sev" + (it.status === "err" ? " err" : "") }), el("span", it.title, { className: "it" }));
   if (it.fixable) line.append(el("span", "Can be fixed automatically", { className: "fixchip" }));
   ttl.append(line); head.append(ttl, el("span", null, { className: "chev" }));
-  head.onclick = () => { if (open) { issues.open.delete(it.title); if (only) issues.open.add("-" + it.title); } else { issues.open.add(it.title); issues.open.delete("-" + it.title); } render(); };
+  const body = el("div", null, { className: "ibody", hidden: !open });
+  head.onclick = () => {   // toggled in place, so the chevron turns instead of being replaced
+    const o = body.hidden;
+    if (o) { issues.open.add(it.title); issues.open.delete("-" + it.title); } else { issues.open.delete(it.title); if (only) issues.open.add("-" + it.title); }
+    body.hidden = !o; head.setAttribute("aria-expanded", String(o));
+  };
   card.append(head);
-  if (!open) return card;
-  const body = el("div", null, { className: "ibody" });
   if (it.list && it.list.length) { const f = el("div", null, { className: "files" }); it.list.forEach(x => { const r = el("div"); r.append(withCode(x)); f.append(r); }); body.append(f); }
   if (it.summary) body.append(withText("p", "", it.summary));
   (it.notes || []).forEach(n => body.append(withText("p", "", n)));
@@ -999,7 +1016,11 @@ function issueRow(it, only) {
     fix.append(el("div", it.steps.length === 1 ? "How to fix" : "How to fix, in order", { className: "lbl" }));
     it.steps.forEach(s => {
       const row = el("div", null, { className: "step" });
-      row.append(el("span", s.label, { className: "sl" }), withText("span", "st" + (/^(then|run)$/.test(s.label) ? " cmd" : ""), s.text));
+      if (/^(then|run)$/.test(s.label)) {   // a command to run: in a box of its own, with a Copy button
+        const cmd = el("div", null, { className: "cmdbox" }), copy = btn("Copy", async () => { try { await navigator.clipboard.writeText(s.text); copy.textContent = "Copied"; setTimeout(() => { copy.textContent = "Copy"; }, 1600); } catch { copy.textContent = "Press ⌘C"; } });
+        cmd.append(el("span", "$", { className: "ps" }), el("code", s.text), copy);
+        row.append(el("span", s.label, { className: "sl" }), cmd);
+      } else row.append(el("span", s.label, { className: "sl" }), withText("span", "st", s.text));
       fix.append(row);
     });
     body.append(fix);
