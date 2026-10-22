@@ -492,3 +492,19 @@ button.chgh:hover:not(:disabled) { background: var(--hover); }
   .bar, .toast { position: fixed; }
   html:has(dialog[open]), body:has(dialog[open]) { overflow: hidden; }   /* a dialog is open: the page behind does not scroll */
 }
+
+/* the loading spinner: a clock face — the history — with a hand sweeping round, a faint trail behind it and a spark orbiting the rim */
+.spinwrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-height: calc(100dvh - 280px); color: var(--muted); }   /* the middle of the space under the page header */
+.clk { overflow: visible; }
+.clk .face { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.5; }
+.clk .ticks line { stroke: var(--muted); stroke-width: 1.4; stroke-linecap: round; opacity: .55; }
+.clk .trail { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 22 78; opacity: .35; transform-origin: 32px 32px; animation: clk-spin 1.8s linear infinite; }
+.clk .hand { stroke: var(--accent); stroke-linecap: round; transform-origin: 32px 32px; }
+.clk .hand.m { stroke-width: 2.4; animation: clk-spin 1.8s linear infinite; }
+.clk .hand.h { stroke-width: 3; stroke: var(--ink-2); animation: clk-spin 14s linear infinite; }
+.clk .pin { fill: var(--accent); }
+.clk .spark { fill: var(--accent); transform-origin: 32px 32px; animation: clk-spin 2.6s cubic-bezier(.45, 0, .55, 1) infinite reverse; filter: drop-shadow(0 0 3px var(--accent)); }
+.spintext { font-size: 14px; font-weight: 500; letter-spacing: .01em; animation: clk-breathe 1.8s ease-in-out infinite; }
+@keyframes clk-spin { to { transform: rotate(360deg); } }
+@keyframes clk-breathe { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .clk .trail, .clk .hand, .clk .spark, .spintext { animation: none; } .clk .hand.m { transform: rotate(60deg); } .clk .hand.h { transform: rotate(200deg); } .clk .trail { transform: rotate(-30deg); } }
