@@ -166,9 +166,11 @@ authy). It is NOT a second implementation of hemma:
   list, `/api/diff` renders it as things (services, hosts, defaults — current vs changed), hemma's generated
   files are only counted, and other files are listed by name, never interpreted. `apply`/`deploy` are refused
   server-side while the tree is dirty, so everything that goes live carries a commit message.
-- **Two phases, deliberately separate:** *saving* (the bottom save bar: Discard / Save, which commits with a message)
-  and *deploying* (a standing **Deploy** button, always available — nothing is inferred about what is live, so it
-  works on a freshly set-up machine with nothing to save). Deploy is the kernel's `deploy`, which first brings this
+- **Two phases, deliberately separate:** *saving* (the warn bar at the bottom while there are unsaved changes: Discard —
+  which asks inline, Keep / Discard N changes — and Review & save, which commits with a message) and *deploying*: an
+  accent bar ("Saved, not live yet" + Deploy) after a save that was not deployed — remembered in `localStorage`, plus
+  commits origin lacks — and **Tools → Recovery → Redeploy everything**, which is always there, so deploy still works
+  on a freshly set-up machine with nothing to save (nothing about what is LIVE is ever inferred from the page). Deploy is the kernel's `deploy`, which first brings this
   checkout level with origin itself (`git pull --rebase`, aborted cleanly on a real conflict; then `git push`; then a
   drift check), so the UI has no push of its own and "origin moved" is never a dead end for the person. With no origin
   it just applies.
@@ -185,7 +187,7 @@ authy). It is NOT a second implementation of hemma:
 - **Not exposed on purpose:** credential minting (`create app/user`), and terminal-only `help`/`completion`/
   `version`/`defaults` listings, and `list` (the Services page is the overview). The file browser only ever shows
   the mounted repo (no `..`, no symlinks, no dot-folders). When `hemma doctor` finds nothing, Issues shows just
-  "No issues" plus a "Tools" heading with the two checks you can run yourself (Verify, Measure).
+  "No issues"; the two checks you can run yourself (Verify, Measure) live on the Tools page.
 - **Security posture:** sign-in is **authy** (`github.com/miista/authy`), the outermost layer — nothing,
   not even the page or `/static/`, is reachable without a session. Configure `HEMMA_UI_OIDC_*` (all four
   together; the IdP decides who may sign in) or, with none set, the first visitor creates a local account —
@@ -195,10 +197,12 @@ authy). It is NOT a second implementation of hemma:
   container mounts the Docker socket (root-equivalent on the host), so keep it LAN-only. Caveat: authy
   has not had an independent security review yet (its own README says so). `auth_test.go` pins that every
   route is refused without a session.
-- **The Services page is a plain list** (`.svclist`): a service's name and, on the right, an enable/disable switch
-  (instant, no confirmation — it is reversible and shows up as an unsaved change). The name opens a read-only
-  details dialog (`#vdlg`; read-only inputs so values can be copied) whose pinned footer holds Close / Rename /
-  Remove / Edit — Edit, Rename and Remove open the existing typed forms, so nothing about changing a service moved.
+- **The Services page** groups services by host (collapsible, searchable with ⌘K / Ctrl+K); a row opens the service's
+  form directly. The form is the existing typed form drawn as three cards (General, Network, Authentication) with
+  Host and Auth mode as segmented choices; **Enabled** is a switch in it (not a field of `update service`: after the
+  form's own command the page runs `enable`/`disable service`). Rename and Remove sit at the left of the footer
+  (Remove still confirms). A row's chip (Added / Changed / Removed) comes from the diff, and a removed-but-unsaved
+  service shows struck through. There is no read-only details dialog any more.
 - **Issues lists exactly what `hemma doctor` says.** `GET /api/issues` runs doctor read-only (no write lock, so it
   can run after every change to keep the tab's badge current) and returns its output verbatim; the page splits it
   into findings without altering a line. A **Fix** button runs `hemma doctor --fix` and appears only when doctor itself
@@ -206,16 +210,17 @@ authy). It is NOT a second implementation of hemma:
   `TestIssues_…` pins it to the real output) — what `--fix` cannot resolve (advisories, known_hosts, …) is just
   listed. Successful changes are confirmed with a plain toast: the warnings a sync prints are repo-wide advisories,
   not about that change, and belong on Issues.
-- **Four pages, one job each:** Services (the list), Infrastructure (hosts + domains), Issues (doctor, plus the
-  Verify/Measure tools), Settings (the defaults; always last). The unsaved-change badge on a tab counts that page's
+- **Five pages, one job each:** Services (the list), Infrastructure (hosts + domains), Issues (doctor), Tools
+  (Verify, Measure, Recovery → Redeploy everything), Settings (the defaults; always last). The unsaved-change badge on a tab counts that page's
   entities (`diff.go` kinds: Service → Services, Host/Domain → Infrastructure, Setting → Settings).
-- **Phones are the primary screen:** keep fields at 16px (iOS zoom), tables become cards under 640px, and
+- **Phones are the primary screen:** keep fields at 16px (iOS zoom), the shell switches to the phone layout under 720px, and
   nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
-- **Look and feel:** the same design language as reaparr/albumreq (Geist, violet accent, glow, glass bars, the
-  top-bar-plus-bottom-tab-bar menu), but following the system light/dark setting instead of dark only. All colours
-  are tokens with a light and a dark value in `static/style.css` — never hard-code a colour in the page. The page
-  (`static/index.html`) holds markup and script only; the stylesheet and the Geist font files (SIL OFL-1.1, license
-  alongside) are embedded and served from `/static/` behind the same login. Keep text at WCAG AA (4.5:1) in both themes.
+- **Look and feel:** the "direction c" design handoff (`form-redesign-request/` in the checkout, not committed):
+  Instrument Sans + JetBrains Mono, a blue accent, a sidebar on a wide screen and a top bar + bottom tab bar under
+  720px, bordered cards, soft change chips. It follows the system light/dark setting. All colours are tokens with a
+  light and a dark value in `static/style.css` — never hard-code a colour in the page. The page (`static/index.html`)
+  holds markup and script only; the stylesheet and the font files (SIL OFL-1.1, licenses alongside) are embedded and
+  served from `/static/` behind the same login. Keep text at WCAG AA (4.5:1) in both themes.
 
 ## Scope boundary (do not cross)
 

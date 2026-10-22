@@ -75,7 +75,7 @@ func serviceFields(add bool) []field {
 		{Name: "host", Label: "Host", Kind: "str", Ref: "host", Required: add},
 		{Name: "backend", Label: "Backend (name:port)", Kind: "str", Ref: "backend", Required: add},
 		inSection(field{Name: "fqdn", Label: "Address", Kind: "str", Ref: "fqdn", Required: add}, "Network"),
-		flag("tunnel", "Reachable from the internet (tunnel)"),
+		{Name: "tunnel", Label: "Reachable from the internet", Kind: "bool", Help: "Routes through the cloudflared tunnel."},
 		inSection(field{Name: "auth-mode", Label: "Auth mode", Kind: "select", Options: authModes, Default: "none"}, "Authentication"),
 		// Only offered where they mean something (plan.go: groups and bypass paths need a mode that goes through
 		// the auth provider; a per-horizon policy needs forward) — so the form cannot build a combination hemma skips.

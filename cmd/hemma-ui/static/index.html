@@ -10,88 +10,87 @@
 <style>html:not([data-authy]) .only-with-gate { display: none !important }</style>
 </head>
 <body>
-<header class="topbar">
-  <h1 class="brand">
-    <!-- "hemma" is Swedish for "at home": the tile carries a house -->
-    <span class="brand-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/><path d="M10 19.5v-5h4v5"/></svg></span>
-    <span>hemma</span>
-  </h1>
+<aside id="side">
+  <div class="brand"><span class="brand-tile" aria-hidden="true">h</span><span class="brand-name">hemma</span></div>
   <nav id="tabs" aria-label="Pages"></nav>
-  <!-- Deploying is its own step, separate from saving: always here, flush right, on every page. -->
-  <button id="deploy" class="primary" type="button">Deploy</button>
-</header>
-<p class="meta" id="summary"></p>
-<section id="view"></section>
-<div id="savebar" class="save-bar" hidden></div>
-<footer id="foot" class="meta"></footer>
-<div id="toast" class="toast" role="status" hidden></div>
+  <div id="sidefoot"></div>
+</aside>
+
+<div id="app">
+  <!-- a phone's top bar: the brand, and where the changes stand -->
+  <header id="top">
+    <div class="brand"><span class="brand-tile" aria-hidden="true">h</span><span class="brand-name">hemma</span></div>
+    <span id="hint"><span class="dot"></span><span id="hinttext"></span></span>
+  </header>
+  <main id="main"><div id="page"><section id="view"></section></div></main>
+  <div id="deploybar" class="bar" aria-live="polite"></div>
+  <div id="savebar" class="bar" aria-live="polite"></div>
+  <nav id="mtabs" aria-label="Pages"></nav>
+  <div id="toast" class="toast" role="status" hidden></div>
+</div>
 
 <!-- One in-app confirmation for every "are you sure?": nothing uses the browser's own confirm() box. -->
 <dialog id="kdlg" tabindex="-1" autofocus aria-labelledby="ktitle" aria-describedby="kmsg">
   <form method="dialog" id="kform">
-    <h2 id="ktitle"></h2>
-    <p id="kmsg"></p>
-    <div class="row"><button type="button" id="kcancel">Cancel</button><button type="button" id="kgo" class="primary">OK</button></div>
+    <div class="dhd"><div class="tt"><h2 id="ktitle"></h2></div></div>
+    <div class="dbd"><p id="kmsg"></p></div>
+    <div class="dft"><div class="grp"><button type="button" id="kcancel">Cancel</button><button type="button" id="kgo" class="primary">OK</button></div></div>
   </form>
-</dialog>
-
-<!-- A service's details, read only. Edit / Rename / Remove are in its "⋯" menu, so the list itself stays just a name and a switch. -->
-<dialog id="vdlg" tabindex="-1" autofocus aria-labelledby="vtitle">
-  <h2 id="vtitle"></h2>
-  <div id="vfields"></div>
-  <div class="row" id="vactions"></div>
 </dialog>
 
 <!-- The recovery editor: services.yaml as text, for when the file cannot be loaded and no typed form can run. -->
 <dialog id="edlg" tabindex="-1" autofocus aria-labelledby="etitle">
   <form method="dialog" id="eform">
-    <h2 id="etitle">Edit services.yaml</h2>
-    <p class="meta" id="ehelp"></p>
-    <textarea id="etext" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="services.yaml"></textarea>
-    <p class="err" id="eerr"></p>
-    <div class="row"><button type="button" id="ecancel">Cancel</button><button class="primary" id="ego">Save</button></div>
+    <div class="dhd"><div class="tt"><h2 id="etitle">Edit services.yaml</h2><p class="meta" id="ehelp"></p></div><button type="button" class="x" id="ex" aria-label="Close">×</button></div>
+    <div class="dbd">
+      <textarea id="etext" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="services.yaml"></textarea>
+      <p class="err" id="eerr"></p>
+    </div>
+    <div class="dft"><div class="grp"><button type="button" id="ecancel">Cancel</button><button class="primary" id="ego">Save</button></div></div>
   </form>
 </dialog>
 
 <dialog id="rdlg" tabindex="-1" autofocus>
-  <h2 id="rtitle"></h2>
-  <pre id="rout"></pre>
-  <div class="row"><button type="button" id="rclose">Close</button></div>
+  <div class="dhd"><div class="tt"><h2 id="rtitle"></h2></div><button type="button" class="x" id="rx" aria-label="Close">×</button></div>
+  <div class="dbd"><pre id="rout"></pre></div>
+  <div class="dft"><div class="grp"><button type="button" id="rclose">Close</button></div></div>
 </dialog>
 
 <!-- Deploy as a checklist: each step as it happens (syncing hosts, restarting services, …), then the outcome. -->
 <dialog id="pdlg" tabindex="-1" autofocus aria-labelledby="ptitle">
-  <h2 id="ptitle">Deploying…</h2>
-  <ul id="psteps" class="steps" aria-live="polite"></ul>
-  <p class="meta" id="pnote">You can close this: the deploy carries on.</p>
-  <div class="row"><button type="button" id="pdetails" hidden>Details</button><button type="button" id="pclose" class="primary">Hide</button></div>
+  <div class="dhd"><div class="tt"><h2 id="ptitle">Deploying…</h2></div></div>
+  <div class="dbd"><ul id="psteps" class="steps" aria-live="polite"></ul><p class="meta" id="pnote">You can close this: the deploy carries on.</p></div>
+  <div class="dft"><div class="grp"><button type="button" id="pdetails" hidden>Details</button><button type="button" id="pclose" class="primary">Hide</button></div></div>
 </dialog>
 
-<dialog id="dlg" tabindex="-1" autofocus>
+<dialog id="dlg" tabindex="-1" autofocus aria-labelledby="dtitle">
   <form method="dialog" id="form">
-    <h2 id="dtitle"></h2>
-    <p class="meta" id="dhelp"></p>
-    <div id="fields"></div>
-    <p class="err" id="derr"></p>
-    <div class="row">
-      <button type="button" id="cancel">Cancel</button>
-      <button type="button" id="dclear" hidden>Clear</button>
-      <button class="primary" id="go">Run</button>
+    <div class="dhd"><div class="tt"><h2 id="dtitle"></h2><p class="meta" id="dhelp"></p></div><button type="button" class="x" id="dx" aria-label="Close">×</button></div>
+    <div class="dbd"><div id="fields" style="display:contents"></div><p class="err" id="derr"></p></div>
+    <div class="dft">
+      <div class="left" id="dleft"></div>
+      <div class="grp">
+        <button type="button" id="cancel">Cancel</button>
+        <button type="button" id="dclear" hidden>Clear</button>
+        <button class="primary" id="go">Run</button>
+      </div>
     </div>
   </form>
 </dialog>
 
-<dialog id="cdlg" tabindex="-1" autofocus>
+<dialog id="cdlg" tabindex="-1" autofocus aria-labelledby="ctitle">
   <form method="dialog" id="cform">
-    <h2>Save changes</h2>
-    <p class="meta">Saving records these changes with your message.</p>
-    <div id="cdiff" class="cdiff"></div>
-    <details id="cadv" class="advanced" hidden><summary class="meta">Advanced</summary><div id="cadvbody"></div></details>
-    <label>Change message *<textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
-    <label class="switchrow" id="cdeploy"><span>Deploy right after saving</span><span class="switch"><input type="checkbox" id="cdep"><span class="track"></span></span></label>
-    <p class="meta" id="cdephelp"></p>
-    <p class="err" id="cerr"></p>
-    <div class="row"><button type="button" id="ccancel">Cancel</button><button class="primary" id="cgo">Save</button></div>
+    <div class="dhd"><div class="tt"><h2 id="ctitle">Save changes</h2><p class="meta">Saving records these changes with your message.</p></div><button type="button" class="x" id="cx" aria-label="Close">×</button></div>
+    <div class="dbd">
+      <label><span>Change message <span class="err" aria-hidden="true">*</span></span><textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
+      <div id="cdiff" class="chgs"></div>
+      <div id="cadv" class="adv" hidden></div>
+      <p class="err" id="cerr"></p>
+    </div>
+    <div class="dft">
+      <label class="switchrow dswitch" id="cdeploy"><span class="switch"><input type="checkbox" id="cdep"><span class="track"></span></span><span class="txt"><b style="font-weight:600">Deploy right after saving</b><span class="hint" id="cdephelp"></span></span></label>
+      <div class="grp"><button type="button" id="ccancel">Cancel</button><button class="primary" id="cgo">Save</button></div>
+    </div>
   </form>
 </dialog>
 
@@ -102,19 +101,22 @@ const $ = s => document.querySelector(s);
 let changes = { git: false, files: [] };
 let state = { services: [], hosts: [], domains: [], settings: [] };
 let cmds = {};
-const TABS = ["Services", "Infrastructure", "Issues", "Settings"];   // Infrastructure = hosts + domains; Settings (the defaults) comes last
+const TABS = ["Services", "Infrastructure", "Issues", "Tools", "Settings"];   // Infrastructure = hosts + domains; Settings (the defaults) comes last
 // The page you are on lives in the URL (#/issues), so reload, back/forward and a pasted link all land on the same page.
 const tabFromHash = () => TABS.find(t => "#/" + t.toLowerCase() === location.hash) || "Services";
 let tab = tabFromHash();
 window.addEventListener("popstate", () => { const t = tabFromHash(); if (t === tab || broken) return; tab = t; render(); if (t === "Issues") checkIssues(); });
-// Menu icons: the same outline style as albumreq's bottom menu (shown above the label on a phone, hidden on a wide screen).
-const ICON = (inner) => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+const isPhone = () => matchMedia("(max-width: 719px)").matches;
+// Tab icons (shown above the label on a phone; the wide screen's sidebar is text only).
+const ICON = (inner) => `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 const ICONS = {
-  Services: ICON('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path>'),
-  Infrastructure: ICON('<rect x="3" y="4" width="18" height="6.5" rx="1.8"></rect><rect x="3" y="13.5" width="18" height="6.5" rx="1.8"></rect><path d="M7 7.25h.01M7 16.75h.01"></path>'),
-  Issues: ICON('<path d="M12 3.5L2.5 20h19L12 3.5z"></path><path d="M12 10v4M12 17h.01"></path>'),
-  Settings: ICON('<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>'),
+  Services: ICON('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>'),
+  Infrastructure: ICON('<rect x="3" y="4" width="18" height="6.5" rx="1.8"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.8"/><path d="M7 7.25h.01M7 16.75h.01"/>'),
+  Issues: ICON('<path d="M12 3.5L2.5 20h19L12 3.5z"/><path d="M12 10v4M12 17h.01"/>'),
+  Tools: ICON('<path d="M14.7 6.3a4 4 0 0 0-5 5L3.5 17.5a1.8 1.8 0 0 0 2.5 2.5l6.2-6.2a4 4 0 0 0 5-5l-2.5 2.5-2.2-.5-.5-2.2 2.5-2.3z"/>'),
+  Settings: ICON('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
 };
+const TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v5M14 11v5"/></svg>';
 // A badge says where the unsaved changes are: services on Services, hosts and domains on Infrastructure, defaults on Settings.
 function tabBadge(t) {
   const es = pending ? pending.entities : [];
@@ -131,13 +133,13 @@ async function post(url, body) {
   try { return { ...JSON.parse(text), status: r.status }; } catch { return { ok: false, status: r.status, output: `HTTP ${r.status}: ${text}` }; }
 }
 /* ---------- feedback ----------
-   No shared output panel. A change is confirmed with a short message; the save bar
-   (with Deploy) is what the page then points you at. Raw command output appears only where it IS
-   the result (list, verify, doctor, …) or behind "Details" when something needs a closer look. */
+   No shared output panel. A change is confirmed with a short message; the bars at the bottom are what the page then
+   points you at (save, then deploy). Raw command output appears only where it IS the result (list, verify, doctor, …)
+   or behind "Details" when something needs a closer look. */
 let toastTimer;
 // A toast only REPORTS (with Details for the long version). It never asks a question: choices live in dialogs.
 function toast(msg, kind, details) {
-  const t = $("#toast"); t.className = "toast " + (kind || "");
+  const t = $("#toast"); t.className = "toast " + (kind || "") + (barsUp() ? " up" : "");
   t.replaceChildren(el("span", msg));
   if (details) t.append(btn("Details", () => { t.hidden = true; showResult(details.title, details.text); }));
   if (kind === "err") t.append(btn("Dismiss", () => { t.hidden = true; }));
@@ -158,6 +160,8 @@ for (const [dialog, go] of [["#cdlg", "#cgo"], ["#dlg", "#go"], ["#edlg", "#ego"
     e.preventDefault(); $(go).click();
   });
 }
+// the × in a dialog's header closes it
+for (const [x, dialog] of [["#dx", "#dlg"], ["#cx", "#cdlg"], ["#ex", "#edlg"], ["#rx", "#rdlg"]]) $(x).onclick = () => $(dialog).close();
 
 // ask: the app's own confirmation dialog. Resolves true on the action button, false on Cancel / Esc / the backdrop.
 function ask(title, message, { ok = "OK", danger = false, single = false } = {}) {
@@ -193,6 +197,7 @@ function notify(key, res) {
 }
 function el(tag, text, props) { const e = document.createElement(tag); if (text != null) e.textContent = text; return Object.assign(e, props || {}); }
 function btn(label, fn, cls) { const b = el("button", label, { onclick: fn }); if (cls) b.className = cls; return b; }
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many || one + "s"}`;
 
 // run executes an allowlisted command directly (no form), then refreshes.
 async function run(key, values, confirmMsg) {
@@ -203,8 +208,9 @@ async function run(key, values, confirmMsg) {
 }
 
 /* ---------- typed values ----------
-   A field is never "a string": it is a host, a service, a CIDR list… Known sets are pickers,
-   lists are row-per-entry editors with an add box, free text is checked against its shape. The server re-checks everything. */
+   A field is never "a string": it is a host, a service, a CIDR list… Known sets are pickers (a few options are a
+   segmented choice), lists are row-per-entry editors with an add box, free text is checked against its shape. The server
+   re-checks everything. */
 const RX = {
   name: /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
   backend: /^[A-Za-z0-9._-]+:[0-9]+$/,
@@ -242,21 +248,38 @@ function picker(options, current, blank) {
   if (sel.selectedIndex < 0 || (current && sel.value !== current) || (!current && !blank && sel.value === "" && options.length)) sel.selectedIndex = 0;
   return sel;
 }
+// A segmented choice: every option visible, a highlight slides to the chosen one. `options` is [[value, label], …].
+// It fires a bubbling "change" on its node, like a select would.
+function segmented(options, current) {
+  const node = el("div", null, { className: "seg" }); node.setAttribute("role", "radiogroup");
+  const ind = el("span", null, { className: "ind" });
+  let value = options.some(o => o[0] === current) ? current : options[0][0];
+  const n = options.length, w = `((100% - 6px - ${(n - 1) * 3}px) / ${n})`;
+  const buttons = options.map(([v, label]) => { const b = el("button", label, { type: "button", onclick: () => set(v) }); b.setAttribute("role", "radio"); return b; });
+  function paint() {
+    const i = options.findIndex(o => o[0] === value);
+    ind.style.width = `calc${w}`; ind.style.left = `calc(3px + ${i} * (${w} + 3px))`;
+    buttons.forEach((b, j) => { b.classList.toggle("on", j === i); b.setAttribute("aria-checked", String(j === i)); });
+  }
+  function set(v) { if (v === value) return; value = v; paint(); node.dispatchEvent(new Event("change", { bubbles: true })); }
+  node.append(ind, ...buttons); paint();
+  return { node, get: () => value };
+}
 
 // A list of validated values: an add box, then one entry per row with a trash button.
 function listEditor(initial, check, placeholder, onchange) {
   let items = (initial || []).filter(Boolean);
-  const wrap = el("div"), rows = el("ul", null, { className: "items" }), adder = el("div", null, { className: "adder" });
-  const inp = el("input", null, { type: "text", placeholder: placeholder || "", autocomplete: "off", autocapitalize: "off" });
+  const wrap = el("div", null, { style: "display:flex;flex-direction:column;gap:8px" }), rows = el("ul", null, { className: "items" }), adder = el("div", null, { className: "adder" });
+  const inp = el("input", null, { type: "text", className: "mono", placeholder: placeholder || "", autocomplete: "off", autocapitalize: "off" });
   const msg = el("div", null, { className: "err small" });
   const draw = () => rows.replaceChildren(...(items.length ? items.map((v, i) => {
     const li = el("li", null, { className: "item" });
-    const del = el("button", null, { type: "button", className: "danger icon", title: `Remove ${v}`, onclick: () => { items.splice(i, 1); draw(); onchange && onchange(); } });
+    const del = el("button", null, { type: "button", className: "icon", title: `Remove ${v}`, onclick: () => { items.splice(i, 1); draw(); onchange && onchange(); } });
     del.setAttribute("aria-label", `Remove ${v}`);
-    del.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v5M14 11v5"/></svg>';   // static markup, no user text
+    del.innerHTML = TRASH;   // static markup, no user text
     li.append(el("span", v), del);
     return li;
-  }) : [el("li", "None yet", { className: "muted" })]));
+  }) : [el("li", "None yet.", { className: "none" })]));
   const commit = () => {   // returns false if the box holds an invalid value
     const v = inp.value.trim(); if (!v) return true;
     const r = check(v);
@@ -265,7 +288,7 @@ function listEditor(initial, check, placeholder, onchange) {
     inp.value = ""; msg.textContent = ""; draw(); onchange && onchange(); return true;
   };
   inp.onkeydown = e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commit(); } };
-  adder.append(inp, el("button", "Add", { type: "button", onclick: commit }));
+  adder.append(inp, el("button", "Add", { type: "button", className: "primary", onclick: commit }));
   draw(); wrap.append(adder, msg, rows);   // the add box first: it stays put while the list grows beneath it
   return { node: wrap, flush: commit, get: () => items.join(",") };
 }
@@ -275,8 +298,8 @@ function listEditor(initial, check, placeholder, onchange) {
 // Hemma's own generated files are shown but can't be chosen.
 function fileTree(selected, onpick) {
   let sel = selected || "";
-  const node = el("div"), picked = el("div", null, { className: "picked" }), tree = el("div", null, { className: "tree" });
-  const showPicked = () => { picked.textContent = sel ? sel : "No file chosen"; picked.classList.toggle("muted", !sel); };
+  const node = el("div", null, { style: "display:flex;flex-direction:column;gap:10px" }), picked = el("div", null, { className: "picked" }), tree = el("div", null, { className: "tree" });
+  const showPicked = () => { picked.replaceChildren(el("span", "Selected", { className: "meta", style: "font-family:var(--font);font-weight:400" }), el("span", sel || "None selected")); };
   async function fill(ul, dir) {
     const r = await fetch("/api/browse?path=" + encodeURIComponent(dir));
     const data = await r.json();
@@ -287,10 +310,10 @@ function fileTree(selected, onpick) {
       const li = el("li");
       if (e.dir) {
         const sub = el("ul"); sub.hidden = true;
-        const b = el("button", "▸ " + e.name, { type: "button", className: "dir" });
+        const b = el("button", "▸ " + e.name + "/", { type: "button", className: "dir" });
         let loaded = false;
         const toggle = async () => {
-          sub.hidden = !sub.hidden; b.textContent = (sub.hidden ? "▸ " : "▾ ") + e.name;
+          sub.hidden = !sub.hidden; b.textContent = (sub.hidden ? "▸ " : "▾ ") + e.name + "/";
           if (!sub.hidden && !loaded) { loaded = true; await fill(sub, e.path); }
         };
         b.onclick = toggle; li.append(b, sub);
@@ -321,18 +344,20 @@ function fqdnControl(current, required) {
   const doms = state.domains;
   const dom = doms.filter(d => current === d || current?.endsWith("." + d)).sort((a, b) => b.length - a.length)[0] || doms[0] || "";
   const sub = current && dom && current !== dom ? current.slice(0, -(dom.length + 1)) : "";
-  const wrap = el("div", null, { className: "fqdn" });
-  const inp = el("input", null, { type: "text", value: sub, placeholder: "name", autocomplete: "off", autocapitalize: "off" });
+  const row = el("div", null, { className: "fqdn" });
+  const inp = el("input", null, { type: "text", className: "mono", value: sub, placeholder: "name", autocomplete: "off", autocapitalize: "off" });
   const sel = picker(doms, dom);
-  wrap.append(inp, el("span", "."), sel);
+  row.append(inp, el("span", ".", { className: "dot" }), sel);
+  const wrap = el("div", null, { style: "display:flex;flex-direction:column;gap:6px" }); wrap.append(row, el("span", "Must end in one of your domains.", { className: "hint" }));
   // The service's name may suggest the address as it is typed — until the person types their own address
   // (typing in the box sets `own`; clearing it hands the box back to the suggestion).
   let own = false;
   inp.addEventListener("input", () => { own = inp.value !== ""; });
   return { node: wrap, suggest: s => { if (!own) inp.value = s; }, get: () => { const s = inp.value.trim(); return s ? `${s}.${sel.value}` : sel.value; },
-           check: () => (required && !sel.value) ? "define a domain first (Domains tab)" : (inp.value && !RX.dnsname.test(`${inp.value.trim()}.${sel.value || "x.io"}`) ? "the name has characters that are not allowed" : "") };
+           check: () => (required && !sel.value) ? "define a domain first (Infrastructure → Domains)" : (inp.value && !RX.dnsname.test(`${inp.value.trim()}.${sel.value || "x.io"}`) ? "the name has characters that are not allowed" : "") };
 }
 
+const MODE_HINT = { none: "Anyone who can reach the address can use it.", external: "The service handles sign-in itself. hemma adds no gate.", forward: "", oidc: "" };
 // One control for one field; returns {node, get(), check()} where check() is "" or an error.
 function control(fd, prefill, locked) {
   const v = prefill[fd.name];
@@ -350,8 +375,28 @@ function control(fd, prefill, locked) {
     return { node: cl.node, get: () => cl.get(), check: () => cl.flush() ? "" : "fix or clear the value in the box" };
   }
   if (fd.ref === "fqdn") { const c = fqdnControl(v, fd.required); return { node: c.node, suggest: c.suggest, get: c.get, check: c.check }; }
+  // The four auth modes are a segmented choice, with a line of what the chosen one means.
+  if (fd.name === "auth-mode") {
+    const s = segmented([["none", "None"], ["forward", "Forward"], ["oidc", "OIDC"], ["external", "External"]], v || fd.default);
+    const hint = el("div", MODE_HINT[s.get()], { className: "hint" });
+    s.node.addEventListener("change", () => { hint.textContent = MODE_HINT[s.get()]; hint.hidden = !hint.textContent; });
+    hint.hidden = !hint.textContent;
+    const wrap = el("div", null, { style: "display:flex;flex-direction:column;gap:6px" }); wrap.append(s.node, hint);
+    s.node.addEventListener("change", () => wrap.dispatchEvent(new Event("change", { bubbles: true })));
+    return { node: wrap, get: s.get, check: () => "" };
+  }
+  // A locked name (a host being edited) is just shown: a disabled dropdown would read as a choice.
+  if (locked && (fd.ref === "host" || fd.ref === "service")) {
+    const i = el("input", null, { type: "text", className: "mono", value: v ?? "", readOnly: true });
+    return { node: i, get: () => v ?? "", check: () => "" };
+  }
   const pickSet = { host: () => names(state.hosts), service: () => names(state.services), domain: () => state.domains,
                     "service-fqdn": () => state.services.map(s => s.fqdn) }[fd.ref];
+  // A few hosts are a segmented choice too (an unchosen one is the first).
+  if (fd.ref === "host" && names(state.hosts).length >= 2 && names(state.hosts).length <= 3 && !locked) {
+    const s = segmented(names(state.hosts).map(n => [n, n]), v);
+    return { node: s.node, get: s.get, check: () => "" };
+  }
   if (fd.options || pickSet) {
     // An optional choice that already has a value must not offer "(none)": a service can't lose its host.
     const blank = (fd.required || v || fd.default) ? null : (fd.ref === "service-fqdn" ? "(all services)" : "(none)");
@@ -359,48 +404,73 @@ function control(fd, prefill, locked) {
     if (locked) sel.disabled = true;
     return { node: sel, get: () => sel.value, check: () => need(sel.value) };
   }
-  const inp = el("input", null, { type: "text", value: v ?? "", autocomplete: "off", autocapitalize: "off", placeholder: HINT[fd.ref] || "" });
+  const inp = el("input", null, { type: "text", className: "mono", value: v ?? "", autocomplete: "off", autocapitalize: "off", placeholder: HINT[fd.ref] || "" });
   if (locked) inp.readOnly = true;
   return { node: inp, get: () => inp.value.trim(),
            check: () => { const s = inp.value.trim(); if (!s) return need(s); const r = (CHECK[fd.ref] || (() => true))(s); return r === true ? "" : `${fd.label}: ${r}`; } };
 }
 
-function dialogLabel(c) { return c.key.startsWith("add ") ? "Add" : c.key.startsWith("update ") ? "Save" : c.key.startsWith("rename ") ? "Rename" : "Run"; }
+function dialogLabel(c) { return c.key.startsWith("add ") ? "Add " + c.key.slice(4) : c.key.startsWith("update ") ? "Save" : c.key.startsWith("rename ") ? "Rename" : "Run"; }
+// A form's title: an edited service is titled by its name; an edited host just says so.
+const formTitle = (c, prefill) => c.key === "update service" ? prefill.name : c.key === "update host" ? "Edit host" : c.title;
+
+// switchRow: a labelled on/off row with a line of explanation under the label, the switch on the right.
+function switchRow(label, hint, checked) {
+  const i = el("input", null, { type: "checkbox", checked });
+  const sw = el("span", null, { className: "switch" }); sw.append(i, el("span", null, { className: "track" }));
+  const txt = el("span", null, { className: "txt" }); txt.append(el("b", label, { style: "font-weight:600" }), el("span", hint, { className: "hint" }));
+  const lab = el("label", null, { className: "switchrow" }); lab.append(txt, sw);
+  return { node: lab, get: () => i.checked };
+}
 
 // openCmd renders a form from the command's schema; prefill pre-populates it.
 function openCmd(key, prefill = {}) {
   const c = cmds[key];
-  $("#dtitle").textContent = c.title; $("#dhelp").textContent = c.help || ""; $("#derr").textContent = "";
+  $("#dtitle").textContent = formTitle(c, prefill); $("#dhelp").textContent = c.help || ""; $("#dhelp").hidden = !c.help; $("#derr").textContent = "";
   // The Defaults editor leaves Save disabled until something changes: reset the shared buttons.
   $("#dclear").hidden = true; $("#go").textContent = dialogLabel(c); $("#go").disabled = false;
+  const left = $("#dleft"); left.replaceChildren();
   const box = $("#fields"); box.replaceChildren();
   const ctl = [];
   let card = box;
+  const hideName = key === "update service" && prefill.__lock === "name";   // the title already is the name
   for (const fd of c.fields) {
     const k = control(fd, prefill, prefill.__lock === fd.name);
     const title = fd.label + (fd.required ? " *" : "");
     // A list holds buttons, so it must not live inside a <label> (tapping the title would press one).
-    const lab = fd.kind === "list" ? el("div", null, { className: "fld" }) : el("label", k.inline ? "" : title);
-    if (fd.kind === "list") lab.append(el("div", title, { className: "fl" }), k.node);
-    else if (k.inline) { lab.className = "switchrow"; lab.append(el("span", fd.label), k.node); }   // label on the left, the switch on the right
+    const stack = fd.kind === "list" || fd.name === "auth-mode" || fd.name === "host" && k.node.classList?.contains("seg");
+    const lab = stack ? el("div", null, { className: "fld" }) : el("label", k.inline ? "" : title);
+    if (stack) lab.append(el("div", title, { className: "fl" }), k.node);
+    else if (k.inline) { lab.className = "switchrow"; const txt = el("span", null, { className: "txt" }); txt.append(el("b", fd.label, { style: "font-weight:600" })); if (fd.help) txt.append(el("span", fd.help, { className: "hint" })); lab.append(txt, k.node); }   // label on the left, the switch on the right
     else lab.append(k.node);
-    if (fd.section) { card = el("section", null, { className: "card" }); card.append(el("h3", fd.section, { className: "sect" })); box.append(card); }   // a bordered card per group of fields
-    card.append(lab); ctl.push({ fd, k, lab });
+    if (fd.section) { card = el("section", null, { className: "card" }); card.append(el("h3", fd.section, { className: "sect" })); box.append(card); }   // a card per group of fields
+    if (!(hideName && fd.name === "name")) card.append(lab);
+    ctl.push({ fd, k, lab });
+  }
+  // A service can be switched off without being removed. This is not a field of the add/update command (it is the
+  // enable/disable command), so it lives here and runs after the form's own command.
+  let enabled = null;
+  if (key === "add service" || key === "update service") {
+    enabled = switchRow("Enabled", "Turn off to keep the config without serving it.", !prefill.disabled);
+    (box.querySelector(".card") || box).append(enabled.node);
   }
   // Fields that only mean something for some value of another field (auth groups, bypass paths and policy
   // depend on the auth mode) are offered only then — the form cannot build a combination hemma would skip.
   const byName = Object.fromEntries(ctl.map(x => [x.fd.name, x]));
   const offered = x => { if (!x.fd.shows) return true; const [dep, vals] = x.fd.shows.split("="); return vals.split("|").includes(byName[dep]?.k.get() ?? ""); };
   const syncShown = () => ctl.forEach(x => { if (x.fd.shows) x.lab.hidden = !offered(x); });
-  for (const dep of new Set(ctl.filter(x => x.fd.shows).map(x => x.fd.shows.split("=")[0]))) byName[dep]?.k.node.addEventListener("change", syncShown);
+  for (const dep of new Set(ctl.filter(x => x.fd.shows).map(x => x.fd.shows.split("=")[0]))) byName[dep]?.k.node.addEventListener("change", () => {
+    syncShown();
+    // choosing a mode that brings more fields: make sure the new ones are in view
+    requestAnimationFrame(() => requestAnimationFrame(() => byName[dep].lab.closest(".card")?.scrollIntoView({ block: "nearest", behavior: "smooth" })));
+  });
   syncShown();
-  // Editing a service: Remove is the last thing in the form, below the fields (out of the way; asks to confirm).
+  // Editing a service: Rename and Remove sit at the left of the footer, out of the way of Save (Remove asks to confirm).
   if (key === "update service") {
-    const rm = btn("Remove service", () => { $("#dlg").close(); run("remove service", { name: prefill.name }, cmds["remove service"].confirm); }, "danger");
-    rm.classList.add("rmsvc");
-    rm.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v5M14 11v5"/></svg><span>Remove service</span>';   // static markup
-    box.append(rm);
+    left.append(btn("Rename", () => { $("#dlg").close(); openCmd("rename service", { old: prefill.name, __lock: "old" }); }, "ghost"),
+                btn("Remove service", () => { $("#dlg").close(); run("remove service", { name: prefill.name }, cmds["remove service"].confirm); }, "linkdanger"));
   }
+  if (key === "update host") left.append(btn("Remove host", () => { $("#dlg").close(); run("remove host", { name: prefill.name }, cmds["remove host"].confirm); }, "linkdanger"));
   // A new service: the name is usually the address too ("paperless" → paperless.example.com), so offer it as a courtesy.
   if (key === "add service") {
     const name = ctl.find(x => x.fd.name === "name"), addr = ctl.find(x => x.k.suggest);
@@ -435,8 +505,15 @@ function openCmd(key, prefill = {}) {
         return;
       }
       if (!res.ok && !(diagnostic && res.status === 200)) { $("#derr").textContent = formError(res.output); return; }
+      // the Enabled switch, when it changed (the form's own command went through)
+      let flipFailed = false;
+      if (enabled && enabled.get() !== !prefill.disabled) {
+        const r2 = await post("/api/run", { command: enabled.get() ? "enable service" : "disable service", values: { name: values.name || prefill.name } });
+        flipFailed = !r2.ok;
+      }
       if (!c.readonly) await load();   // refresh behind the dialog first, so no stale value flashes
       $("#dlg").close(); notify(key, res);
+      if (flipFailed) toast("Saved, but the service could not be switched " + (enabled.get() ? "on" : "off"), "warn");
     } finally { $("#go").disabled = false; }
   };
   openModal($("#dlg"));
@@ -445,7 +522,8 @@ $("#cancel").onclick = () => $("#dlg").close();
 
 // openSetting edits ONE repo-wide default with an editor that matches what it is.
 async function openSetting(s) {
-  $("#dtitle").textContent = s.label; $("#dhelp").textContent = s.help; $("#derr").textContent = "";
+  $("#dtitle").textContent = s.label; $("#dhelp").textContent = s.help; $("#dhelp").hidden = !s.help; $("#derr").textContent = "";
+  $("#dleft").replaceChildren();
   const box = $("#fields"); box.replaceChildren();
   const save = $("#go"); save.textContent = "Save"; save.disabled = true;
   const changed = () => { save.disabled = ctl.get() === (s.value || ""); };
@@ -462,10 +540,10 @@ async function openSetting(s) {
     const ft = fileTree(s.value, changed);
     ctl = { node: ft.node, get: () => ft.get(), check: () => ft.get() ? "" : "Choose a file" };
   } else {
-    const i = el("input", null, { type: "text", value: s.value || "", placeholder: HINT.relpath, autocomplete: "off", autocapitalize: "off" });
+    const i = el("input", null, { type: "text", className: "mono", value: s.value || "", placeholder: HINT.relpath, autocomplete: "off", autocapitalize: "off" });
     i.oninput = changed; ctl = { node: i, get: () => i.value.trim(), check: () => { const r = CHECK.relpath(i.value.trim()); return r === true ? "" : r; } };
   }
-  const heading = s.kind === "cidrs" ? "Ranges" : s.kind === "file" ? "Choose a file from the repo" : s.kind === "relpath" ? "Folder name (inside each host's directory)" : s.label;
+  const heading = s.kind === "cidrs" ? "Ranges" : s.kind === "file" ? "Choose a file from the repo" : s.kind === "relpath" ? "Folder name (inside each host's directory)" : s.kind === "host" ? "Host" : s.kind === "service" ? "Service" : s.label;
   // Lists and the file tree contain buttons: inside a <label>, tapping the heading would press the first one.
   const multi = s.kind === "cidrs" || s.kind === "file";
   const lab = el(multi ? "div" : "label", multi ? null : heading, multi ? { className: "fld" } : {});
@@ -484,43 +562,23 @@ async function openSetting(s) {
   openModal($("#dlg"));
 }
 
-function table(headers, rows) {
-  const t = el("table", null, { className: "stack" }), h = el("tr"); headers.forEach(x => h.append(el("th", x)));
-  t.append(el("thead")); t.firstChild.append(h);
-  // data-label feeds the card layout on narrow screens (each cell shows its column name)
-  rows.forEach(r => [...r.children].forEach((td, i) => { td.dataset.label = headers[i] || ""; }));
-  const b = el("tbody"); rows.forEach(r => b.append(r)); t.append(b);
-  const panel = el("div", null, { className: "panel" }); panel.append(t); return panel;   // the table sits in a rounded card
-}
-function row(cells, actions, off) {
-  const tr = el("tr"); if (off) tr.className = "off";
-  cells.forEach(c => { const td = el("td"); if (c instanceof Node) td.append(c); else td.textContent = c; tr.append(td); });
-  const a = el("td"); (actions || []).forEach(x => a.append(x)); tr.append(a); return tr;
-}
-const cards = list => { const d = el("div"); d.className = "cards"; list.forEach(x => d.append(x)); return d; };
-
-const cmdBtn = (key, label, prefill) => btn(label || cmds[key].title, () => {
-  if (!cmds[key].fields.length) return run(key, {}, cmds[key].confirm);   // nothing to ask: just run it
-  openCmd(key, prefill);
-}, "");
-
-
 // Two steps, kept apart:
-//   1. SAVE   — the save bar (only while there are unsaved changes): Discard / Save, with a message.
-//   2. DEPLOY — the header button, on every page: makes what is SAVED live. Nothing is inferred about what
-//               is live, so it also works on a freshly set-up machine with nothing to save.
-// Deploy pulls from origin, then applies (with no origin there is nothing to pull: it just applies). It can
-// only ever send what is saved: hemma applies the files in the repo and refuses a repo with unsaved changes,
-// so while changes are waiting Deploy is off. It offers to push unpushed saves first.
+//   1. SAVE   — the warn bar (only while there are unsaved changes): Discard / Review & save, with a message.
+//   2. DEPLOY — makes what is SAVED live: the accent bar after a save that was not deployed, and "Redeploy everything"
+//               under Tools (always there, so it also works on a freshly set-up machine with nothing to save).
+// Deploy pulls from origin, then applies (with no origin there is nothing to pull: it just applies). It can only ever send
+// what is saved: hemma applies the files in the repo and refuses a repo with unsaved changes, so while changes are
+// waiting Deploy is off.
 let deploying = false;
 let pending = null;   // /api/diff summary of the unsaved changes (null when there are none)
-function renderDeploy() {
-  const b = $("#deploy"), dirty = changes.git && changes.files.length > 0;
-  b.textContent = deploying ? "Deploying…" : "Deploy";
-  b.disabled = deploying || dirty || broken;
-  b.title = broken ? "Fix services.yaml first" : dirty ? "Save or discard your changes first" : "Make your saved changes live";
+const dirty = () => changes.git && changes.files.length > 0;
+// "Saved, not live yet": a save that was not deployed (remembered across reloads), or commits origin does not have yet.
+const undeployed = () => !deploying && !dirty() && (localStorage.getItem("hemma.undeployed") === "1" || (changes.has_remote && changes.ahead > 0));
+const barsUp = () => dirty() || deploying || undeployed();
+function renderHint() {
+  const [text, cls] = deploying ? ["Deploying…", "busy"] : dirty() ? ["Save changes to deploy", "warn"] : undeployed() ? ["Saved, not live yet", "busy"] : ["No unsaved changes", ""];
+  $("#hinttext").textContent = text; $("#hint .dot").className = "dot " + cls;
 }
-$("#deploy").onclick = () => deploy();
 // The Deploy question is one short sentence, the same everywhere: what happens (your saved changes go live) and the one
 // thing worth knowing (services restart briefly). Which services, on which host, is for the Details after a failure.
 // With a shared copy (an origin) Deploy reaches every server; without one it is just this one. Saved changes origin
@@ -529,12 +587,8 @@ const deployMany = () => state.hosts.length > 1 && changes.has_remote;
 const deployMessage = () => `Your saved changes go live on ${deployMany() ? "all servers" : "this server"}. Some services restart briefly.`;
 async function deploy() {
   if (deploying) return;
-  if (changes.git && changes.files.length) return toast("Save or discard your unsaved changes before deploying", "warn");
+  if (dirty()) return toast("Save or discard your unsaved changes before deploying", "warn");
   const key = changes.has_remote ? "deploy" : "apply";
-  const unpushed = changes.has_remote ? changes.ahead : 0;
-  // One server with nothing to restart and nothing to send on: say so, and do nothing.
-  const a = state.apply || { host: "", steps: [] };
-  if (!deployMany() && unpushed === 0 && (!a.host || !a.steps.length)) { await ask("Deploy?", "Nothing to update.", { ok: "OK", single: true }); return; }
   if (!await ask("Deploy?", deployMessage(), { ok: "Deploy" })) return;
   await deployNow(key, "Deployed", undefined);
 }
@@ -549,7 +603,7 @@ function deployFailedHosts(out) {
 // Sending the saved commits to origin is Deploy's own first step (hemma rebases onto origin and pushes, on this host),
 // so there is nothing to push from here.
 async function deployNow(key, done, failed) {
-  deploying = true; renderDeploy();
+  deploying = true; render();
   const dlg = $("#pdlg");
   renderSteps([]); $("#ptitle").textContent = "Deploying…"; $("#pdetails").hidden = true; $("#pnote").hidden = false;
   $("#pclose").textContent = "Hide"; $("#pclose").onclick = () => dlg.close();
@@ -559,6 +613,7 @@ async function deployNow(key, done, failed) {
     const text = res.output || res.error || "";
     const on = res.ok ? [] : deployFailedHosts(text);
     const title = res.ok ? done : (failed || "Deploy failed") + (on.length ? ` on ${on.join(", ")}` : "");
+    if (res.ok) localStorage.removeItem("hemma.undeployed");
     $("#ptitle").textContent = title; $("#pnote").hidden = true; $("#pclose").textContent = "Close";
     if (text) { $("#pdetails").hidden = false; $("#pdetails").onclick = () => { dlg.close(); showResult("Deploy", text); }; }
     if (!dlg.open) toast(title, res.ok ? "ok" : "err", res.ok || !text ? undefined : { title: "Deploy", text });   // closed meanwhile: say how it ended
@@ -608,64 +663,79 @@ async function streamDeploy(command, onSteps) {
 }
 
 // discard puts hemma's own output back to the last save; files hemma doesn't manage are left alone.
-async function discard() {
-  if (!await ask("Discard your changes?", "Everything you changed since the last save will be undone.", { ok: "Discard", danger: true })) return;
+async function discardNow() {
   const res = await post("/api/discard", {});
   toastResult("Discard", res, "Changes discarded"); await load();
 }
+async function discard() {
+  if (!await ask("Discard your changes?", "Everything you changed since the last save will be undone.", { ok: "Discard", danger: true })) return;
+  await discardNow();
+}
 
-// renderDiff: what changed in what hemma manages, current (left) against changed (right).
+// renderDiff: what changed in what hemma manages, entity by entity — current against after-save, one fold each.
 // Hemma's generated files are only counted. Files that are not hemma's are not part of any change here.
+let openEnt = new Set();
 function renderDiff(d) {
-  const root = el("div");
-  for (const e of d.entities) {
-    const card = el("div", null, { className: "dcard" }), head = el("div", null, { className: "dhead" });
-    head.append(el("span", e.status, { className: "badge " + e.status }), el("strong", `${e.kind} · ${e.name}`));
-    card.append(head);
-    const rows = e.fields.filter(f => e.status === "changed" || e.status === "renamed" || (e.status === "added" ? f.after !== "—" : f.before !== "—"));
-    if (rows.length) {
-      const t = el("table", null, { className: "dtab" });
-      const hr = el("tr"); ["", "Current", "Changed"].forEach(h => hr.append(el("th", h)));
-      const th = el("thead"); th.append(hr); t.append(th);
-      const tb = el("tbody");
-      for (const f of rows) {
-        const tr = el("tr");
-        tr.append(el("td", f.field),
-          el("td", f.before, { className: f.before === "—" ? "nil" : "del" }),
-          el("td", f.after, { className: f.after === "—" ? "nil" : "add" }));
-        tb.append(tr);
+  const root = el("div", null, { style: "display:contents" });
+  if (!d.entities.length) { root.append(el("p", d.reformatted ? "services.yaml was rewritten by hemma, but no value in it changed — only its formatting. You can commit it or discard it." : "No changes.", { className: "meta" })); return root; }
+  const key = e => e.kind + ":" + e.name;
+  const list = el("div", null, { className: "list" });
+  const draw = () => {
+    list.replaceChildren(...d.entities.map(e => {
+      const open = openEnt.has(key(e));
+      const ent = el("div", null, { className: "ent" + (open ? " open" : "") });
+      const head = el("button", null, { type: "button", className: "eh" }); head.setAttribute("aria-expanded", String(open));
+      head.append(el("span", null, { className: "chev" }), el("span", e.status[0].toUpperCase() + e.status.slice(1), { className: "chip " + e.status }), el("span", e.kind, { className: "ek" }), el("span", e.name, { className: "en" }));
+      head.onclick = () => { if (open) openEnt.delete(key(e)); else openEnt.add(key(e)); draw(); };
+      ent.append(head);
+      if (open) {
+        const tab = el("div", null, { className: "etab" });
+        const rows = e.fields.filter(f => e.status === "changed" || e.status === "renamed" || (e.status === "added" ? f.after !== "—" : f.before !== "—"));
+        const hdr = el("div", null, { className: "ehdr" }); ["Field", "Current", "After save"].forEach(h => hdr.append(el("div", h))); tab.append(hdr);
+        for (const f of rows) {
+          const diff = f.before !== f.after;
+          const r = el("div", null, { className: "erow" });
+          r.append(el("div", f.field), el("div", f.before, { className: "cur" + (diff && f.before !== "—" ? " diff" : "") }),
+                   el("div", f.after, { className: "nxt" + (diff ? (e.status === "removed" ? " del" : " add") : "") }));
+          tab.append(r);
+        }
+        ent.append(tab);
       }
-      t.append(tb); card.append(t);
-    }
-    root.append(card);
+      return ent;
+    }));
+  };
+  if (d.entities.length === 1) openEnt = new Set([key(d.entities[0])]);
+  draw();
+  const top = el("div", null, { className: "top" }); top.append(el("span", "Changes", { className: "lbl" }));
+  if (d.entities.length > 1) {
+    const all = btn("", () => { const everyOpen = d.entities.every(e => openEnt.has(key(e))); openEnt = new Set(everyOpen ? [] : d.entities.map(key)); all.textContent = everyOpen ? "Expand all" : "Collapse all"; draw(); });
+    all.textContent = "Expand all"; top.append(all);
   }
-  if (d.reformatted) root.append(el("p", "services.yaml was rewritten by hemma, but no value in it changed — only its formatting. You can commit it or discard it.", { className: "meta" }));
-  if (!root.children.length) root.append(el("p", "No changes.", { className: "meta" }));
+  root.append(top, list);
+  if (d.reformatted) root.append(el("p", "services.yaml was also rewritten without a value changing — only its formatting.", { className: "meta" }));
   return root;
 }
 // The files behind a change are for people who want to see them, not for the person saving it: they sit in one
-// collapsed "Advanced" fold, in plain words. Saving records ALL of them with the message (the fold says so), so
-// nothing is saved that cannot be seen here. Nothing to show (only services.yaml changed) → no fold at all.
+// collapsed fold, in plain words. Saving records ALL of them with the message (the fold says so), so nothing is saved
+// that cannot be seen here. Nothing to show (only services.yaml changed) → no fold at all.
 function fillAdvanced(d) {
-  const adv = $("#cadv"), body = $("#cadvbody"), n = d ? d.generated.length : 0;
-  adv.hidden = n === 0; body.replaceChildren();
+  const adv = $("#cadv"), n = d ? d.generated.length : 0;
+  adv.hidden = n === 0; adv.replaceChildren();
   if (!n) return;
-  body.append(el("p", "Saving records every file below together with this change.", { className: "meta" }));
-  const group = (title, items, show) => {
-    if (!items.length) return;
-    body.append(el("div", title, { className: "dsec" }));
-    const ul = el("ul", null, { className: "dfiles" });
-    items.forEach(it => { const li = el("li"); li.append(show(it)); ul.append(li); });
-    body.append(ul);
-  };
-  group(`Made by hemma (${d.generated.length})`, d.generated, p => el("code", p));
+  const head = el("button", null, { type: "button", className: "ah" }); head.setAttribute("aria-expanded", "false");
+  head.append(el("span", null, { className: "chev" }), `Generated files (${n})`);
+  const note = el("p", "Saving records every file below together with this change.", { className: "meta", hidden: true, style: "margin-top:8px" });
+  const files = el("div", null, { className: "flist", hidden: true });
+  d.generated.forEach(p => files.append(el("div", p)));
+  head.onclick = () => { const o = files.hidden; files.hidden = !o; note.hidden = !o; head.setAttribute("aria-expanded", String(o)); };
+  adv.append(head, note, files);
 }
 
 // openCommit (the Save panel): review what changed, write the change message, save. Saving only records
-// the changes; deploying them is the separate Deploy button.
+// the changes; deploying them is the separate step.
 function openCommit() {
   $("#cdiff").replaceChildren(el("p", "Loading changes…", { className: "meta" }));
-  fillAdvanced(null); $("#cadv").open = false;
+  fillAdvanced(null);
   fetch("/api/diff").then(r => r.json()).then(d => { $("#cdiff").replaceChildren(d.error ? el("p", d.error, { className: "err" }) : renderDiff(d)); if (!d.error) fillAdvanced(d); })
     .catch(() => $("#cdiff").replaceChildren(el("p", "Could not load the changes.", { className: "err" })));
   $("#cmsg").value = ""; $("#cerr").textContent = "";
@@ -675,7 +745,7 @@ function openCommit() {
   dep.checked = localStorage.getItem("hemma.deployAfterSave") === "1";
   const syncDeploy = () => {
     $("#cgo").textContent = dep.checked ? "Save & deploy" : "Save";
-    $("#cdephelp").textContent = dep.checked ? "Your changes go live right after saving." : "Not live yet — use Deploy when you're ready.";
+    $("#cdephelp").textContent = dep.checked ? "Your changes go live right after saving." : "Not live yet — use Deploy when you’re ready.";
   };
   dep.onchange = () => { localStorage.setItem("hemma.deployAfterSave", dep.checked ? "1" : "0"); syncDeploy(); };
   syncDeploy();
@@ -688,6 +758,7 @@ function openCommit() {
       // Saving only commits. Sending the commit to origin is part of Deploy (hemma does it, rebasing onto origin first).
       const res = await post("/api/commit", { message: $("#cmsg").value });
       if (!res.ok) { $("#cerr").textContent = res.output; return; }   // nothing was saved: stay and fix it
+      if (!wantDeploy) localStorage.setItem("hemma.undeployed", "1");   // saved, and not live yet: the accent bar says so
       await load(); $("#cdlg").close();
       if (!wantDeploy) { toast("Saved", "ok"); return; }
       await deployNow(act, "Saved and deployed", "Saved, but deploy failed");
@@ -697,95 +768,199 @@ function openCommit() {
 }
 $("#ccancel").onclick = () => $("#cdlg").close();
 
-// The save bar (Reaparr's pattern): at the bottom of every page, but ONLY while there are unsaved changes,
-// with Discard and Save. Deploying is the separate header button.
+// The bars: unsaved changes (Discard / Review & save), and — once saved — "not live yet" (Deploy). Each only while it applies.
+let confirmDiscard = false;
 function describePending() {
   const p = pending, n = changes.files.length;
   const files = k => `${k} ${k === 1 ? "file" : "files"} changed`;
-  if (!p) return `${n} unsaved ${n === 1 ? "change" : "changes"}`;
+  if (!p) return plural(n, "unsaved change");
   const e = p.entities.length;
-  if (e) return `${e} unsaved ${e === 1 ? "change" : "changes"}`;
+  if (e) return plural(e, "unsaved change");
   if (p.reformatted) return "services.yaml was reformatted";
   if (p.generated.length) { const k = p.generated.length; return `${k} generated ${k === 1 ? "file" : "files"} changed`; }
   return files(n);   // never a "0 … changed"
 }
-function renderBar() {
-  const bar = $("#savebar"), dirty = changes.git && changes.files.length > 0;
-  bar.hidden = !dirty; document.body.classList.toggle("with-bar", dirty);   // nothing to save → no bar at all
-  document.documentElement.style.setProperty("--bar-extra", "0px");
-  if (!dirty) return;
-  bar.className = "save-bar dirty";
-  const mine = !pending || pending.entities.length || pending.generated.length || pending.reformatted;   // anything hemma can revert?
-  const discardBtn = btn("Discard", discard, "danger"); discardBtn.disabled = !mine;
-  const m = el("div", null, { className: "msg" });
-  m.append(el("span", null, { className: "dot" }), el("strong", describePending()));
-  const a = el("div", null, { className: "acts" });
-  a.append(discardBtn, btn("Save", openCommit, "primary"));
-  bar.replaceChildren(m, a);
-  // the floating "add" button (phones) rides above the bar: tell it how tall the bar is, plus a gap
-  document.documentElement.style.setProperty("--bar-extra", bar.offsetHeight + 8 + "px");
+// "2 services · 1 host": what the unsaved changes are made of
+function breakdown() {
+  const es = pending ? pending.entities : [], by = k => es.filter(e => e.kind === k).length;
+  return [[by("Service"), "service"], [by("Host"), "host"], [by("Domain"), "domain"], [by("Setting"), "setting"]].filter(x => x[0]).map(x => plural(x[0], x[1])).join(" · ");
+}
+function renderBars() {
+  const sb = $("#savebar"), db = $("#deploybar"), d = dirty();
+  sb.classList.toggle("show", d); sb.setAttribute("aria-hidden", String(!d));
+  if (d) {
+    const inner = el("div", null, { className: "in" }), m = el("div", null, { className: "msg" });
+    m.append(el("b", describePending())); const b = breakdown(); if (b) m.append(el("span", b));
+    inner.append(el("span", null, { className: "dot" }), m);
+    if (confirmDiscard) {
+      const n = pending ? pending.entities.length || changes.files.length : changes.files.length;
+      inner.append(btn("Keep", () => { confirmDiscard = false; renderBars(); }), btn(isPhone() ? "Discard all" : `Discard ${plural(n, "change")}`, () => { confirmDiscard = false; discardNow(); }, "danger"));
+    } else {
+      inner.append(btn("Discard", () => { confirmDiscard = true; renderBars(); }, "ghost"), btn("Review & save", openCommit, "primary"));
+    }
+    sb.replaceChildren(inner);
+  } else { confirmDiscard = false; sb.replaceChildren(); }
+  const ds = !d && (deploying || undeployed());
+  db.classList.toggle("show", ds); db.setAttribute("aria-hidden", String(!ds));
+  if (ds) {
+    const inner = el("div", null, { className: "in" }), m = el("div", null, { className: "msg" });
+    m.append(el("b", deploying ? "Deploying…" : "Saved, not live yet"), el("span", deploying ? "Sending your saved changes to the servers" : "Deploy to make it live."));
+    inner.append(el("span", null, { className: "dot" }), m);
+    const go = btn(deploying ? "Deploying…" : "Deploy", () => deploy(), "primary"); go.disabled = deploying; inner.append(go);
+    db.replaceChildren(inner);
+  } else db.replaceChildren();
+  $("#toast").classList.toggle("up", barsUp());
 }
 
-// ── Services: a plain list. The name opens the service's details; the switch on the right enables/disables it. ──
-function serviceRow(s) {
-  const li = el("li", null, { className: s.disabled ? "off" : "" });
-  const open = el("button", s.name, { type: "button", className: "svcopen", onclick: () => openService(s.name) });   // the name is a real button: keyboard and screen readers open it too
-  const sw = el("span", null, { className: "switch" });
-  const cb = el("input", null, { type: "checkbox", checked: !s.disabled });
-  cb.setAttribute("role", "switch"); cb.setAttribute("aria-label", `${s.name} enabled`);
-  cb.onchange = async () => {
-    const hadFocus = document.activeElement === cb;
-    cb.disabled = true;
-    await run(cb.checked ? "enable service" : "disable service", { name: s.name });   // reloads, which REDRAWS the list (this switch is replaced)
-    // …so put the keyboard back on the same service's switch, or a keyboard user is thrown to the top of the page after every toggle
-    if (hadFocus) document.querySelector(`.svclist input[aria-label="${s.name} enabled"]`)?.focus();
-    cb.disabled = false;
-  };
-  sw.append(cb, el("span", null, { className: "track" }));
-  li.append(open, sw);
-  return li;
+// ── Services: grouped by host, a row per service; a row opens its form ────────────────────────────────────────────
+let q = "";
+const collapsed = {};
+const entMap = () => { const m = {}; (pending ? pending.entities : []).forEach(e => { m[e.kind + ":" + e.name] = e; }); return m; };
+const fieldBefore = (e, name) => (e.fields.find(f => f.field === name) || {}).before || "";
+function svcRow(s, ent) {
+  const gone = !!s.ghost;
+  const r = el("div", null, { className: "svc" + (s.disabled && !gone ? " off" : "") + (gone ? " gone" : "") });
+  const info = el("div", null, { className: "info" }), top = el("div", null, { className: "top" });
+  top.append(el("span", s.name, { className: "nm" }));
+  if (ent) top.append(el("span", ent.status[0].toUpperCase() + ent.status.slice(1), { className: "chip " + ent.status }));
+  info.append(top, el("div", s.fqdn, { className: "fq" })); r.append(info);
+  const tags = [];
+  if (s.disabled && !gone) tags.push(el("span", "Disabled", { className: "tag" }));
+  if (tags.length) { const t = el("div", null, { className: "tags" }); t.append(...tags); r.append(t); }
+  if (!gone) {
+    r.tabIndex = 0; r.setAttribute("role", "button");
+    const open = () => openCmd("update service", { ...s, __lock: "name" });
+    r.onclick = open;
+    r.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
+  }
+  return r;
 }
-// openService: the service's details, read only (the fields look like the edit form's, but you cannot change them
-// here — Edit opens the form). Read-only inputs, so the values can still be selected and copied.
-function openService(name) {
-  const s = state.services.find(x => x.name === name); if (!s) return;
-  const mode = s["auth-mode"] || "";
-  const field = (label, value) => { const l = el("label", label); l.append(el("input", null, { type: "text", value: value || "—", readOnly: true })); return l; };
-  // (no Name field: the title already is the name)
-  const sect = t => el("h3", t, { className: "sect" });
-  // The same groups, in the same order, as the edit form: General, Network, Authentication.
-  const fields = [sect("General"), field("Host", s.host), field("Backend (name:port)", s.backend), field("Status", s.disabled ? "Disabled" : "Enabled"),
-    sect("Network"), field("Address", s.fqdn), field("Reachable from the internet (tunnel)", s.tunnel ? "yes" : "no"),
-    sect("Authentication"), field("Auth mode", mode || "none")];
-  // Only the auth detail that applies to this mode (the edit form shows the same ones).
-  if (mode === "forward" || mode === "oidc") fields.push(field("Auth groups", s["auth-groups"]), field("Bypass paths", s["bypass-paths"]));
-  if (mode === "forward") fields.push(field("Policy: local horizon", s["auth-policy-local"]), field("Policy: public horizon", s["auth-policy-public"]));
-  // each group (a heading and the fields after it) is its own card
-  const cards = []; let cur = null;
-  for (const f of fields) { if (f.classList.contains("sect")) { cur = el("section", null, { className: "card" }); cards.push(cur); } cur.append(f); }
-  $("#vtitle").textContent = s.name; $("#vfields").replaceChildren(...cards);
-  // Edit / Rename live in a "⋯" menu (Remove is at the bottom of the edit form) at the top right (native <details>); the footer is just Close.
-  $("#vdlg .kebab")?.remove();
-  const item = (label, fn, cls) => btn(label, () => { $("#vdlg").close(); fn(); }, cls);
-  const menu = el("div", null, { className: "menu" });
-  menu.append(
-    item("Edit", () => openCmd("update service", { ...s, __lock: "name" })),
-    item("Rename", () => openCmd("rename service", { old: s.name, __lock: "old" })));
-  const kebab = el("details", null, { className: "kebab" });
-  const sum = el("summary", "⋯"); sum.setAttribute("aria-label", "More actions");
-  kebab.append(sum, menu);
-  // On a phone the menu sits in the footer next to Close, under the thumb (and opens upward); on a wide screen, top right.
-  const foot = matchMedia("(max-width: 640px)").matches;
-  kebab.classList.toggle("foot", foot);
-  $("#vactions").replaceChildren(btn("Close", () => $("#vdlg").close()));
-  if (foot) $("#vactions").append(kebab); else $("#vdlg").prepend(kebab);
-  openModal($("#vdlg"));
+function drawGroups(box) {
+  const em = entMap(), needle = q.trim().toLowerCase();
+  const rows = state.services.map(s => ({ ...s }));
+  // services removed but not saved yet: shown struck through, so the page agrees with the bar ("1 unsaved change")
+  (pending ? pending.entities : []).filter(e => e.kind === "Service" && e.status === "removed").forEach(e =>
+    rows.push({ name: e.name, host: fieldBefore(e, "Host"), fqdn: fieldBefore(e, "Address"), ghost: true }));
+  const hosts = [...new Set(rows.map(s => s.host).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const groups = hosts.map(h => {
+    const all = rows.filter(s => s.host === h);
+    const items = all.filter(s => !needle || s.name.toLowerCase().includes(needle) || (s.fqdn || "").toLowerCase().includes(needle)).sort((a, b) => a.name.localeCompare(b.name));
+    return { h, all, items };
+  }).filter(g => g.items.length);
+  box.replaceChildren();
+  groups.forEach(({ h, all, items }) => {
+    const open = !collapsed[h] || !!needle;
+    const g = el("div", null, { className: "group" });
+    const head = el("button", null, { type: "button", className: "ghead" }); head.setAttribute("aria-expanded", String(open));
+    head.append(el("span", null, { className: "chev" }), el("span", h, { className: "gname" }), el("span", needle ? `${items.length} of ${all.length}` : plural(all.length, "service"), { className: "gcount" }));
+    head.onclick = () => { collapsed[h] = open; drawGroups(box); };
+    g.append(head);
+    if (open) { const list = el("div", null, { className: "list" }); items.forEach(s => list.append(svcRow(s, em["Service:" + s.name]))); g.append(list); }
+    box.append(g);
+  });
+  if (needle && !groups.length) box.append(el("div", `No services match “${q}”.`, { className: "empty" }));
 }
+const pageHead = (title, sub, ...tools) => {
+  const h = el("div", null, { className: "phead" }), t = el("div", null, { className: "t" });
+  t.append(el("h1", title), el("div", sub, { className: "sub" })); h.append(t);
+  if (tools.length) { const x = el("div", null, { className: "tools" }); x.append(...tools); h.append(x); }
+  return h;
+};
+const sectionHead = (title, ...tools) => { const h = el("div", null, { className: "shead" }); h.append(el("h2", title), ...tools); return h; };
+
+const VIEWS = {
+  Services() {
+    const on = state.services.filter(s => !s.disabled).length;
+    const search = el("input", null, { type: "search", placeholder: isPhone() ? "Search name or address" : `Search name or address  ${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K"}`, value: q, id: "search", autocomplete: "off" });
+    search.setAttribute("aria-label", "Search services"); search.setAttribute("aria-keyshortcuts", "Meta+K Control+K");
+    const groups = el("div", null, { style: "display:flex;flex-direction:column;gap:22px" });
+    search.oninput = () => { q = search.value; drawGroups(groups); };
+    search.onkeydown = e => { if (e.key === "Escape") { if (q) { q = ""; search.value = ""; drawGroups(groups); } else search.blur(); } };
+    const add = btn("Add service", () => openCmd("add service"), "primary");
+    drawGroups(groups);
+    return [pageHead("Services", `${plural(state.services.length, "service")} on ${plural(state.hosts.length, "host")} · ${on} enabled`, search, add), groups];
+  },
+  Infrastructure() {
+    const em = entMap();
+    const chip = e => e ? el("span", e.status[0].toUpperCase() + e.status.slice(1), { className: "chip " + e.status }) : "";
+    const hosts = el("div", null, { className: "list" });
+    [...state.hosts].sort((a, b) => a.name.localeCompare(b.name)).forEach(h => {
+      const n = state.services.filter(s => s.host === h.name).length;
+      const r = el("div", null, { className: "hrow" });
+      const nm = el("div", null, { className: "a-name" }), line = el("div", null, { style: "display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px" });
+      line.append(el("span", h.name, { className: "nm" }), chip(em["Host:" + h.name])); nm.append(line, el("div", plural(n, "service"), { className: "n" }));
+      const ip = el("div", null, { className: "a-ip" }); ip.append(el("div", "IP", { className: "k" }), el("div", h.ip, { className: "v" }));
+      const px = el("div", null, { className: "a-px" }); px.append(el("div", "Extra trusted proxies", { className: "k" }), el("div", (h["trusted-proxies"] || "").split(",").filter(Boolean).join(", ") || "—", { className: "v" }));
+      const act = el("div", null, { className: "act" }); act.append(btn("Edit", () => openCmd("update host", { ...h, name: h.name, __lock: "name" })));
+      r.append(nm, ip, px, act); hosts.append(r);
+    });
+    const domains = el("div", null, { className: "list" });
+    state.domains.slice().sort().forEach(d => {
+      const n = state.services.filter(s => s.fqdn === d || (s.fqdn || "").endsWith("." + d)).length;
+      const r = el("div", null, { className: "drow" });
+      r.append(el("span", d, { className: "nm" }), chip(em["Domain:" + d]), el("span", plural(n, "service"), { className: "n" }),
+               btn("Remove", () => run("remove domain", { name: d }, cmds["remove domain"].confirm), "linkdanger"));
+      domains.append(r);
+    });
+    const sec = (title, add, list) => { const s = el("section", null, { className: "section" }); s.append(sectionHead(title, add), list); return s; };
+    return [pageHead("Infrastructure", "Hosts run your services. Every service address must end in one of your domains."),
+            sec("Hosts", btn("Add host", () => openCmd("add host")), hosts), sec("Domains", btn("Add domain", () => openCmd("add domain")), domains)];
+  },
+  Settings() {
+    const list = el("div", null, { className: "list" }), em = entMap();
+    state.settings.forEach(s => {
+      const r = el("button", null, { type: "button", className: "setrow", onclick: () => openSetting(s) });
+      const lb = el("div"); const l1 = el("div", null, { className: "lb" }); l1.append(el("span", s.label)); if (em["Setting:" + s.label]) l1.append(el("span", "Changed", { className: "chip changed" }));
+      lb.append(l1, el("div", s.help, { className: "ds" }));
+      const val = s.value ? s.value.split(",").join(", ") : "Not set";
+      r.append(lb, el("div", val, { className: "vl" + (s.value ? "" : " unset") }), el("span", "Edit", { className: "ed" }));
+      list.append(r);
+    });
+    const out = el("div", null, { className: "signout" }); out.append(state.version || "", " · ", Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" }));
+    return [pageHead("Settings", "Apply to every service and host."), list, ...(isPhone() ? [out] : [])];
+  },
+  Tools() {
+    const tools = [["verify", "Verify live DNS/Caddy", "Checks that each enabled service resolves and that Caddy answers on its address."],
+                   ["measure", "Measure request timing", "Times a request to each service through DNS, TLS and auth."]];
+    const list = el("div", null, { className: "list" });
+    tools.forEach(([key, title, desc]) => {
+      const r = el("div", null, { className: "trow" }), tx = el("div", null, { className: "tx" });
+      tx.append(el("div", title, { className: "tt" }), el("div", desc, { className: "td" }));
+      r.append(tx, btn("Run", () => cmds[key].fields.length ? openCmd(key) : run(key, {}, cmds[key].confirm)));
+      list.append(r);
+    });
+    // Recovery: push everything to every host, whether or not anything changed (after a failed deploy, a rebuilt host…).
+    // It is the always-there Deploy; with unsaved changes it is off, like Deploy everywhere.
+    const rec = el("section", null, { className: "section" }), row = el("div", null, { className: "card-row" }), tx = el("div", null, { className: "tx" });
+    const d = dirty();
+    tx.append(el("div", "Redeploy everything", { className: "tt" }), el("div", d ? "Save or discard your changes first." : deploying ? "Deploying…" : "Pushes every generated file to every host, even when nothing has changed. Use it after a failed deploy or a rebuilt host.", { className: "td" }));
+    row.append(tx);
+    if (redeployAsk && !d && !deploying) {
+      const hosts = deployMany() ? `all ${state.hosts.length} hosts` : "this host";
+      row.append(btn("Cancel", () => { redeployAsk = false; render(); }), btn(`Redeploy to ${hosts}`, () => { redeployAsk = false; deployNow(changes.has_remote ? "deploy" : "apply", "Deployed"); }, "primary"));
+    } else { const b = btn("Redeploy…", () => { redeployAsk = true; render(); }); b.disabled = d || deploying || broken; if (d) b.title = "Save or discard your changes first"; row.append(b); }
+    rec.append(sectionHead("Recovery"), row);
+    return [pageHead("Tools", "Run checks against what is live right now."), list, rec];
+  },
+  Issues() {
+    // Only what is wrong. A check that passed is never shown.
+    const failing = issues.items.filter(it => it.status === "warn" || it.status === "err");
+    const summary = !issues.loaded ? "Checking…" : issues.error ? "Could not run the checks" : failing.length === 0 ? "No issues found" : `${plural(failing.length, "problem")} to fix before deploying`;
+    const re = btn(issues.busy ? "Checking…" : "Re-check", () => checkIssues()); re.disabled = issues.busy || issues.fixing;
+    const tools = [re];
+    if (issues.fixable) { const fx = btn(issues.fixing ? "Fixing…" : "Fix automatically", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing; tools.push(fx); }
+    const body = el("div", null, { style: "display:flex;flex-direction:column;gap:10px" });
+    if (issues.error) body.append(el("p", issues.error, { className: "err" }));
+    failing.forEach(it => body.append(issueRow(it, failing.length === 1)));
+    return [pageHead("Issues", summary, ...tools), body];
+  },
+};
+let redeployAsk = false;
 
 // ── Issues: a checklist of what `hemma doctor` checks ─────────────────────────────────────────────────────────
 // The server runs doctor (read-only) and reads its output into items (issueitems.go): one per check, with a status,
 // a title, and — for a failing one — why, the files it is about, how to fix it by hand, and whether
-// `hemma doctor --fix` resolves it. A failing item is a row that expands; where --fix helps it has a Fix button,
+// `hemma doctor --fix` resolves it. A failing item is a card that expands; where --fix helps it has a Fix button,
 // and where it does not, the how-to is the item. A check that passed is never shown: this page lists issues only.
 // All text goes in as text nodes (never as markup).
 let issues = { loaded: false, busy: false, again: false, fixing: false, fixable: false, items: [], count: 0, error: "", open: new Set() };
@@ -802,40 +977,41 @@ function withCode(text) {
   return frag;
 }
 const withText = (tag, cls, text) => { const e = el(tag, null, { className: cls }); e.append(withCode(text)); return e; };
-// A failing check: its title is the row; what is behind it shows when it is expanded. Which rows are open survives
-// a re-check (kept by title), so running the checks again does not fold away what you were reading.
-function issueRow(it) {
-  const d = el("details", null, { className: `chk ${it.status}` });
-  d.open = issues.open.has(it.title);
-  d.addEventListener("toggle", () => { if (d.open) issues.open.add(it.title); else issues.open.delete(it.title); });
-  const sum = el("summary");
-  sum.append(el("span", null, { className: "dot" }), el("span", it.title, { className: "ctitle" }));
-  if (it.fixable) sum.append(el("span", "Can be fixed automatically", { className: "cbadge" }));
-  d.append(sum);
-  const body = el("div", null, { className: "cbody" });
-  if (it.summary) body.append(withText("p", "cwhy", it.summary));
-  (it.notes || []).forEach(n => body.append(withText("p", "cwhy", n)));
-  if (it.list && it.list.length) {
-    const ul = el("ul", null, { className: "clist" });
-    it.list.forEach(x => { const li = el("li"); li.append(withCode(x)); ul.append(li); });
-    body.append(ul);
-  }
+// A failing check: its title is the card's header; what is behind it shows when it is expanded. Which cards are open
+// survives a re-check (kept by title), so running the checks again does not fold away what you were reading.
+function issueRow(it, only) {
+  const open = issues.open.has(it.title) || (only && !issues.open.has("-" + it.title));
+  const card = el("div", null, { className: "issue" });
+  const head = el("button", null, { type: "button", className: "ihead" }); head.setAttribute("aria-expanded", String(open));
+  const ttl = el("div", null, { className: "ttl" }), line = el("div", null, { className: "line" });
+  line.append(el("span", it.status === "err" ? "Error" : "Warning", { className: "sev" + (it.status === "err" ? " err" : "") }), el("span", it.title, { className: "it" }));
+  if (it.fixable) line.append(el("span", "Can be fixed automatically", { className: "fixchip" }));
+  ttl.append(line); head.append(ttl, el("span", null, { className: "chev" }));
+  head.onclick = () => { if (open) { issues.open.delete(it.title); if (only) issues.open.add("-" + it.title); } else { issues.open.add(it.title); issues.open.delete("-" + it.title); } render(); };
+  card.append(head);
+  if (!open) return card;
+  const body = el("div", null, { className: "ibody" });
+  if (it.list && it.list.length) { const f = el("div", null, { className: "files" }); it.list.forEach(x => { const r = el("div"); r.append(withCode(x)); f.append(r); }); body.append(f); }
+  if (it.summary) body.append(withText("p", "", it.summary));
+  (it.notes || []).forEach(n => body.append(withText("p", "", n)));
   if (it.steps && it.steps.length) {
-    body.append(el("div", it.steps.length === 1 ? "How to fix it" : "How to fix it, in order", { className: "chead" }));
+    const fix = el("div", null, { className: "fix" });
+    fix.append(el("div", it.steps.length === 1 ? "How to fix" : "How to fix, in order", { className: "lbl" }));
     it.steps.forEach(s => {
-      const row = el("div", null, { className: "frow" });
-      row.append(el("span", s.label, { className: "flabel" }), withText("span", "ftext" + (/^(then|run)$/.test(s.label) ? " cmd" : ""), s.text));
-      body.append(row);
+      const row = el("div", null, { className: "step" });
+      row.append(el("span", s.label, { className: "sl" }), withText("span", "st" + (/^(then|run)$/.test(s.label) ? " cmd" : ""), s.text));
+      fix.append(row);
     });
+    body.append(fix);
   }
   if (it.fixable) {
     const fx = btn(issues.fixing ? "Fixing…" : "Fix automatically", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing;
-    const bar = el("div", null, { className: "cfix" }); bar.append(fx);
-    body.append(bar, el("p", "Fixes everything on this page that can be fixed automatically.", { className: "cnote" }));
+    const row = el("div", null, { className: "fixrow" }); row.append(fx, el("span", "Fixes everything on this page that can be fixed automatically.", { className: "hint" }));
+    body.append(row);
   }
-  if (!body.children.length) body.append(el("p", "Nothing more to show for this one.", { className: "cwhy" }));
-  d.append(body);
-  return d;
+  if (!body.children.length) body.append(el("p", "Nothing more to show for this one."));
+  card.append(body);
+  return card;
 }
 async function checkIssues() {
   if (issues.busy) { issues.again = true; return; }   // one check at a time; if something changed meanwhile, check again after
@@ -846,13 +1022,8 @@ async function checkIssues() {
     issues = { ...issues, loaded: true, error: j.error || "", fixable: !!j.fixable, items, count: items.filter(g => g.status === "warn" || g.status === "err").length };
   } catch (e) { issues = { ...issues, loaded: true, error: String(e) }; }
   issues.busy = false;
-  if (tab === "Issues") render(); else refreshIssueBadge();   // off the Issues page only the badge changes: don't redraw (and disturb) the page you are on
+  if (tab === "Issues") render(); else renderTabs();   // off the Issues page only the badge changes: don't redraw (and disturb) the page you are on
   if (issues.again) { issues.again = false; checkIssues(); }
-}
-function refreshIssueBadge() {
-  const b = [...$("#tabs").children].find(x => x.querySelector(".tab-label")?.textContent === "Issues"); if (!b) return;
-  b.querySelector(".count")?.remove();
-  if (issues.count) { const c = el("span", String(issues.count), { className: "count warn" }); c.setAttribute("aria-label", `${issues.count} ${issues.count === 1 ? "issue" : "issues"}`); b.append(c); }
 }
 async function fixIssues() {
   issues.fixing = true; render();
@@ -863,80 +1034,36 @@ async function fixIssues() {
   toast(res.ok ? "Fixed" : "Fixed what can be fixed automatically — the rest needs a manual step, see the list", res.ok ? "ok" : "warn");
 }
 
-const VIEWS = {
-  Services() {
-    // The same button everywhere: inline at the top on a wide screen, a floating button at the bottom right on a phone.
-    const add = cmdBtn("add service"); add.classList.add("fab");
-    const bar = cards([add]); bar.classList.add("fabwrap");
-    const list = el("ul", null, { className: "svclist" }); state.services.forEach(s => list.append(serviceRow(s)));
-    const panel = el("div", null, { className: "panel" }); panel.append(list);
-    return [bar, panel];
-  },
-  Hosts() {
-    const rows = state.hosts.map(h => row([h.name, h.ip, h["trusted-proxies"] || "—"],
-      [btn("Edit", () => openCmd("update host", { ...h, __lock: "name" })),
-       btn("Remove", () => run("remove host", { name: h.name }, cmds["remove host"].confirm), "danger")]));
-    return [cards([cmdBtn("add host")]), table(["Name", "IP", "Extra trusted proxies", ""], rows)];
-  },
-  Domains() {
-    const rows = state.domains.map(d => row([d], [btn("Remove", () => run("remove domain", { name: d }, cmds["remove domain"].confirm), "danger")]));
-    return [cards([cmdBtn("add domain")]), table(["Domain", ""], rows)];
-  },
-  Defaults() {
-    const rows = state.settings.map(s => {
-      const label = el("span"); label.append(el("strong", s.label), el("span", s.help, { className: "help" }));
-      const val = s.value ? el("span", s.value.split(",").join("  ·  ")) : el("span", "Not set", { className: "muted" });
-      return row([label, val], [btn("Edit", () => openSetting(s))]);
+function renderTabs() {
+  for (const nav of [$("#tabs"), $("#mtabs")]) {
+    nav.replaceChildren();
+    TABS.forEach(t => {
+      const b = el("button", null, { type: "button", className: t === tab ? "on" : "", onclick: () => { if (t !== tab) { history.pushState(null, "", "#/" + t.toLowerCase()); redeployAsk = false; } tab = t; render(); $("#main").scrollTop = 0; if (t === "Issues") checkIssues(); } });   // opening Issues re-runs the checks
+      if (t === tab) b.setAttribute("aria-current", "page");
+      const ic = el("span", null, { className: "ic" }); ic.innerHTML = ICONS[t];   // static markup defined above
+      b.append(ic, el("span", t === "Infrastructure" && nav.id === "mtabs" ? "Infra" : t, { className: "label" }));
+      const n = tabBadge(t);
+      if (n) { const c = el("span", String(n), { className: "count" + (t === "Issues" ? " err" : "") }); c.setAttribute("aria-label", t === "Issues" ? plural(n, "issue") : `${n} unsaved`); b.append(c); }
+      nav.append(b);
     });
-    return [table(["Setting", "Value", ""], rows)];
-  },
-  // Infrastructure: what the services run on and under — the hosts and the domains, one section each.
-  Infrastructure() {
-    const sec = (id, title, nodes) => { const s = el("section", null, { id: `sec-${id}`, className: "sec" }); s.append(el("h2", title), ...nodes); return s; };
-    return [sec("hosts", "Hosts", VIEWS.Hosts()), sec("domains", "Domains", VIEWS.Domains())];
-  },
-  // Settings: the repo-wide defaults (their own page now, so no extra heading above the one table).
-  Settings() {
-    const s = el("section", null, { id: "sec-defaults", className: "sec" }); s.append(...VIEWS.Defaults());
-    return [s];
-  },
-  Issues() {
-    // Checks you can run yourself: tools, not issues, so they sit under their own heading.
-    const tools = [el("h2", "Tools", { className: "subhead" }), cards(["verify", "measure"].map(k => cmdBtn(k)))];
-    // Only what is wrong. A check that passed is never shown.
-    const failing = issues.items.filter(it => it.status === "warn" || it.status === "err");
-    const head = el("div", null, { className: "issues-head" });
-    const summary = !issues.loaded ? "Checking…" : issues.error ? "Could not run the checks" : failing.length === 0 ? "No issues" : `${failing.length} ${failing.length === 1 ? "issue" : "issues"}`;
-    const acts = el("div", null, { className: "row" });
-    const re = btn(issues.busy ? "Checking…" : "Re-check", () => checkIssues()); re.disabled = issues.busy || issues.fixing; acts.append(re);
-    if (issues.fixable) { const fx = btn(issues.fixing ? "Fixing…" : "Fix automatically", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing; acts.append(fx); }
-    head.append(el("strong", summary), acts);
-    const body = el("div", null, { className: "issuelist" });
-    if (issues.error) body.append(el("p", issues.error, { className: "err" }));
-    failing.forEach(it => body.append(issueRow(it)));
-    return [head, body, ...tools];
-  },
-};
-
-function render() {
-  const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-  $("#summary").textContent = `${pl(state.services.length, "service", "services")} · ${pl(state.hosts.length, "host", "hosts")} · ${state.domains.join(", ")}`;
-  const nav = $("#tabs"); nav.replaceChildren();
-  TABS.forEach(t => {
-    const b = el("button", null, { type: "button", className: t === tab ? "on" : "", onclick: () => { if (t !== tab) history.pushState(null, "", "#/" + t.toLowerCase()); tab = t; render(); if (t === "Issues") checkIssues(); } });   // opening Issues re-runs the checks
-    if (t === tab) b.setAttribute("aria-current", "page");
-    const ic = el("span", null, { className: "tab-icon" }); ic.innerHTML = ICONS[t];   // static markup defined above
-    b.append(ic, el("span", t, { className: "tab-label" }));
-    const n = tabBadge(t);
-    if (n) { const c = el("span", String(n), { className: "count" + (t === "Issues" ? " warn" : "") }); c.setAttribute("aria-label", t === "Issues" ? `${n} ${n === 1 ? "issue" : "issues"}` : `${n} unsaved`); b.append(c); }
-    nav.append(b);
-  });
-  $("#view").replaceChildren(...VIEWS[tab]());
-  $("#view").classList.toggle("has-fab", tab === "Services");
-  $("#foot").replaceChildren(state.version || "", " · ", Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" }));
-  renderDeploy();
-  renderBar();
+  }
 }
+function render() {
+  renderTabs();
+  $("#view").replaceChildren(...VIEWS[tab]());
+  const foot = [state.version || "", " · ", Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" })];
+  $("#sidefoot").replaceChildren(...foot);
+  renderHint();
+  renderBars();
+}
+// ⌘K / Ctrl+K: straight to the search box on the Services page
+window.addEventListener("keydown", e => {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "k" || broken) return;
+  if (document.querySelector("dialog[open]")) return;
+  e.preventDefault();
+  const focus = () => { const s = $("#search"); if (s) { s.focus(); s.select(); } };
+  if (tab !== "Services") { tab = "Services"; history.pushState(null, "", "#/services"); render(); requestAnimationFrame(focus); } else focus();
+});
 // ── Recovery: services.yaml cannot be loaded ──────────────────────────────────────────────────────────────────
 // Every typed form needs a loadable file, so none of them can fix this. Offer what can: put back the last saved
 // version (the usual cause is an unsaved change), or edit the file as text.
@@ -946,7 +1073,7 @@ async function showRecovery(error, version) {
   broken = true;
   state = { services: [], hosts: [], domains: [], settings: [], version };
   changes = await (await fetch("/api/changes")).json().catch(() => ({ git: false, files: [] }));
-  $("#tabs").replaceChildren(); $("#summary").textContent = ""; $("#savebar").hidden = true; $("#view").classList.remove("has-fab");
+  $("#tabs").replaceChildren(); $("#mtabs").replaceChildren(); $("#savebar").classList.remove("show"); $("#deploybar").classList.remove("show");
   const card = el("div", null, { className: "recover" });
   card.append(el("h2", "services.yaml can't be read"),
     el("p", "hemma can't load the file, so it can't show or change anything until the file is fixed.", { className: "meta" }),
@@ -957,8 +1084,8 @@ async function showRecovery(error, version) {
   card.append(row);
   if (changes.git && changes.files.length) card.append(el("p", "Discard puts services.yaml back to how it was when you last saved. The unsaved change is what broke it, if you made one.", { className: "meta" }));
   $("#view").replaceChildren(card);
-  $("#foot").replaceChildren(state.version || "", " · ", Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" }));
-  renderDeploy();
+  $("#sidefoot").replaceChildren(state.version || "", " · ", Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" }));
+  $("#hinttext").textContent = "services.yaml can't be read"; $("#hint .dot").className = "dot warn";
 }
 async function openRaw() {
   const r = await fetch("/api/config/raw"); const raw = await r.json();
@@ -992,7 +1119,7 @@ async function load() {
   if (s.error) { await showRecovery(s.error, s.version); return; }
   broken = false;
   state = s;
-  if (!loaded) render();   // first paint as soon as the lists are here; the save bar and badges follow. Later loads wait, so a stale save bar never flashes after a save.
+  if (!loaded) render();   // first paint as soon as the lists are here; the bars and badges follow. Later loads wait, so a stale bar never flashes after a save.
   changes = await chP;
   const d = await dP;
   pending = changes.files.length && d && !d.error ? d : null;

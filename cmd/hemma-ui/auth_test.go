@@ -32,7 +32,7 @@ func TestGate_EveryRouteRefusedWithoutASession(t *testing.T) {
 	routes := []struct{ method, path, body string }{
 		{"GET", "/", ""},
 		{"GET", "/static/style.css", ""},
-		{"GET", "/static/fonts/geist-sans-400.woff2", ""},
+		{"GET", "/static/fonts/instrument-sans-latin-400-normal.woff2", ""},
 		{"GET", "/api/state", ""},
 		{"GET", "/api/commands", ""},
 		{"GET", "/api/browse?path=.", ""},
