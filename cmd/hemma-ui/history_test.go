@@ -1,0 +1,76 @@
+package main
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// A service's history is read from git: its own commits, newest first, followed back through a rename, and never another
+// service's.
+func TestHistory_FollowsOneServiceThroughARename(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "repo")
+	s := &server{repo: dir}
+	if out, err := exec.Command("git", "init", "-q", "-b", "main", dir).CombinedOutput(); err != nil {
+		t.Skipf("git not available: %v %s", err, out)
+	}
+	commit := func(msg, yaml string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "services.yaml"), []byte(yaml), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range [][]string{{"add", "-A"}, {"commit", "-q", "-m", msg}} {
+			if out, err := s.git(time.Minute, a...); err != nil {
+				t.Fatalf("git %v: %v %s", a, err, out)
+			}
+		}
+	}
+	base := "hosts:\n    pi:\n        ip: 192.0.2.10\ndomains:\n    - example.com\nservices:\n"
+	svc := func(name, backend string) string {
+		return "    " + name + ":\n        fqdn: " + name + ".example.com\n        host: pi\n        backend: " + backend + "\n"
+	}
+	other := "    other:\n        fqdn: other.example.com\n        host: pi\n        backend: other:1\n"
+	commit("Add albumreq", base+svc("albumreq", "albumreq:80")+other)
+	commit("Point albumreq at a new port", base+svc("albumreq", "albumreq:8080")+other)
+	commit("Touch another service", base+svc("albumreq", "albumreq:8080")+strings.Replace(other, "other:1", "other:2", 1))
+	commit("Rename albumreq to albumarr", base+svc("albumarr", "albumarr:8080")+strings.Replace(other, "other:1", "other:2", 1))
+	commit("Move albumarr to 9090", base+svc("albumarr", "albumarr:9090")+strings.Replace(other, "other:1", "other:2", 1))
+
+	res, err := s.history("albumarr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range res.Entries {
+		got = append(got, e.Status+": "+e.Subject)
+	}
+	want := []string{"changed: Move albumarr to 9090", "renamed: Rename albumreq to albumarr", "changed: Point albumreq at a new port", "added: Add albumreq"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("history of albumarr:\n got  %q\n want %q", got, want)
+	}
+	if e := res.Entries[1]; e.From != "albumreq" || e.Fields[0].Field != "Name" || e.Fields[0].Before != "albumreq" || e.Fields[0].After != "albumarr" {
+		t.Errorf("the rename entry: %+v", e)
+	}
+	if e := res.Entries[0]; len(e.Fields) != 1 || e.Fields[0].Field != "Backend" || e.Fields[0].Before != "albumarr:8080" || e.Fields[0].After != "albumarr:9090" {
+		t.Errorf("the backend change shows only what changed: %+v", e.Fields)
+	}
+	// the name the service had at each commit: the commit messages of an older entry mention the old name
+	if got := []string{res.Entries[0].Name, res.Entries[1].Name, res.Entries[2].Name, res.Entries[3].Name}; strings.Join(got, ",") != "albumarr,albumarr,albumreq,albumreq" {
+		t.Errorf("names per entry: %v", got)
+	}
+	if e := res.Entries[0]; e.Author == "" || e.When == "" || len(e.Short) != 7 {
+		t.Errorf("who, when and which commit: %+v", e)
+	}
+	// the other service has its own, shorter history
+	if r2, _ := s.history("other"); len(r2.Entries) != 2 || r2.Entries[0].Subject != "Touch another service" {
+		t.Errorf("history of other: %+v", r2.Entries)
+	}
+	// a name that never existed has none, and a bad name is refused by the handler
+	if r3, _ := s.history("nope"); len(r3.Entries) != 0 {
+		t.Errorf("history of nope: %+v", r3.Entries)
+	}
+}
