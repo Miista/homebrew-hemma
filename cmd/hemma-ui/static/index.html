@@ -1112,18 +1112,37 @@ async function fixIssues() {
   toast(res.ok ? "Fixed" : "Fixed what can be fixed automatically — the rest needs a manual step, see the list", res.ok ? "ok" : "warn");
 }
 
+// The tabs are built once and updated in place, with a highlight that slides to the chosen one (a pill down the sidebar,
+// a bar along the top of the phone's tab bar) instead of the selection jumping.
+function placeTabIndicator(nav) {
+  const on = nav.querySelector("button.on"), ind = nav.querySelector(".tabind");
+  if (!on || !ind || !on.offsetWidth) return;   // the other layout's bar is not shown: nothing to place
+  if (nav.id === "mtabs") { ind.style.left = on.offsetLeft + on.offsetWidth * 0.28 + "px"; ind.style.width = on.offsetWidth * 0.44 + "px"; }
+  else { ind.style.top = on.offsetTop + "px"; ind.style.height = on.offsetHeight + "px"; }
+  if (!ind.classList.contains("ready")) requestAnimationFrame(() => requestAnimationFrame(() => ind.classList.add("ready")));   // the first placing does not animate
+}
+const placeTabIndicators = () => [$("#tabs"), $("#mtabs")].forEach(placeTabIndicator);
+window.addEventListener("resize", placeTabIndicators);
+document.fonts.ready.then(placeTabIndicators);
 function renderTabs() {
   for (const nav of [$("#tabs"), $("#mtabs")]) {
-    nav.replaceChildren();
+    if (!nav.querySelector(".tabind")) nav.append(el("span", null, { className: "tabind" }));
     TABS.forEach(t => {
-      const b = el("button", null, { type: "button", className: t === tab ? "on" : "", onclick: () => { if (t !== tab) { history.pushState(null, "", "#/" + t.toLowerCase()); redeployAsk = false; } tab = t; render(); $("#main").scrollTop = 0; if (t === "Issues") checkIssues(); } });   // opening Issues re-runs the checks
-      if (t === tab) b.setAttribute("aria-current", "page");
-      const ic = el("span", null, { className: "ic" }); ic.innerHTML = ICONS[t];   // static markup defined above
-      b.append(ic, el("span", t === "Infrastructure" && nav.id === "mtabs" ? "Infra" : t, { className: "label" }));
+      let b = nav.querySelector(`button[data-tab="${t}"]`);
+      if (!b) {
+        b = el("button", null, { type: "button", onclick: () => { if (t !== tab) { history.pushState(null, "", "#/" + t.toLowerCase()); redeployAsk = false; } tab = t; render(); $("#main").scrollTop = 0; if (t === "Issues") checkIssues(); } });   // opening Issues re-runs the checks
+        b.dataset.tab = t;
+        const ic = el("span", null, { className: "ic" }); ic.innerHTML = ICONS[t];   // static markup defined above
+        b.append(ic, el("span", t === "Infrastructure" && nav.id === "mtabs" ? "Infra" : t, { className: "label" }));
+        nav.append(b);
+      }
+      b.classList.toggle("on", t === tab);
+      if (t === tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+      b.querySelector(".count")?.remove();
       const n = tabBadge(t);
       if (n) { const c = el("span", String(n), { className: "count" + (t === "Issues" ? " err" : "") }); c.setAttribute("aria-label", t === "Issues" ? plural(n, "issue") : `${n} unsaved`); b.append(c); }
-      nav.append(b);
     });
+    placeTabIndicator(nav);
   }
 }
 function render() {
