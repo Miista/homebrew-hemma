@@ -418,7 +418,8 @@ dialog form { margin: 0; }
 .hist .eh .sub { font-weight: 600; overflow-wrap: anywhere; }
 .hist .eh .hm { font-size: 12.5px; font-weight: 400; color: var(--muted); }
 .hist .eh .hm code { font-size: 12px; }
-.hist .hbody { margin: 0; padding: 0 14px 12px 36px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; color: var(--ink-2); }
+.hist .hbody { padding: 10px 14px 4px 36px; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.hist .hbody p { margin: 0 0 8px; }
 mark.hit { background: color-mix(in oklch, var(--warn) 45%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }   /* what a search matched */
 
 /* the actions menu in a dialog's footer (a phone): one chevron button, a menu that opens upwards */
@@ -472,3 +473,22 @@ button.chgh:hover:not(:disabled) { background: var(--hover); }
 .cbar { display: flex; justify-content: flex-end; padding: 6px 10px 2px; border-bottom: 1px solid var(--line); }
 .cbar button { height: 28px; padding: 0 8px; border: 0; background: none; color: var(--accent-text); font-weight: 600; font-size: 13px; }
 .chgh .ek { color: var(--muted); font-size: 13px; } .chgh .en { font-weight: 600; overflow-wrap: anywhere; }
+
+/* the status chip has the same width on every row, so the titles (and the names under a save's changes) start in one column */
+.ent > button.eh .chip { min-width: 84px; justify-content: center; }
+.chgh .chip { min-width: 72px; justify-content: center; }
+.chgh .ek { flex: none; min-width: 56px; }
+
+/* A phone scrolls the PAGE, not a box inside it: iOS scrolls to the top when the status bar is tapped, but only for the page. The header
+   sticks to the top and the tab bar and the bars/toast are fixed to the bottom, as they were when #main scrolled. */
+@media (max-width: 719px) {
+  html, body { height: auto; }
+  body { display: block; overflow: visible; }
+  #app { display: block; min-height: 100dvh; }
+  #top { position: sticky; top: 0; z-index: 10; }
+  #main { overflow: visible; }
+  #page { padding-bottom: calc(var(--nav-h) + 112px + env(safe-area-inset-bottom)); }   /* room under the last row for the tab bar and a bar */
+  #mtabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 12; }
+  .bar, .toast { position: fixed; }
+  html:has(dialog[open]), body:has(dialog[open]) { overflow: hidden; }   /* a dialog is open: the page behind does not scroll */
+}
