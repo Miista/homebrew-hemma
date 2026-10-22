@@ -26,6 +26,7 @@
   --add-soft: oklch(0.93 0.05 150); --add-text: oklch(0.36 0.09 150); --del-soft: oklch(0.94 0.035 25); --del-text: oklch(0.45 0.14 25);
   --scrim: rgba(28, 26, 22, .42); --shadow: 0 24px 64px rgba(28, 26, 22, .22);
   /* chips */
+  --go: oklch(0.5 0.13 150); --go-ink: #ffffff;   /* "save and deploy": a colour of its own, so it is not mistaken for a plain save */
   --p-badge-bg: var(--warn-soft); --p-badge-fg: var(--warn-text);
   --p-error-bg: var(--danger); --p-error-fg: var(--danger-ink);
   --p-add-bg: var(--add-soft); --p-add-fg: var(--add-text);
@@ -45,6 +46,7 @@
     --danger: oklch(0.68 0.17 28); --danger-ink: #1a0806; --danger-soft: oklch(0.3 0.07 28); --danger-text: oklch(0.82 0.12 28);
     --add-soft: oklch(0.32 0.06 150); --add-text: oklch(0.88 0.09 150); --del-soft: oklch(0.32 0.06 25); --del-text: oklch(0.86 0.09 25);
     --scrim: rgba(0, 0, 0, .6); --shadow: 0 24px 64px rgba(0, 0, 0, .5);
+    --go: oklch(0.78 0.14 150); --go-ink: #04140a;
     --p-badge-bg: oklch(0.86 0.15 82); --p-badge-fg: #241703;
     --p-error-bg: oklch(0.76 0.19 25); --p-error-fg: #1f0705;
     --p-add-bg: oklch(0.72 0.16 150 / .2); --p-add-fg: oklch(0.88 0.15 150);
@@ -56,6 +58,9 @@
 
 /* ---------- base ---------- */
 * { box-sizing: border-box; }
+/* No double-tap-to-zoom (iOS Safari zoomed the page when a button was tapped twice quickly). Panning and pinch-zoom still work, so
+   people who need to enlarge the page can. touch-action is not inherited, so it goes on everything. */
+* { touch-action: manipulation; }
 html { background: var(--bg); }
 body { margin: 0; display: flex; height: 100dvh; overflow: hidden; background: var(--bg); color: var(--ink);
        font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
@@ -82,6 +87,9 @@ pre { margin: 12px 0; padding: 14px; border: 1px solid var(--line); border-radiu
 /* a quiet button: no border, a soft tint on hover — Discard, Remove… */
 button.ghost { border-color: transparent; background: none; color: var(--ink-2); }
 button.ghost:hover:not(:disabled) { background: var(--surface-2); }
+/* a button that removes something: neutral until you reach for it, red text and a red edge */
+button.dangerline { border-color: color-mix(in oklch, var(--danger) 45%, var(--line-strong)); background: var(--surface); color: var(--danger-text); }
+button.dangerline:hover:not(:disabled) { background: var(--danger-soft); }
 button.linkdanger { border-color: transparent; background: none; color: var(--danger-text); padding: 0 12px; }
 button.linkdanger:hover:not(:disabled) { background: var(--danger-soft); }
 
@@ -99,6 +107,7 @@ input[type=search] { -webkit-appearance: none; appearance: none; }
 label, .fld { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
 .fl { font-size: 13px; font-weight: 500; color: var(--ink-2); }
 .hint { font-size: 12.5px; font-weight: 400; color: var(--muted); }
+.hint code { padding: 1px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--code-bg); color: var(--ink); font-size: 12px; }
 
 /* an on/off field: label and hint on the left, the switch on the right (the checkbox stays underneath, a real control) */
 label.switchrow { color: var(--ink); flex-direction: row; align-items: center; gap: 12px; cursor: pointer; }
@@ -153,7 +162,7 @@ nav .ic { display: none; } nav .ic svg { display: block; }
 .phead .t { flex: 1 1 220px; min-width: 0; }
 .phead h1 { font-size: 26px; line-height: 1.15; font-weight: 700; letter-spacing: -.02em; }
 .phead .sub { margin-top: 6px; color: var(--muted); }
-.phead .tools { display: flex; gap: 8px; flex: 1 1 320px; justify-content: flex-end; }
+.phead .tools { display: flex; align-items: center; gap: 8px; flex: 1 1 320px; justify-content: flex-end; }
 .phead .tools input[type=search] { flex: 1; max-width: 340px; }
 .section { display: flex; flex-direction: column; gap: 12px; }
 .section > .shead { display: flex; align-items: center; gap: 12px; }
@@ -288,7 +297,7 @@ dialog form { margin: 0; }
 .dbd > * { flex-shrink: 0; }
 .dbd > p { margin: 0; }
 .dft { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 14px 24px 22px; border-top: 1px solid var(--line); background: inherit; position: relative; z-index: 1; }
-.dft .left { display: flex; gap: 4px; margin-left: -12px; } .dft .grp { display: flex; gap: 8px; margin-left: auto; }
+.dft .left { display: flex; flex-wrap: wrap; gap: 8px; } .dft .grp { display: flex; gap: 8px; margin-left: auto; }
 .dft .dswitch { flex: 1 1 260px; min-width: 0; }
 .card { display: flex; flex-direction: column; gap: 16px; padding: 18px; border: 1px solid color-mix(in oklch, var(--line-strong) 80%, var(--ink)); border-radius: var(--r2); background: var(--surface); }
 .sect { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
@@ -384,8 +393,54 @@ dialog form { margin: 0; }
   .dbd { max-height: calc(100vh - 24px - 220px); max-height: calc(100dvh - 24px - 220px); }
   #cdlg, #kdlg { width: 100vw; }
   .dft .grp { flex: 1 1 100%; } .dft .grp button { flex: 1 1 0; }
+  .dft .left:empty { display: none; }
+  /* a form you can change: just Close and the chevron menu to its right; Cancel / Save float above the footer once something has changed */
+  #dlg.floaty .dft { position: relative; flex-wrap: nowrap; }
+  #dlg.floaty .dft .grp { order: 0; flex: 1 1 0; min-width: 0; }
+  #dlg.floaty .dft .left { order: 1; flex: none; }
+  #dlg.floaty #go { display: none; }
+  #dlg.floaty .dfloat { display: flex; }
+  #dlg.floaty .dbd { padding-bottom: 24px; } #dlg.floaty.dirty .dbd { padding-bottom: 96px; }   /* room for the bar, so the last field can scroll clear of it */
   .erow, .ehdr { grid-template-columns: minmax(0, 1fr); } .ehdr { display: none; }
   .erow > div { padding: 2px 14px; } .erow > div:first-child { padding: 8px 14px 2px 36px; } .erow .nxt { padding-bottom: 8px; } .erow .cur:not(.diff) { display: none; }
   .phead .tools { flex-basis: 100%; } .phead .tools input[type=search] { max-width: none; }
   input:not([type=checkbox]), select, textarea { font-size: 16px; } #etext { font-size: 16px; }   /* iOS zooms into any field under 16px */
 }
+
+/* a service's history: one entry per commit, folded like the Save dialog's changes */
+.hist .eh .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.hist .eh .sub { font-weight: 600; overflow-wrap: anywhere; }
+.hist .eh .hm { font-size: 12.5px; font-weight: 400; color: var(--muted); }
+.hist .eh .hm code { font-size: 12px; }
+.hist .hbody { margin: 0; padding: 0 14px 12px 36px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; color: var(--ink-2); }
+mark.hit { background: color-mix(in oklch, var(--warn) 45%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }   /* what a search matched */
+
+/* the actions menu in a dialog's footer (a phone): one chevron button, a menu that opens upwards */
+.acts { position: relative; }
+.morebtn { width: 44px; padding: 0; display: grid; place-items: center; }
+.morebtn .cv { width: 16px; height: 16px; display: grid; place-items: center; }
+.morebtn .cv::before { content: ""; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(2px) rotate(225deg); transition: transform .2s ease; }   /* up when shut… */
+.morebtn[aria-expanded=true] .cv::before { transform: translateY(-2px) rotate(45deg); }   /* …turning to down when the menu is open */
+.amenu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 5; min-width: 190px; display: flex; flex-direction: column; gap: 2px; padding: 6px;
+         background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: var(--shadow); }
+.amenu button { height: 44px; padding: 0 12px; border: 0; background: none; text-align: left; }
+.amenu button:hover:not(:disabled) { background: var(--surface-2); }
+.amenu button.dangerline, .amenu button.dangerline:hover:not(:disabled) { color: var(--danger-text); }
+.amenu button.dangerline:hover:not(:disabled) { background: var(--danger-soft); }
+
+/* the floating Cancel / Save bar (a phone's edit form): hidden until the form has changed, then it slides up above the footer */
+.dfloat { display: none; position: absolute; left: 16px; right: 16px; bottom: calc(100% + 10px); z-index: 4; gap: 8px; padding: 8px; border-radius: var(--r2);
+          border: 1.5px solid var(--warn); background: var(--warn-soft); box-shadow: 0 0 0 4px color-mix(in oklch, var(--warn) 22%, transparent), var(--shadow);   /* the same amber as the page's unsaved-changes bar: it says "unsaved" and does not blend into the dialog */
+          opacity: 0; transform: translateY(12px); pointer-events: none; visibility: hidden; transition: transform .25s cubic-bezier(.2, .8, .2, 1), opacity .2s, visibility 0s .25s; }   /* hidden: out of the tab order too */
+.dfloat.show { opacity: 1; transform: none; pointer-events: auto; visibility: visible; transition-delay: 0s; }
+.dfloat button { flex: 1; }
+@media (prefers-reduced-motion: reduce) { .dfloat { transition: none; } }
+
+/* Save with "deploy right after saving" on: the button and the switch turn green, so it reads as different from a plain Save */
+button.primary.deploy { border-color: var(--go); background: var(--go); color: var(--go-ink); }
+button.primary.deploy:hover:not(:disabled) { background: var(--go); filter: brightness(1.08); }
+#cdlg .switch input:checked + .track { background: var(--go); }
+
+/* iOS Safari zooms the page into any field rendered below 16px (reaparr and albumarr keep theirs at 16px for this). The phone rules above
+   only cover narrow screens; an iPhone turned sideways or an iPad is wider than that, so every touch screen gets 16px fields. */
+@media (pointer: coarse) { input:not([type=checkbox]), select, textarea, #etext { font-size: 16px; } }
