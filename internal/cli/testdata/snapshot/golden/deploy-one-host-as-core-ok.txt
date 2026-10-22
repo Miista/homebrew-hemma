@@ -25,7 +25,10 @@ Deploying to 1 host: edge.
 Deployed.
 --- stderr ---
 --- external commands ---
-git -C <repo> status --porcelain
+git -C <repo> status --porcelain --untracked-files=all
+git -C <repo> show HEAD:hemma-manifest.yaml
+git -C <repo> show HEAD:splitdns-manifest.yaml
+git -C <repo> show HEAD:sd-manifest.yaml
 git -C <repo> rev-parse --abbrev-ref @{u}
 git -C <repo> fetch
 git -C <repo> rev-list --left-right --count HEAD...@{u}

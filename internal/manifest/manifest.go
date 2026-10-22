@@ -29,14 +29,22 @@ func Load(path string) (m *Manifest, ok bool) {
 		// Missing manifest -> empty, rebuildable.
 		return &Manifest{Entries: map[string][]string{}, path: path}, os.IsNotExist(err)
 	}
+	m, ok = Parse(data)
+	m.path = path
+	return m, ok
+}
+
+// Parse reads manifest bytes (a file on disk, or a committed version of it). Like Load, an unparseable one is
+// reported with ok=false and an empty manifest.
+func Parse(data []byte) (m *Manifest, ok bool) {
 	var entries map[string][]string
 	if err := yaml.Unmarshal(data, &entries); err != nil {
-		return &Manifest{Entries: map[string][]string{}, path: path}, false
+		return &Manifest{Entries: map[string][]string{}}, false
 	}
 	if entries == nil {
 		entries = map[string][]string{}
 	}
-	return &Manifest{Entries: entries, path: path}, true
+	return &Manifest{Entries: entries}, true
 }
 
 // Rebuild re-derives expected filenames from the plan and records those that

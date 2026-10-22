@@ -257,17 +257,29 @@ func deployPreflight(env *Env, repoRoot string) error {
 		out, err := env.command("git", append([]string{"-C", repoRoot}, args...)...).CombinedOutput()
 		return strings.TrimSpace(string(out)), err
 	}
-	out, err := git("status", "--porcelain")
+	out, err := git("status", "--porcelain", "--untracked-files=all")
 	if err != nil {
 		return fmt.Errorf("cannot check the repo's git status in %s: %v\n%s", repoRoot, err, out)
 	}
-	if out != "" {
-		return fmt.Errorf("the local repo is dirty — commit before deploying:\n%s", out)
+	// Only hemma's own files must be committed: they are what goes live, so they must carry a commit message. Anything
+	// else in the repo is somebody else's work in progress (see OwnedPaths) and is left alone, as on a remote host.
+	owned := OwnedPaths(repoRoot, func(p string) ([]byte, bool) {
+		b, err := git("show", "HEAD:"+p)
+		return []byte(b), err == nil
+	})
+	var ours []string
+	for _, line := range strings.Split(out, "\n") {
+		if paths := porcelainPaths(line); len(paths) == 1 && owned[paths[0]] {
+			ours = append(ours, line)
+		}
+	}
+	if len(ours) > 0 {
+		return fmt.Errorf("the local repo is dirty — commit before deploying:\n%s", strings.Join(ours, "\n"))
 	}
 	if out, err := git("rev-parse", "--abbrev-ref", "@{u}"); err != nil {
 		return fmt.Errorf("cannot find the upstream of the current branch in %s (no upstream configured?): %v\n%s", repoRoot, err, out)
 	}
-	_, err = syncWithOrigin(git, syncLocal, false, func(format string, a ...any) { fmt.Fprintf(env.Out, format+"\n", a...) })
+	_, err = syncWithOrigin(git, syncLocal, true, func(format string, a ...any) { fmt.Fprintf(env.Out, format+"\n", a...) })
 	return err
 }
 
