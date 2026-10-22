@@ -32,7 +32,6 @@ type entityChange struct {
 type diffResult struct {
 	Entities  []entityChange `json:"entities"`
 	Generated []string       `json:"generated"` // files hemma regenerated from the above
-	Other     []change       `json:"other"`     // hand-edited files: no meaningful summary, listed by name
 	// Reformatted: services.yaml differs on disk but no value in it changed. Hemma rewrites the file
 	// wholesale on every edit, so setting something and clearing it again leaves different whitespace.
 	Reformatted bool `json:"reformatted"`
@@ -165,7 +164,7 @@ func (s *server) headConfig() *config.Config {
 }
 
 func (s *server) diff() (diffResult, error) {
-	res := diffResult{Entities: []entityChange{}, Generated: []string{}, Other: []change{}}
+	res := diffResult{Entities: []entityChange{}, Generated: []string{}}
 	now, err := config.Load(filepath.Join(s.repo, "services.yaml"))
 	if err != nil {
 		return res, err
@@ -230,36 +229,17 @@ func (s *server) diff() (diffResult, error) {
 		}
 	}
 
+	// changes() lists only hemma's own files, so everything but services.yaml is something it generated.
 	yamlChanged := false
 	for _, f := range s.changesCached().Files {
-		switch {
-		case f.Path == "services.yaml":
+		if f.Path == "services.yaml" {
 			yamlChanged = true
-		case s.isGeneratedChange(f):
+		} else {
 			res.Generated = append(res.Generated, f.Path)
-		default:
-			res.Other = append(res.Other, f)
 		}
 	}
 	res.Reformatted = yamlChanged && len(res.Entities) == 0
 	return res, nil
-}
-
-// isGeneratedChange: is this changed file one of hemma's outputs? A present file carries a header;
-// a deleted one can no longer be read, so it is recognised by where hemma writes things.
-func (s *server) isGeneratedChange(f change) bool {
-	if f.Path == "hemma-manifest.yaml" {
-		return true
-	}
-	if _, err := os.Stat(filepath.Join(s.repo, f.Path)); err == nil {
-		return isGenerated(filepath.Join(s.repo, f.Path))
-	}
-	for _, m := range []string{"/sites/", "/tls/", "/dnsmasq.d/", ".generated.", "cloudflared/config.yml"} {
-		if strings.Contains(f.Path, m) {
-			return true
-		}
-	}
-	return false
 }
 
 // handleDiscard throws away the unsaved changes hemma itself made: services.yaml, the manifest and
@@ -272,9 +252,6 @@ func (s *server) handleDiscard(w http.ResponseWriter, r *http.Request) {
 	var restore []string
 	removed := 0
 	for _, f := range s.changes().Files {
-		if f.Path != "services.yaml" && !s.isGeneratedChange(f) {
-			continue
-		}
 		if strings.HasPrefix(f.Path, `"`) { // git quotes unusual names; leave those alone
 			continue
 		}

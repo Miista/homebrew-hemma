@@ -393,16 +393,59 @@ func TestDeployPreflight(t *testing.T) {
 		t.Errorf("clean pushed repo should pass preflight: %v", err)
 	}
 
-	// Dirty working tree → refused.
-	if err := os.WriteFile(filepath.Join(clone, "f"), []byte("2"), 0o644); err != nil {
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(clone, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("services.yaml", "{}\n")
+	if err := os.MkdirAll(filepath.Join(clone, "gen"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := deployPreflight(stdEnv(), clone); err == nil || !strings.Contains(err.Error(), "dirty") {
-		t.Errorf("dirty repo should be refused, got %v", err)
+	write("gen/x.conf", "1\n")
+	write("hemma-manifest.yaml", "svc:\n  - gen/x.conf\n")
+	git("add", "-A")
+	git("commit", "-m", "hemma files")
+	git("push")
+
+	// Somebody else's file edited (not hemma's: not services.yaml, not in the manifest) → left alone, deploy goes on.
+	write("f", "2")
+	if err := deployPreflight(stdEnv(), clone); err != nil {
+		t.Errorf("an edit to a file hemma does not own must not block the deploy: %v", err)
+	}
+	if out := gitOut(t, clone, "status", "--porcelain"); !strings.Contains(out, " f") {
+		t.Errorf("the other file's edit must be left in place, status: %q", out)
 	}
 
+	// hemma's own files edited, uncommitted → refused, naming them (and only them).
+	for _, name := range []string{"services.yaml", "gen/x.conf", "hemma-manifest.yaml"} {
+		old, _ := os.ReadFile(filepath.Join(clone, name))
+		write(name, string(old)+"# edit\n")
+		err := deployPreflight(stdEnv(), clone)
+		if err == nil || !strings.Contains(err.Error(), "dirty") || !strings.Contains(err.Error(), name) {
+			t.Errorf("uncommitted %s should be refused, got %v", name, err)
+		} else if strings.Contains(err.Error(), " f\n") || strings.HasSuffix(err.Error(), " f") {
+			t.Errorf("the refusal must not list files hemma does not own: %v", err)
+		}
+		git("checkout", "--", name)
+	}
+
+	// A new generated file (untracked, in a directory of its own) is still seen, and refused.
+	if err := os.MkdirAll(filepath.Join(clone, "newdir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write("newdir/y.conf", "1\n")
+	write("hemma-manifest.yaml", "svc:\n  - gen/x.conf\n  - newdir/y.conf\n")
+	if err := deployPreflight(stdEnv(), clone); err == nil || !strings.Contains(err.Error(), "newdir/y.conf") {
+		t.Errorf("an untracked file the manifest lists should be refused, got %v", err)
+	}
+	git("checkout", "--", "hemma-manifest.yaml")
+	os.RemoveAll(filepath.Join(clone, "newdir"))
+
 	// Committed but unpushed → no longer refused: the deploy host pushes it itself.
-	git("add", "f")
+	write("services.yaml", "{a: 1}\n")
+	git("add", "services.yaml")
 	git("commit", "-m", "local only")
 	if err := deployPreflight(stdEnv(), clone); err != nil {
 		t.Errorf("an unpushed commit should be pushed by the preflight, got %v", err)

@@ -354,8 +354,8 @@ function control(fd, prefill, locked) {
                     "service-fqdn": () => state.services.map(s => s.fqdn) }[fd.ref];
   if (fd.options || pickSet) {
     // An optional choice that already has a value must not offer "(none)": a service can't lose its host.
-    const blank = (fd.required || v) ? null : (fd.ref === "service-fqdn" ? "(all services)" : "(none)");
-    const sel = picker(fd.options || pickSet(), v, fd.options?.includes("") ? null : blank);
+    const blank = (fd.required || v || fd.default) ? null : (fd.ref === "service-fqdn" ? "(all services)" : "(none)");
+    const sel = picker(fd.options || pickSet(), v || fd.default, fd.options?.includes("") ? null : blank);   // a field with a default has no blank entry
     if (locked) sel.disabled = true;
     return { node: sel, get: () => sel.value, check: () => need(sel.value) };
   }
@@ -615,8 +615,7 @@ async function discard() {
 }
 
 // renderDiff: what changed in what hemma manages, current (left) against changed (right).
-// Hemma's generated files are only counted; any other file is listed by name — never interpreted.
-const FILE_STATUS = { M: "modified", MM: "modified", A: "new", "??": "new", D: "deleted", R: "renamed" };
+// Hemma's generated files are only counted. Files that are not hemma's are not part of any change here.
 function renderDiff(d) {
   const root = el("div");
   for (const e of d.entities) {
@@ -648,7 +647,7 @@ function renderDiff(d) {
 // collapsed "Advanced" fold, in plain words. Saving records ALL of them with the message (the fold says so), so
 // nothing is saved that cannot be seen here. Nothing to show (only services.yaml changed) → no fold at all.
 function fillAdvanced(d) {
-  const adv = $("#cadv"), body = $("#cadvbody"), n = d ? d.generated.length + d.other.length : 0;
+  const adv = $("#cadv"), body = $("#cadvbody"), n = d ? d.generated.length : 0;
   adv.hidden = n === 0; body.replaceChildren();
   if (!n) return;
   body.append(el("p", "Saving records every file below together with this change.", { className: "meta" }));
@@ -660,7 +659,6 @@ function fillAdvanced(d) {
     body.append(ul);
   };
   group(`Made by hemma (${d.generated.length})`, d.generated, p => el("code", p));
-  group(`Other files (${d.other.length})`, d.other, f => { const s = document.createDocumentFragment(); s.append(el("code", f.path), ` — ${FILE_STATUS[f.status] || f.status}`); return s; });
 }
 
 // openCommit (the Save panel): review what changed, write the change message, save. Saving only records
@@ -709,7 +707,6 @@ function describePending() {
   if (e) return `${e} unsaved ${e === 1 ? "change" : "changes"}`;
   if (p.reformatted) return "services.yaml was reformatted";
   if (p.generated.length) { const k = p.generated.length; return `${k} generated ${k === 1 ? "file" : "files"} changed`; }
-  if (p.other.length) return `${p.other.length} other ${p.other.length === 1 ? "file" : "files"} changed`;
   return files(n);   // never a "0 … changed"
 }
 function renderBar() {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"hemma/internal/cli/kernel"
 	"log"
 	"net/http"
 	"os"
@@ -83,8 +84,15 @@ func (s *server) changes() changes {
 	}
 	c.Git = true
 	out, _ := s.git(20*time.Second, "status", "--porcelain=v1", "--untracked-files=all")
+	// Only what hemma is responsible for counts as a change here (kernel.OwnedPaths: services.yaml, the manifest and
+	// every file the manifest lists). The rest of the repo is somebody else's work: it is not shown, not committed by
+	// Save, and does not hold back Deploy.
+	owned := kernel.OwnedPaths(s.repo, func(p string) ([]byte, bool) {
+		b, err := s.git(10*time.Second, "show", "HEAD:"+p)
+		return []byte(b), err == nil
+	})
 	for _, l := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
-		if len(l) > 3 {
+		if len(l) > 3 && owned[unquoteRename(l[3:])] {
 			c.Files = append(c.Files, change{Status: strings.TrimSpace(l[:2]), Path: l[3:]})
 		}
 	}
@@ -98,6 +106,14 @@ func (s *server) changes() changes {
 	return c
 }
 
+// unquoteRename turns a porcelain path into the path to look up: a rename "old -> new" is its new path.
+func unquoteRename(p string) string {
+	if i := strings.LastIndex(p, " -> "); i >= 0 {
+		p = p[i+4:]
+	}
+	return p
+}
+
 // There is no push here: sending commits to origin is the first step of `hemma deploy` itself (on this, the deploy
 // host: pull --rebase when origin moved, then push), so Save only commits.
 
@@ -105,9 +121,9 @@ func (s *server) handleChanges(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, s.changesCached())
 }
 
-// handleCommit commits every pending change under the operator's message.
-// The UI shows the file list before this is called; nothing is staged by hemma
-// itself, so what is committed is exactly what the operator reviewed.
+// handleCommit commits every pending change under the operator's message: hemma's own files (changes() lists only
+// those), named explicitly, so nothing else in the repo — somebody's half-done edit to a compose file — is staged or
+// committed along with them.
 func (s *server) handleCommit(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Message string `json:"message"`
@@ -134,7 +150,14 @@ func (s *server) handleCommit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var sb strings.Builder
-	for _, step := range [][]string{{"add", "-A"}, {"commit", "--message=" + msg}} {
+	paths := make([]string, 0, len(ch.Files))
+	for _, f := range ch.Files {
+		paths = append(paths, unquoteRename(f.Path))
+	}
+	for _, step := range [][]string{
+		append([]string{"add", "-A", "--"}, paths...),
+		append([]string{"commit", "--message=" + msg, "--"}, paths...), // --only: just these, whatever else is staged
+	} {
 		out, err := s.git(time.Minute, step...)
 		sb.WriteString(out)
 		if err != nil {

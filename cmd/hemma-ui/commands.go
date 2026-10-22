@@ -29,6 +29,9 @@ type field struct {
 	// Section: a heading the browser draws above this field and the ones after it, until the next Section.
 	// Fields before the first heading are drawn ungrouped.
 	Section string `json:"section,omitempty"`
+	// Default: what a select shows (and an empty value means) when nothing is chosen yet, so it never needs a blank
+	// entry that would read as a second spelling of the same thing.
+	Default string `json:"default,omitempty"`
 }
 
 type command struct {
@@ -46,7 +49,7 @@ type command struct {
 }
 
 var (
-	authModes = []string{"", "none", "forward", "oidc", "external"}
+	authModes = []string{"none", "forward", "oidc", "external"} // "none" is the one spelling of "no auth"; a blank option would mean the same and read as a second one
 	levels    = []string{"", "bypass", "one_factor", "two_factor", "deny"}
 	posRe     = regexp.MustCompile(`^[^\s\x00-\x1f-][^\s\x00-\x1f]*$`)
 )
@@ -73,7 +76,7 @@ func serviceFields(add bool) []field {
 		{Name: "backend", Label: "Backend (name:port)", Kind: "str", Ref: "backend", Required: add},
 		inSection(field{Name: "fqdn", Label: "Address", Kind: "str", Ref: "fqdn", Required: add}, "Network"),
 		flag("tunnel", "Reachable from the internet (tunnel)"),
-		inSection(field{Name: "auth-mode", Label: "Auth mode", Kind: "select", Options: authModes}, "Authentication"),
+		inSection(field{Name: "auth-mode", Label: "Auth mode", Kind: "select", Options: authModes, Default: "none"}, "Authentication"),
 		// Only offered where they mean something (plan.go: groups and bypass paths need a mode that goes through
 		// the auth provider; a per-horizon policy needs forward) — so the form cannot build a combination hemma skips.
 		withShows(list("auth-groups", "Auth groups", "name"), "auth-mode=forward|oidc"),
@@ -170,7 +173,7 @@ func (c *command) build(vals map[string]any) ([]string, error) {
 		if f.Required && s == "" {
 			return nil, fmt.Errorf("%s is required", f.Label)
 		}
-		if f.Options != nil && present && !contains(f.Options, s) {
+		if f.Options != nil && present && !contains(f.Options, s) && !(s == "" && f.Default != "") {
 			return nil, fmt.Errorf("%s: %q is not an allowed value", f.Label, s)
 		}
 		// Typed values: shape-check here; "must exist in services.yaml" is checkState's job.
