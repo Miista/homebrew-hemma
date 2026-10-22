@@ -149,6 +149,20 @@ function toast(msg, kind, details) {
 // Browsers focus the first field of a modal dialog by default (and a phone then pops its keyboard).
 // Focus the dialog itself instead: nothing is pre-selected, Tab and Escape still work.
 function openModal(d) { d.showModal(); d.focus({ preventScroll: true }); }
+// A click on the backdrop closes a dialog that holds no unsaved work — the same rule as Esc. The press must START on the
+// backdrop too, or selecting text and releasing outside the box would close it.
+function closeOnBackdrop(d, dirty) {
+  let down = false;
+  d.addEventListener("mousedown", e => { down = e.target === d; });
+  d.addEventListener("click", e => { if (down && e.target === d && !dirty()) d.close(); down = false; });
+}
+let formDirty = () => false;   // the open form's (#dlg) own answer, set by whoever opens it
+let rawDirty = () => false;
+closeOnBackdrop($("#dlg"), () => formDirty());
+closeOnBackdrop($("#cdlg"), () => !!$("#cmsg").value.trim());
+closeOnBackdrop($("#edlg"), () => rawDirty());
+closeOnBackdrop($("#rdlg"), () => false);
+closeOnBackdrop($("#pdlg"), () => false);   // Hide: the deploy carries on either way
 // ⌘↩ (Mac) / Ctrl+↩ (everywhere else) submits a form dialog from anywhere inside it — including the message box,
 // where a plain Enter has to stay a newline. Only the dialogs that SAVE something: never the confirmations, so a
 // destructive question can't be answered by a stray shortcut. A disabled button (nothing to save yet) is respected.
@@ -524,7 +538,8 @@ function openCmd(key, prefill = {}) {
   };
   const snap = () => JSON.stringify([ctl.map(x => x.k.get()), enabled && enabled.get()]);
   const init = snap();
-  $("#dlg").oncancel = e => { if (snap() !== init) e.preventDefault(); };   // Esc keeps a form with typed work; Cancel and × still close it
+  formDirty = () => snap() !== init;
+  $("#dlg").oncancel = e => { if (formDirty()) e.preventDefault(); };   // Esc keeps a form with typed work; Cancel and × still close it
   openModal($("#dlg"));
 }
 $("#cancel").onclick = () => $("#dlg").close();
@@ -571,7 +586,8 @@ async function openSetting(s) {
   clear.hidden = !(s.clearable && s.value);
   clear.onclick = async () => { if (await ask(`Clear ${s.label}?`, "The setting goes back to unset.", { ok: "Clear", danger: true })) apply("-"); };
   const init = ctl.get();
-  $("#dlg").oncancel = e => { if (ctl.get() !== init) e.preventDefault(); };
+  formDirty = () => ctl.get() !== init;
+  $("#dlg").oncancel = e => { if (formDirty()) e.preventDefault(); };
   openModal($("#dlg"));
 }
 
@@ -584,7 +600,7 @@ function openDomain(name, uses) {
   const lab = el("label", "Domain"); lab.append(el("input", null, { type: "text", className: "mono", value: name, readOnly: true }));
   box.append(lab, el("p", uses ? `${plural(uses, "service")} use${uses === 1 ? "s" : ""} this domain, so it can't be removed until they move.` : "No service uses this domain.", { className: "meta" }));
   $("#go").hidden = true; $("#cancel").textContent = "Close"; $("#dclear").hidden = true;
-  $("#dlg").oncancel = null;
+  formDirty = () => false; $("#dlg").oncancel = null;
   openModal($("#dlg"));
 }
 
@@ -1152,6 +1168,9 @@ async function showRecovery(error, version) {
 async function openRaw() {
   const r = await fetch("/api/config/raw"); const raw = await r.json();
   $("#etext").value = raw.text || ""; $("#eerr").textContent = "";
+  const rawInit = $("#etext").value;
+  rawDirty = () => $("#etext").value !== rawInit;
+  $("#edlg").oncancel = e => { if (rawDirty()) e.preventDefault(); };
   $("#ehelp").textContent = raw.error ? `It does not load yet: ${parseReason(raw.error)}` : "Saving checks that the file loads; text that does not is not saved.";
   $("#ego").disabled = false;
   $("#ecancel").onclick = () => $("#edlg").close();

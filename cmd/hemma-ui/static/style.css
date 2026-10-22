@@ -155,6 +155,9 @@ nav .ic { display: none; } nav .ic svg { display: block; }
 .section > .shead h2 { font-size: 17px; font-weight: 700; flex: 1; }
 .list { display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r2); overflow: hidden; }
 .list > * { background: var(--surface); }
+/* the first and last row share the list's rounded corners, so a focus ring or a hover tint follows them instead of being clipped square */
+.list > :first-child { border-top-left-radius: calc(var(--r2) - 1px); border-top-right-radius: calc(var(--r2) - 1px); }
+.list > :last-child { border-bottom-left-radius: calc(var(--r2) - 1px); border-bottom-right-radius: calc(var(--r2) - 1px); }
 .chip { flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: var(--p-neutral-bg); color: var(--p-neutral-fg); }
 .chip.added { background: var(--p-add-bg); color: var(--p-add-fg); } .chip.changed, .chip.renamed { background: var(--p-warn-bg); color: var(--p-warn-fg); }
 .chip.removed { background: var(--p-del-bg); color: var(--p-del-fg); }
@@ -199,7 +202,8 @@ button.undo:hover:not(:disabled) { background: var(--accent-soft); }
 
 /* Issues */
 .issue { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r2); overflow: hidden; }
-.ihead { display: flex; align-items: flex-start; gap: 12px; width: 100%; height: auto; padding: 16px; border: 0; border-radius: 0; background: none; color: var(--ink); text-align: left; white-space: normal; }
+.ihead:focus-visible, .setrow:focus-visible, .ent > button.eh:focus-visible, .trow button:focus-visible { outline-offset: -2px; }   /* edge to edge in a clipped container: a ring outside would be cut off */
+.ihead { display: flex; align-items: flex-start; gap: 12px; width: 100%; height: auto; padding: 16px; border: 0; border-radius: calc(var(--r2) - 1px); background: none; color: var(--ink); text-align: left; white-space: normal; }
 .ihead:hover:not(:disabled) { background: none; }
 /* an issue's chevron points down when folded and up when open (the other folds point right, then down) */
 .ihead .chev::before { transform: translateY(-2px) rotate(45deg); }
@@ -312,7 +316,7 @@ dialog form { margin: 0; }
 .chgs .top { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; } .chgs .top b { font-size: 13px; font-weight: 600; } .chgs .top .bd { font-size: 13px; color: var(--muted); }
 .chgs .top button { margin-left: auto; height: 28px; padding: 0 8px; border: 0; background: none; color: var(--accent-text); font-weight: 600; font-size: 13px; }
 .ent { background: var(--surface); }
-.ent > button.eh { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; height: auto; padding: 10px 14px; border: 0; border-radius: 0; background: none; color: var(--ink); text-align: left; white-space: normal; font-weight: 400; }
+.ent > button.eh { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; height: auto; padding: 10px 14px; border: 0; border-radius: calc(var(--r2) - 1px); background: none; color: var(--ink); text-align: left; white-space: normal; font-weight: 400; }
 .ent > button.eh:hover:not(:disabled) { background: var(--hover); }
 .ent .ek { flex: none; color: var(--muted); font-size: 13px; } .ent .en { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 .etab { border-top: 1px solid var(--line); font-size: 13px; }
