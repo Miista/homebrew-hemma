@@ -125,9 +125,14 @@ label.switchrow .txt .hint { font-size: 12.5px; }
 .brand-tile { width: 28px; height: 28px; border-radius: var(--r); background: var(--ink); color: var(--bg); display: grid; place-items: center; font-family: var(--mono); font-weight: 600; font-size: 14px; }
 .brand-name { font-weight: 700; font-size: 16px; letter-spacing: -.01em; }
 #side .brand { padding: 2px 10px 18px; }
-nav button { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; height: 36px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); font-weight: 500; text-align: left; }
+nav { position: relative; }
+nav button { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; width: 100%; height: 36px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); font-weight: 500; text-align: left; transition: color .2s; }
 nav button:hover:not(:disabled) { background: var(--hover); }
-nav button.on { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+nav button.on, nav button.on:hover:not(:disabled) { background: transparent; color: var(--accent-text); font-weight: 600; }
+/* the sliding highlight: a pill behind the chosen tab in the sidebar; a bar on the top edge in the phone's tab bar */
+.tabind { position: absolute; left: 0; right: 0; top: 0; height: 36px; border-radius: var(--r); background: var(--accent-soft); z-index: 0; pointer-events: none; }
+.tabind.ready { transition: top .25s cubic-bezier(.3, .7, .2, 1), height .25s cubic-bezier(.3, .7, .2, 1), left .25s cubic-bezier(.3, .7, .2, 1), width .25s cubic-bezier(.3, .7, .2, 1); }
+@media (prefers-reduced-motion: reduce) { .tabind.ready { transition: none; } }
 nav .label { flex: 1; }
 nav .count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--p-badge-bg); color: var(--p-badge-fg); font-size: 12px; font-weight: 600; display: inline-grid; place-items: center; }
 nav .count.err { background: var(--p-error-bg); color: var(--p-error-fg); }
@@ -364,8 +369,7 @@ dialog form { margin: 0; }
   #mtabs { flex: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 1px solid var(--line); background: var(--surface); padding-bottom: env(safe-area-inset-bottom); }
   #mtabs button { position: relative; height: var(--nav-h); flex-direction: column; justify-content: center; align-items: center; gap: 3px; padding: 0; border-radius: 0; background: none; font-size: 12px; }
   #mtabs button.on { background: none; color: var(--accent-text); }
-  #mtabs button::before { content: ""; position: absolute; top: 0; left: 28%; right: 28%; height: 3px; border-radius: 0 0 3px 3px; background: transparent; }
-  #mtabs button.on::before { background: var(--accent); }
+  #mtabs .tabind { left: 0; right: auto; width: 0; top: 0; height: 3px; border-radius: 0 0 3px 3px; background: var(--accent); }
   #mtabs .label { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #mtabs .ic { display: grid; place-items: center; position: relative; width: 28px; height: 26px; }
   #mtabs .count { position: absolute; top: 7px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px; font-size: 11px; font-weight: 700; box-shadow: 0 0 0 2px var(--surface); }
