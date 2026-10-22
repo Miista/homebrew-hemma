@@ -375,7 +375,7 @@ dialog form { margin: 0; }
   #side { display: none; }
   #top { display: flex; }
   #page { padding: 20px 16px 112px; }
-  #mtabs { flex: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 1px solid var(--line); background: var(--surface); padding-bottom: env(safe-area-inset-bottom); }
+  #mtabs { flex: none; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border-top: 1px solid var(--line); background: var(--surface); padding-bottom: env(safe-area-inset-bottom); }
   #mtabs button { position: relative; height: var(--nav-h); flex-direction: column; justify-content: center; align-items: center; gap: 3px; padding: 0; border-radius: 0; background: none; font-size: 12px; }
   #mtabs button.on { background: none; color: var(--accent-text); }
   #mtabs .tabind { left: 0; right: auto; width: 0; top: 0; height: 3px; border-radius: 0 0 3px 3px; background: var(--accent); }
@@ -386,7 +386,10 @@ dialog form { margin: 0; }
   .bar > .in { padding: 10px 12px 10px 14px; } .bar .msg span { display: none; }
   .toast { bottom: calc(var(--nav-h) + 12px + env(safe-area-inset-bottom)); } .toast.up { bottom: calc(var(--nav-h) + 86px + env(safe-area-inset-bottom)); }
   .hrow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'name act' 'ip px'; } .hrow .a-name { grid-area: name; } .hrow .a-ip { grid-area: ip; } .hrow .a-px { grid-area: px; } .hrow .act { grid-area: act; }
-  .setrow { grid-template-columns: minmax(0, 1fr) auto; }
+  .setrow { grid-template-columns: minmax(0, 1fr) auto; } .setrow .ed { display: none; }   /* the whole row is the button: no "Edit" label on a phone */
+  .drow .etext { display: none; }   /* the same for hosts and domains: the whole row opens it */
+  .hrow .act:has(.etext) { display: none; }
+  .hrow:has(.act .etext) { grid-template-areas: 'name name' 'ip px'; }   /* no "Edit" column: the name takes the full first line */
   .svc { flex-wrap: wrap; } .svc .tags { flex-basis: 100%; justify-content: flex-start; }
   /* dialogs are sheets at the bottom: their buttons are under the thumb */
   dialog { width: 100vw; max-width: none; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); margin: auto 0 0; border-radius: 22px 22px 0 0; }

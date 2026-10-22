@@ -102,9 +102,9 @@ const $ = s => document.querySelector(s);
 let changes = { git: false, files: [] };
 let state = { services: [], hosts: [], domains: [], settings: [] };
 let cmds = {};
-const TABS = ["Services", "Infrastructure", "Issues", "Tools", "Settings"];   // Infrastructure = hosts + domains; Settings (the defaults) comes last
+const TABS = ["Services", "Infrastructure", "Issues", "Tools"];   // Infrastructure = hosts, domains and the repo-wide settings
 // The page you are on lives in the URL (#/issues), so reload, back/forward and a pasted link all land on the same page.
-const tabFromHash = () => TABS.find(t => "#/" + t.toLowerCase() === location.hash) || "Services";
+const tabFromHash = () => location.hash === "#/settings" ? "Infrastructure" : TABS.find(t => "#/" + t.toLowerCase() === location.hash) || "Services";   // Settings used to be a page of its own: an old link lands on Infrastructure
 let tab = tabFromHash();
 // A service's history is a view under Services, reached from the service's dialog: #/history/<name>. `hist` is null elsewhere.
 const histHash = () => { const m = location.hash.match(/^#\/history\/(.+)$/); return m ? decodeURIComponent(m[1]) : null; };
@@ -125,15 +125,13 @@ const ICONS = {
   Infrastructure: ICON('<rect x="3" y="4" width="18" height="6.5" rx="1.8"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.8"/><path d="M7 7.25h.01M7 16.75h.01"/>'),
   Issues: ICON('<path d="M12 3.5L2.5 20h19L12 3.5z"/><path d="M12 10v4M12 17h.01"/>'),
   Tools: ICON('<path d="M14.7 6.3a4 4 0 0 0-5 5L3.5 17.5a1.8 1.8 0 0 0 2.5 2.5l6.2-6.2a4 4 0 0 0 5-5l-2.5 2.5-2.2-.5-.5-2.2 2.5-2.3z"/>'),
-  Settings: ICON('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
 };
 const TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v5M14 11v5"/></svg>';
 // A badge says where the unsaved changes are: services on Services, hosts and domains on Infrastructure, defaults on Settings.
 function tabBadge(t) {
   const es = pending ? pending.entities : [];
   if (t === "Services") return es.filter(e => e.kind === "Service").length;
-  if (t === "Infrastructure") return es.filter(e => e.kind === "Host" || e.kind === "Domain").length;
-  if (t === "Settings") return es.filter(e => e.kind === "Setting").length;
+  if (t === "Infrastructure") return es.filter(e => e.kind === "Host" || e.kind === "Domain" || e.kind === "Setting").length;
   if (t === "Issues") return issues.count;
   return 0;
 }
@@ -1086,22 +1084,22 @@ const VIEWS = {
       else { r.append(el("span", "Edit", { className: "etext" })); clickable(r, () => openDomain(d.name, n)); }
       domains.append(r);
     });
-    const sec = (title, add, list) => { const s = el("section", null, { className: "section" }); s.append(sectionHead(title, add), list); return s; };
-    return [pageHead("Infrastructure", "Hosts run your services. Every service address must end in one of your domains."),
-            sec("Hosts", btn("Add host", () => openCmd("add host")), hosts), sec("Domains", btn("Add domain", () => openCmd("add domain")), domains)];
-  },
-  Settings() {
-    const list = el("div", null, { className: "list" }), em = entMap();
+    const sec = (title, add, list) => { const s = el("section", null, { className: "section" }); s.append(sectionHead(title, ...(add ? [add] : [])), list); return s; };
+    // the repo-wide defaults, under the hosts and domains they refer to
+    const settings = el("div", null, { className: "list" });
     state.settings.forEach(s => {
       const r = el("button", null, { type: "button", className: "setrow", onclick: () => openSetting(s) });
       const lb = el("div"); const l1 = el("div", null, { className: "lb" }); l1.append(el("span", s.label)); if (em["Setting:" + s.label]) l1.append(el("span", "Changed", { className: "chip changed" }));
       lb.append(l1, el("div", s.help, { className: "ds" }));
       const val = s.value ? s.value.split(",").join(", ") : "Not set";
       r.append(lb, el("div", val, { className: "vl" + (s.value ? "" : " unset") }), el("span", "Edit", { className: "ed" }));
-      list.append(r);
+      settings.append(r);
     });
+    const setSec = sec("Settings", null, settings); setSec.insertBefore(el("p", "Apply to every service and host.", { className: "meta", style: "margin:-4px 0 0" }), settings);
+    // a phone has no sidebar to carry the version and Sign out (for now they sit at the end of this page)
     const out = el("div", null, { className: "signout" }); out.append(state.version || "", " · ", Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" }));
-    return [pageHead("Settings", "Apply to every service and host."), list, ...(isPhone() ? [out] : [])];
+    return [pageHead("Infrastructure", "Hosts run your services. Every service address must end in one of your domains."),
+            sec("Hosts", btn("Add host", () => openCmd("add host")), hosts), sec("Domains", btn("Add domain", () => openCmd("add domain")), domains), setSec, ...(isPhone() ? [out] : [])];
   },
   Tools() {
     const tools = [["verify", "Verify live DNS/Caddy", "Checks that each enabled service resolves and that Caddy answers on its address."],
@@ -1134,7 +1132,7 @@ const VIEWS = {
     const search = el("input", null, { type: "search", id: "search", placeholder: "Search old and new values", value: histQ, autocomplete: "off" });
     search.setAttribute("aria-label", "Search this service's history");
     const body = el("div", null, { className: "hist", style: "display:flex;flex-direction:column;gap:12px" });
-    const note = el("div", null, { className: "sub", style: "margin-top:6px;color:var(--muted)" });
+    const note = el("div", null, { className: "sub", hidden: true, style: "margin-top:6px;color:var(--muted)" });   // only used while searching: "2 of 4 changes match"
     const when = iso => { const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); };
     const terms = () => histQ.toLowerCase().split(/\s+/).filter(Boolean);
     // every search term must appear somewhere in the entry: the message, who, when, the field names, and BOTH the old and the new values
@@ -1147,7 +1145,7 @@ const VIEWS = {
       if (!h.entries.length) { body.append(el("div", `No saved changes to ${h.name} yet. Unsaved changes are not in the history until you save them.`, { className: "empty" })); return; }
       const t = terms();
       const shown = h.entries.filter(e => !t.length || t.every(x => hay(e).includes(x)));
-      note.textContent = t.length ? `${shown.length} of ${h.entries.length} changes match` : `Every saved change to ${h.name}, newest first.`;
+      note.textContent = t.length ? `${shown.length} of ${h.entries.length} changes match` : ""; note.hidden = !t.length;
       if (!shown.length) { body.append(el("div", `No change to ${h.name} matches “${histQ.trim()}”.`, { className: "empty" })); return; }
       const list = el("div", null, { className: "list" });
       shown.forEach(e => {
@@ -1189,7 +1187,7 @@ const VIEWS = {
     resetOpen(); draw();
     search.oninput = () => { histQ = search.value; resetOpen(); draw(); };
     search.onkeydown = e => { if (e.key === "Escape") { if (histQ) { histQ = ""; search.value = ""; resetOpen(); draw(); } else search.blur(); } };
-    const head = pageHead("History", "", search, back);
+    const head = pageHead(`History for ${h.name}`, "", search, back);
     head.querySelector(".sub").replaceWith(note);
     return [head, body];
   },

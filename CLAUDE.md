@@ -231,9 +231,11 @@ authy). It is NOT a second implementation of hemma:
   `TestIssues_…` pins it to the real output) — what `--fix` cannot resolve (advisories, known_hosts, …) is just
   listed. Successful changes are confirmed with a plain toast: the warnings a sync prints are repo-wide advisories,
   not about that change, and belong on Issues.
-- **Five pages, one job each:** Services (the list), Infrastructure (hosts + domains), Issues (doctor), Tools
-  (Verify, Measure, Recovery → Redeploy everything), Settings (the defaults; always last). The unsaved-change badge on a tab counts that page's
-  entities (`diff.go` kinds: Service → Services, Host/Domain → Infrastructure, Setting → Settings).
+- **Four pages, one job each:** Services (the list), Infrastructure (hosts, domains and — under them — the repo-wide Settings,
+  the defaults), Issues (doctor), Tools (Verify, Measure, Recovery → Redeploy everything). `#/settings` (Settings used to be a
+  page of its own) redirects to Infrastructure. On a phone the version and Sign out sit at the end of the Infrastructure page,
+  since there is no sidebar to carry them. The unsaved-change badge on a tab counts that page's
+  entities (`diff.go` kinds: Service → Services, Host/Domain/Setting → Infrastructure).
 - **Phones are the primary screen:** keep fields at 16px on every touch screen (`@media (pointer: coarse)`, so an iPhone in landscape
   and an iPad too — iOS zooms into smaller ones, as reaparr and albumarr note) and `touch-action: manipulation` everywhere (no double-tap zoom), the shell switches to the phone layout under 720px, and
   nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
