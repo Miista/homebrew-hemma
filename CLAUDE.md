@@ -201,11 +201,29 @@ authy). It is NOT a second implementation of hemma:
 - **The Services page** groups services by host (collapsible, searchable with ⌘K / Ctrl+K); a row opens the service's
   form directly. The form is the existing typed form drawn as three cards (General, Network, Authentication) with
   Host and Auth mode as segmented choices; **Enabled** is a switch in it (not a field of `update service`: after the
-  form's own command the page runs `enable`/`disable service`). Rename and Remove sit at the left of the footer
-  (Remove still confirms). A row's chip (Added / Changed / Removed) comes from the diff. Something removed but not saved
+  form's own command the page runs `enable`/`disable service`). History, Rename and Remove are buttons at the left of
+  the footer (Remove still confirms). **On a phone** an edit form's footer is just **Close** with a chevron menu button (History, Rename,
+  Remove; up while shut, turning down when open) to its right, and a floating **Cancel / Save** bar slides up above it once the form has changed (`setFloaty`):
+  Cancel resets the form to how it opened, Close leaves it; Verify and the other run-forms keep their normal footer. **History** is a view under Services (`#/history/<name>`, linkable): `GET
+  /api/history?service=` (`history.go`) walks the commits that touched `services.yaml` and compares that one service
+  between consecutive versions — who, when, the Save message, and the fields that changed — following the service back
+  through a rename. Entries start folded (a single entry starts open). Because Save messages follow `<host>/<service>: <message>`, an entry's own `host/service:` prefix is
+  dropped from its title on that service's page (the full message stays as the tooltip and is still searched); each entry carries
+  the service's name as of that commit, so entries from before a rename lose the old name's prefix. The search box on that page matches the message, author,
+  date, field names and **both the old and the new values** (every word must match); matching entries open and the matches are
+  marked. Nothing is stored by hemma; it is all git. Unsaved changes are not in it, and there is no Restore
+  (yet). A row's chip (Added / Changed / Removed) comes from the diff. Something removed but not saved
   (a service, host or domain) shows struck through with an **Undo**, which re-runs the matching `add …` with the values the
   diff recorded (`undoRemoved`), so no state lives only in the page. Host and domain rows open on a click; hemma cannot
   rename a domain, so a domain's dialog only shows it and offers Remove. There is no read-only details dialog any more.
+- **Leaving a dialog with unsaved work asks first** (`leave()`): ×, a click on the backdrop, Esc and a phone's Close all show
+  "Discard your changes?"; with nothing to lose they just close. Cancel (and a form's Cancel / Save bar) is the explicit way
+  to throw edits away and does not ask. What counts as "dirty": a form's field values (`formDirty`) and the raw `services.yaml`
+  editor's text. The **Save dialog never asks**: the message you were writing is kept in `localStorage` (`hemma.saveDraft`)
+  and is back when you reopen it, until the changes are saved or discarded.
+  When the unsaved changes concern exactly one service, the dialog shows "Will be prefixed with `<host>/<service>:`" above the
+  box (`commitPrefix`) and prepends it to what is typed, so messages follow `<host>/<service>: <message>`; with that prefix the
+  box asks the keyboard not to capitalise (`autocapitalize=none`). More than one entity, or anything but a service: no prefix.
 - **Issues lists exactly what `hemma doctor` says.** `GET /api/issues` runs doctor read-only (no write lock, so it
   can run after every change to keep the tab's badge current) and returns its output verbatim; the page splits it
   into findings without altering a line. A **Fix** button runs `hemma doctor --fix` and appears only when doctor itself
@@ -216,7 +234,8 @@ authy). It is NOT a second implementation of hemma:
 - **Five pages, one job each:** Services (the list), Infrastructure (hosts + domains), Issues (doctor), Tools
   (Verify, Measure, Recovery → Redeploy everything), Settings (the defaults; always last). The unsaved-change badge on a tab counts that page's
   entities (`diff.go` kinds: Service → Services, Host/Domain → Infrastructure, Setting → Settings).
-- **Phones are the primary screen:** keep fields at 16px (iOS zoom), the shell switches to the phone layout under 720px, and
+- **Phones are the primary screen:** keep fields at 16px on every touch screen (`@media (pointer: coarse)`, so an iPhone in landscape
+  and an iPad too — iOS zooms into smaller ones, as reaparr and albumarr note) and `touch-action: manipulation` everywhere (no double-tap zoom), the shell switches to the phone layout under 720px, and
   nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
 - **Look and feel:** the "direction c" design handoff (`form-redesign-request-*/` in the checkout, not committed; the latest numbered one wins):
   Instrument Sans + JetBrains Mono, a blue accent, a sidebar on a wide screen and a top bar + bottom tab bar under

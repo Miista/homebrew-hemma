@@ -67,7 +67,8 @@
   <form method="dialog" id="form">
     <div class="dhd"><div class="tt"><h2 id="dtitle"></h2><p class="meta" id="dhelp"></p></div><button type="button" class="x" id="dx" aria-label="Close">×</button></div>
     <div class="dbd"><div id="fields" style="display:contents"></div><p class="err" id="derr"></p></div>
-    <div class="dft">
+    <div class="dft" id="dft">
+      <div class="dfloat" id="dfloat" role="group" aria-label="Unsaved changes"><button type="button" id="dfcancel">Cancel</button><button type="button" id="dfgo" class="primary">Save</button></div>
       <div class="left" id="dleft"></div>
       <div class="grp">
         <button type="button" id="cancel">Cancel</button>
@@ -82,7 +83,7 @@
   <form method="dialog" id="cform">
     <div class="dhd"><div class="tt"><h2 id="ctitle">Save changes</h2><p class="meta">Saving records these changes with your message.</p></div><button type="button" class="x" id="cx" aria-label="Close">×</button></div>
     <div class="dbd">
-      <label><span>Change message</span><textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
+      <label><span>Change message</span><span class="hint" id="cprefix" hidden></span><textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
       <div id="cdiff" class="chgs"></div>
       <div id="cadv" class="adv" hidden></div>
       <p class="err" id="cerr"></p>
@@ -105,7 +106,17 @@ const TABS = ["Services", "Infrastructure", "Issues", "Tools", "Settings"];   //
 // The page you are on lives in the URL (#/issues), so reload, back/forward and a pasted link all land on the same page.
 const tabFromHash = () => TABS.find(t => "#/" + t.toLowerCase() === location.hash) || "Services";
 let tab = tabFromHash();
-window.addEventListener("popstate", () => { const t = tabFromHash(); if (t === tab || broken) return; tab = t; render(); if (t === "Issues") checkIssues(); });
+// A service's history is a view under Services, reached from the service's dialog: #/history/<name>. `hist` is null elsewhere.
+const histHash = () => { const m = location.hash.match(/^#\/history\/(.+)$/); return m ? decodeURIComponent(m[1]) : null; };
+let hist = null, pendingHist = histHash();
+if (pendingHist) tab = "Services";
+window.addEventListener("popstate", () => {
+  if (broken) return;
+  const h = histHash();
+  if (h) { openHistory(h, false); return; }
+  const t = tabFromHash(); if (t === tab && !hist) return;
+  hist = null; tab = t; render(); if (t === "Issues") checkIssues();
+});
 const isPhone = () => matchMedia("(max-width: 719px)").matches;
 // Tab icons (shown above the label on a phone; the wide screen's sidebar is text only).
 const ICON = (inner) => `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
@@ -148,18 +159,54 @@ function toast(msg, kind, details) {
 }
 // Browsers focus the first field of a modal dialog by default (and a phone then pops its keyboard).
 // Focus the dialog itself instead: nothing is pre-selected, Tab and Escape still work.
-function openModal(d) { d.showModal(); d.focus({ preventScroll: true }); }
-// A click on the backdrop closes a dialog that holds no unsaved work — the same rule as Esc. The press must START on the
-// backdrop too, or selecting text and releasing outside the box would close it.
+function openModal(d) { if (!d.open) d.showModal(); d.focus({ preventScroll: true }); }
+// Leaving a dialog that holds unsaved work asks first (×, a click on the backdrop, Esc, and a phone's Close); with nothing
+// to lose it just closes. Cancel is the explicit "throw it away" and does not ask.
+function leave(d, dirty) {
+  if (!dirty()) return d.close();
+  ask("Discard your changes?", "This dialog has unsaved changes. Closing it throws them away.", { ok: "Discard", danger: true }).then(yes => { if (yes) d.close(); });
+}
+// A click on the backdrop leaves the dialog the same way. The press must START on the backdrop too, or selecting text and
+// releasing outside the box would count.
 function closeOnBackdrop(d, dirty) {
   let down = false;
   d.addEventListener("mousedown", e => { down = e.target === d; });
-  d.addEventListener("click", e => { if (down && e.target === d && !dirty()) d.close(); down = false; });
+  d.addEventListener("click", e => { if (down && e.target === d) leave(d, dirty); down = false; });
 }
 let formDirty = () => false;   // the open form's (#dlg) own answer, set by whoever opens it
+let formChanged = () => {};    // called when something in the open form changes without a DOM event (a list entry added or removed)
+// setFloaty: on a phone, a form you edit has a footer of just Close (and the chevron menu), and a floating Cancel / Save bar that slides
+// up above it once something has changed. cfg: {label, save, reset}; null for every other dialog (their footer is unchanged).
+// Cancel resets the form to how it opened; Close leaves it.
+function setFloaty(cfg) {
+  const d = $("#dlg"), f = $("#dfloat");
+  d.classList.toggle("floaty", !!cfg); d.classList.remove("dirty"); f.classList.remove("show");
+  $("#cancel").textContent = cfg ? "Close" : "Cancel";
+  if (!cfg) return;
+  $("#dfgo").textContent = cfg.label; $("#dfgo").onclick = cfg.save; $("#dfcancel").onclick = cfg.reset;
+}
+const showFloaty = dirty => { if (!$("#dlg").classList.contains("floaty")) return; $("#dfloat").classList.toggle("show", dirty); $("#dlg").classList.toggle("dirty", dirty); };
+// actionsMenu: a chevron button that opens a small menu of actions (upwards, since it sits in a dialog's footer). items: [label, fn, class].
+function actionsMenu(items) {
+  const wrap = el("div", null, { className: "acts" });
+  const toggle = el("button", null, { type: "button", className: "morebtn" }); toggle.append(el("span", null, { className: "cv" }));   // a chevron: up while shut (the menu opens upward), down while open
+  toggle.setAttribute("aria-label", "More actions"); toggle.setAttribute("aria-haspopup", "menu"); toggle.setAttribute("aria-expanded", "false");
+  const menu = el("div", null, { className: "amenu", hidden: true }); menu.setAttribute("role", "menu");
+  const away = e => { if (!wrap.contains(e.target)) close(); };
+  const close = () => { const had = !menu.hidden; menu.hidden = true; toggle.setAttribute("aria-expanded", "false"); document.removeEventListener("click", away, true); if (had && menu.contains(document.activeElement)) toggle.focus(); };
+  items.forEach(([label, fn, cls]) => { const b = btn(label, () => { close(); fn(); }, cls); b.setAttribute("role", "menuitem"); menu.append(b); });
+  toggle.onclick = () => {
+    if (!menu.hidden) return close();
+    menu.hidden = false; toggle.setAttribute("aria-expanded", "true"); setTimeout(() => document.addEventListener("click", away, true));
+    menu.querySelector("button").focus();   // focus goes into the menu (Safari does not focus a button on click), so Esc and the arrow keys reach it
+  };
+  wrap.addEventListener("keydown", e => { if (e.key === "Escape" && !menu.hidden) { e.preventDefault(); e.stopPropagation(); close(); } });   // Esc closes the menu, not the dialog
+  wrap.append(toggle, menu);
+  return wrap;
+}
 let rawDirty = () => false;
 closeOnBackdrop($("#dlg"), () => formDirty());
-closeOnBackdrop($("#cdlg"), () => !!$("#cmsg").value.trim());
+closeOnBackdrop($("#cdlg"), () => false);   // the Save dialog keeps what you typed instead of asking (see saveDraft)
 closeOnBackdrop($("#edlg"), () => rawDirty());
 closeOnBackdrop($("#rdlg"), () => false);
 closeOnBackdrop($("#pdlg"), () => false);   // Hide: the deploy carries on either way
@@ -175,7 +222,7 @@ for (const [dialog, go] of [["#cdlg", "#cgo"], ["#dlg", "#go"], ["#edlg", "#ego"
   });
 }
 // the × in a dialog's header closes it
-for (const [x, dialog] of [["#dx", "#dlg"], ["#cx", "#cdlg"], ["#ex", "#edlg"], ["#rx", "#rdlg"]]) $(x).onclick = () => $(dialog).close();
+for (const [x, dialog, dirty] of [["#dx", "#dlg", () => formDirty()], ["#cx", "#cdlg", () => false], ["#ex", "#edlg", () => rawDirty()], ["#rx", "#rdlg", () => false]]) $(x).onclick = () => leave($(dialog), dirty);
 
 // ask: the app's own confirmation dialog. Resolves true on the action button, false on Cancel / Esc / the backdrop.
 function ask(title, message, { ok = "OK", danger = false, single = false } = {}) {
@@ -390,7 +437,7 @@ function control(fd, prefill, locked) {
   if (fd.kind === "int") { const i = el("input", null, { type: "number", min: 0, max: 1000, value: v ?? "" });
     return { node: i, get: () => i.value === "" ? "" : Number(i.value), check: () => "" }; }
   if (fd.kind === "list") {
-    const cl = listEditor(String(v || "").split(",").filter(Boolean), CHECK[fd.ref] || (() => true), HINT[fd.ref], null, fd.ref === "ipcidr" || fd.ref === "cidr");
+    const cl = listEditor(String(v || "").split(",").filter(Boolean), CHECK[fd.ref] || (() => true), HINT[fd.ref], () => formChanged(), fd.ref === "ipcidr" || fd.ref === "cidr");
     return { node: cl.node, get: () => cl.get(), check: () => cl.flush() ? "" : "fix or clear the value in the box" };
   }
   if (fd.ref === "fqdn") { const c = fqdnControl(v, fd.required); return { node: c.node, suggest: c.suggest, get: c.get, check: c.check }; }
@@ -487,10 +534,13 @@ function openCmd(key, prefill = {}) {
   syncShown();
   // Editing a service: Rename and Remove sit at the left of the footer, out of the way of Save (Remove asks to confirm).
   if (key === "update service") {
-    left.append(btn("Rename", () => { $("#dlg").close(); openCmd("rename service", { old: prefill.name, __lock: "old" }); }, "ghost"),
-                btn("Remove service", () => { $("#dlg").close(); run("remove service", { name: prefill.name }, cmds["remove service"].confirm); }, "linkdanger"));
+    const actions = [["History", () => { $("#dlg").close(); openHistory(prefill.name); }],
+                     ["Rename", () => { $("#dlg").close(); openCmd("rename service", { old: prefill.name, __lock: "old" }); }],
+                     ["Remove service", () => { $("#dlg").close(); run("remove service", { name: prefill.name }, cmds["remove service"].confirm); }, "dangerline"]];
+    // on a phone the three sit behind one chevron button, so Cancel and Save keep the row
+    if (isPhone()) left.append(actionsMenu(actions)); else left.append(...actions.map(([l, f, c]) => btn(l, f, c)));
   }
-  if (key === "update host") left.append(btn("Remove host", () => { $("#dlg").close(); run("remove host", { name: prefill.name }, cmds["remove host"].confirm); }, "linkdanger"));
+  if (key === "update host") left.append(btn("Remove host", () => { $("#dlg").close(); run("remove host", { name: prefill.name }, cmds["remove host"].confirm); }, "dangerline"));
   // A new service: the name is usually the address too ("paperless" → paperless.example.com), so offer it as a courtesy.
   if (key === "add service") {
     const name = ctl.find(x => x.fd.name === "name"), addr = ctl.find(x => x.k.suggest);
@@ -539,10 +589,15 @@ function openCmd(key, prefill = {}) {
   const snap = () => JSON.stringify([ctl.map(x => x.k.get()), enabled && enabled.get()]);
   const init = snap();
   formDirty = () => snap() !== init;
-  $("#dlg").oncancel = e => { if (formDirty()) e.preventDefault(); };   // Esc keeps a form with typed work; Cancel and × still close it
+  $("#dlg").oncancel = e => { if (formDirty()) { e.preventDefault(); leave($("#dlg"), formDirty); } };   // Esc on a form with typed work asks first
+  // On a phone a form you can change gets the floating Cancel / Save bar (see setFloaty); other forms (Verify, …) keep their footer.
+  setFloaty(isPhone() && /^(add|update|rename) /.test(key) ? { label: dialogLabel(c), save: () => { if (!$("#go").disabled) $("#go").click(); }, reset: () => openCmd(key, prefill) } : null);
+  formChanged = () => showFloaty(formDirty());
+  $("#dlg").oninput = $("#dlg").onchange = () => formChanged();
+  formChanged();
   openModal($("#dlg"));
 }
-$("#cancel").onclick = () => $("#dlg").close();
+$("#cancel").onclick = () => { if ($("#dlg").classList.contains("floaty")) leave($("#dlg"), formDirty); else $("#dlg").close(); };   // a phone's Close asks; Cancel is the explicit discard
 
 // openSetting edits ONE repo-wide default with an editor that matches what it is.
 async function openSetting(s) {
@@ -550,7 +605,7 @@ async function openSetting(s) {
   $("#dleft").replaceChildren();
   const box = $("#fields"); box.replaceChildren();
   const save = $("#go"); save.hidden = false; $("#cancel").textContent = "Cancel"; save.textContent = "Save"; save.disabled = true;
-  const changed = () => { save.disabled = ctl.get() === (s.value || ""); };
+  const changed = () => { save.disabled = ctl.get() === (s.value || ""); showFloaty(!save.disabled); };
   let ctl;
   if (s.kind === "cidrs") {
     const cl = listEditor((s.value || "").split(",").filter(Boolean), CHECK.cidr, HINT.cidr, changed, true);
@@ -587,7 +642,9 @@ async function openSetting(s) {
   clear.onclick = async () => { if (await ask(`Clear ${s.label}?`, "The setting goes back to unset.", { ok: "Clear", danger: true })) apply("-"); };
   const init = ctl.get();
   formDirty = () => ctl.get() !== init;
-  $("#dlg").oncancel = e => { if (formDirty()) e.preventDefault(); };
+  setFloaty(isPhone() ? { label: "Save", save: () => { if (!save.disabled) save.click(); }, reset: () => openSetting(s) } : null);
+  formChanged = changed; $("#dlg").oninput = $("#dlg").onchange = null; changed();
+  $("#dlg").oncancel = e => { if (formDirty()) { e.preventDefault(); leave($("#dlg"), formDirty); } };
   openModal($("#dlg"));
 }
 
@@ -595,12 +652,12 @@ async function openSetting(s) {
 // it shows the domain and how many services use it, and offers Remove (refused by hemma while a service still uses it).
 function openDomain(name, uses) {
   $("#dtitle").textContent = "Domain"; $("#dhelp").textContent = ""; $("#dhelp").hidden = true; $("#derr").textContent = "";
-  const left = $("#dleft"); left.replaceChildren(btn("Remove domain", () => { $("#dlg").close(); run("remove domain", { name }, cmds["remove domain"].confirm); }, "linkdanger"));
+  const left = $("#dleft"); left.replaceChildren(btn("Remove domain", () => { $("#dlg").close(); run("remove domain", { name }, cmds["remove domain"].confirm); }, "dangerline"));
   const box = $("#fields"); box.replaceChildren();
   const lab = el("label", "Domain"); lab.append(el("input", null, { type: "text", className: "mono", value: name, readOnly: true }));
   box.append(lab, el("p", uses ? `${plural(uses, "service")} use${uses === 1 ? "s" : ""} this domain, so it can't be removed until they move.` : "No service uses this domain.", { className: "meta" }));
   $("#go").hidden = true; $("#cancel").textContent = "Close"; $("#dclear").hidden = true;
-  formDirty = () => false; $("#dlg").oncancel = null;
+  setFloaty(null); formDirty = () => false; formChanged = () => {}; $("#dlg").oninput = $("#dlg").onchange = null; $("#dlg").oncancel = null;
   openModal($("#dlg"));
 }
 
@@ -707,6 +764,7 @@ async function streamDeploy(command, onSteps) {
 // discard puts hemma's own output back to the last save; files hemma doesn't manage are left alone.
 async function discardNow() {
   const res = await post("/api/discard", {});
+  if (res.ok) localStorage.removeItem(SAVE_DRAFT);   // the message was about changes that are gone
   toastResult("Discard", res, "Changes discarded"); await load();
 }
 async function discard() {
@@ -772,21 +830,46 @@ function fillAdvanced(d) {
   adv.append(head, note, files);
 }
 
+const SAVE_DRAFT = "hemma.saveDraft";
+// Messages follow "<host>/<service>: <message>". When the unsaved changes concern one service only, that prefix is known, so the
+// dialog shows it above the box ("will be prefixed with …") and puts it in front of whatever is typed; the box holds just the message.
+function commitPrefix(d) {
+  if (!d || !d.entities || d.entities.length !== 1 || d.entities[0].kind !== "Service") return "";
+  const e = d.entities[0];
+  const name = e.status === "renamed" ? e.name.split(" → ").pop() : e.name;   // a rename reads "old → new": the service is now the new one
+  const svc = state.services.find(x => x.name === name);
+  const host = svc ? svc.host : fieldBefore(e, "Host");   // a removed service is no longer in the list: its host is in the diff
+  return host ? `${host}/${name}:` : "";
+}
 // openCommit (the Save panel): review what changed, write the change message, save. Saving only records
 // the changes; deploying them is the separate step.
 function openCommit() {
   $("#cdiff").replaceChildren(el("p", "Loading changes…", { className: "meta" }));
   fillAdvanced(null);
-  fetch("/api/diff").then(r => r.json()).then(d => { $("#cdiff").replaceChildren(d.error ? el("p", d.error, { className: "err" }) : renderDiff(d)); if (!d.error) fillAdvanced(d); })
+  let prefix = "";
+  const showPrefix = () => {
+    const hint = $("#cprefix"), box = $("#cmsg");
+    hint.hidden = !prefix; hint.replaceChildren();
+    if (prefix) hint.append("Will be prefixed with ", el("code", prefix));
+    // the message after "host/service:" starts in lower case: the keyboard must not capitalise it for you
+    box.setAttribute("autocapitalize", prefix ? "none" : "sentences");
+    box.placeholder = prefix ? "what changed, e.g. point at the new port" : "e.g. Add paperless and move grafana to nas";
+  };
+  showPrefix();
+  fetch("/api/diff").then(r => r.json()).then(d => { $("#cdiff").replaceChildren(d.error ? el("p", d.error, { className: "err" }) : renderDiff(d)); if (!d.error) { fillAdvanced(d); prefix = commitPrefix(d); showPrefix(); } })
     .catch(() => $("#cdiff").replaceChildren(el("p", "Could not load the changes.", { className: "err" })));
-  $("#cmsg").value = ""; $("#cerr").textContent = "";
-  $("#cdlg").oncancel = e => { if ($("#cmsg").value.trim()) e.preventDefault(); };   // Esc keeps a message you have started
+  // The message you were writing is kept when you close the dialog (and across a reload) and is back when you reopen it: it is
+  // cleared when the changes are saved or discarded.
+  $("#cmsg").value = localStorage.getItem(SAVE_DRAFT) || ""; $("#cerr").textContent = "";
+  $("#cmsg").oninput = () => { if ($("#cmsg").value) localStorage.setItem(SAVE_DRAFT, $("#cmsg").value); else localStorage.removeItem(SAVE_DRAFT); };
+  $("#cdlg").oncancel = null;
   // Saving can deploy straight away. The choice is the person's to make once and is remembered; it is OFF until
   // they turn it on, because deploying restarts things.
   const dep = $("#cdep"), act = changes.has_remote ? "deploy" : "apply";
   dep.checked = localStorage.getItem("hemma.deployAfterSave") === "1";
   const syncDeploy = () => {
     $("#cgo").textContent = dep.checked ? "Save & deploy" : "Save";
+    $("#cgo").classList.toggle("deploy", dep.checked);   // a colour of its own: this is not a plain save
     $("#cdephelp").textContent = dep.checked ? "Your changes go live right after saving." : "Not live yet — use Deploy when you’re ready.";
   };
   dep.onchange = () => { localStorage.setItem("hemma.deployAfterSave", dep.checked ? "1" : "0"); syncDeploy(); };
@@ -798,8 +881,10 @@ function openCommit() {
     try {
       const wantDeploy = dep.checked;
       // Saving only commits. Sending the commit to origin is part of Deploy (hemma does it, rebasing onto origin first).
-      const res = await post("/api/commit", { message: $("#cmsg").value });
+      const text = $("#cmsg").value.trim();
+      const res = await post("/api/commit", { message: prefix ? `${prefix} ${text}` : text });
       if (!res.ok) { $("#cerr").textContent = res.output; return; }   // nothing was saved: stay and fix it
+      localStorage.removeItem(SAVE_DRAFT);
       if (!wantDeploy) localStorage.setItem("hemma.undeployed", "1");   // saved, and not live yet: the accent bar says so
       await load(); $("#cdlg").close();
       if (!wantDeploy) { toast("Saved", "ok"); return; }
@@ -872,6 +957,34 @@ async function undoRemoved(e) {
   await load(); toastResult("Undo", res, `${e.name} is back`);
 }
 const removedOf = kind => (pending ? pending.entities : []).filter(e => e.kind === kind && e.status === "removed");
+
+// hlText: text with every search term marked (a fragment of text nodes and <mark>s — never markup built from the text)
+function hlText(text, terms) {
+  const frag = document.createDocumentFragment();
+  if (!terms.length || !text) { frag.append(text || ""); return frag; }
+  const low = text.toLowerCase(), marks = [];
+  for (const t of terms) for (let i = low.indexOf(t); i >= 0; i = low.indexOf(t, i + t.length)) marks.push([i, i + t.length]);
+  marks.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const m of marks) { const last = merged[merged.length - 1]; if (last && m[0] <= last[1]) last[1] = Math.max(last[1], m[1]); else merged.push([...m]); }
+  let at = 0;
+  for (const [a, b] of merged) { frag.append(text.slice(at, a), el("mark", text.slice(a, b), { className: "hit" })); at = b; }
+  frag.append(text.slice(at));
+  return frag;
+}
+let histQ = "";   // the history page's search
+
+// openHistory shows a service's history (a view under Services, reachable and linkable as #/history/<name>).
+async function openHistory(name, push = true) {
+  if (!hist || hist.name !== name) histQ = "";
+  hist = { name, loading: true, entries: [] }; tab = "Services";
+  if (push) history.pushState(null, "", "#/history/" + encodeURIComponent(name));
+  render(); $("#main").scrollTop = 0;
+  let next;
+  try { const j = await (await fetch("/api/history?service=" + encodeURIComponent(name))).json(); next = { name, loading: false, error: j.error || "", entries: j.entries || [], truncated: !!j.truncated }; }
+  catch (e) { next = { name, loading: false, error: String(e), entries: [] }; }
+  if (hist && hist.name === name && !broken) { hist = next; render(); }
+}
 
 // ── Services: grouped by host, a row per service; a row opens its form ────────────────────────────────────────────
 let q = "";
@@ -1013,12 +1126,82 @@ const VIEWS = {
     rec.append(sectionHead("Recovery"), row);
     return [pageHead("Tools", "Run checks against what is live right now."), list, rec];
   },
+  // A service's history, read from git (GET /api/history): a commit per entry, newest first, with what changed in it.
+  // Entries start folded (a single one starts open); a search opens the entries that match and marks what matched.
+  History() {
+    const h = hist;
+    const back = btn("← Services", () => { hist = null; history.pushState(null, "", "#/services"); render(); });
+    const search = el("input", null, { type: "search", id: "search", placeholder: "Search old and new values", value: histQ, autocomplete: "off" });
+    search.setAttribute("aria-label", "Search this service's history");
+    const body = el("div", null, { className: "hist", style: "display:flex;flex-direction:column;gap:12px" });
+    const note = el("div", null, { className: "sub", style: "margin-top:6px;color:var(--muted)" });
+    const when = iso => { const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); };
+    const terms = () => histQ.toLowerCase().split(/\s+/).filter(Boolean);
+    // every search term must appear somewhere in the entry: the message, who, when, the field names, and BOTH the old and the new values
+    const hay = e => [e.subject, e.body, e.author, e.short, e.status, e.from, when(e.when), ...e.fields.flatMap(f => [f.field, f.before, f.after])].join("\n").toLowerCase();
+    const opened = new Set();   // entries the person has opened (or that a search opened)
+    const draw = () => {
+      body.replaceChildren();
+      if (h.loading) { body.append(el("p", "Reading the history…", { className: "meta" })); return; }
+      if (h.error) { body.append(el("p", h.error, { className: "err" })); return; }
+      if (!h.entries.length) { body.append(el("div", `No saved changes to ${h.name} yet. Unsaved changes are not in the history until you save them.`, { className: "empty" })); return; }
+      const t = terms();
+      const shown = h.entries.filter(e => !t.length || t.every(x => hay(e).includes(x)));
+      note.textContent = t.length ? `${shown.length} of ${h.entries.length} changes match` : `Every saved change to ${h.name}, newest first.`;
+      if (!shown.length) { body.append(el("div", `No change to ${h.name} matches “${histQ.trim()}”.`, { className: "empty" })); return; }
+      const list = el("div", null, { className: "list" });
+      shown.forEach(e => {
+        const open = opened.has(e.commit);
+        const ent = el("div", null, { className: "ent" });
+        const head = el("button", null, { type: "button", className: "eh" }); head.setAttribute("aria-expanded", String(open));
+        const main = el("span", null, { className: "main" }), sub = el("span", null, { className: "sub" }), hm = el("span", null, { className: "hm", title: e.when });
+        // "pi/jellyfin: change fqdn" on jellyfin's own history reads "change fqdn": the prefix says what the page already says
+        const subj = (() => { const re = new RegExp("^[^\\s/]+/" + e.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ":\\s*"); return (e.subject || "").replace(re, "") || e.subject || ""; })();
+        sub.title = e.subject || "";   // the full message, as committed
+        sub.append(hlText(subj || "(no message)", t));
+        hm.append(hlText(`${e.author} · ${when(e.when)} · `, t), el("code", e.short));
+        main.append(sub, hm);
+        head.append(el("span", null, { className: "chev" }), el("span", e.status[0].toUpperCase() + e.status.slice(1), { className: "chip " + e.status }), main);
+        const tab2 = el("div", null, { className: "etab", hidden: !open });
+        if (e.body) { const bd = el("p", null, { className: "hbody", style: "padding-top:10px" }); bd.append(hlText(e.body, t)); tab2.append(bd); }
+        const rows = e.fields.filter(f => e.status === "changed" || e.status === "renamed" || (e.status === "added" ? f.after !== "—" : f.before !== "—"));
+        const hdr = el("div", null, { className: "ehdr" }); ["Field", "Before", "After"].forEach(x => hdr.append(el("div", x))); tab2.append(hdr);
+        for (const f of rows) {
+          const diff = f.before !== f.after, r = el("div", null, { className: "erow" });
+          const c1 = el("div"), c2 = el("div", null, { className: "cur" + (diff && f.before !== "—" ? " diff" : "") }), c3 = el("div", null, { className: "nxt" + (diff ? (e.status === "removed" ? " del" : " add") : "") });
+          c1.append(hlText(f.field, t)); c2.append(hlText(f.before, t)); c3.append(hlText(f.after, t));
+          r.append(c1, c2, c3); tab2.append(r);
+        }
+        head.onclick = () => { const o = tab2.hidden; tab2.hidden = !o; head.setAttribute("aria-expanded", String(o)); if (o) opened.add(e.commit); else opened.delete(e.commit); };   // in place, so the chevron turns
+        ent.append(head, tab2); list.append(ent);
+      });
+      body.append(list);
+      if (h.truncated && !t.length) body.append(el("p", "Older changes exist beyond the most recent 400 saves to services.yaml.", { className: "meta" }));
+    };
+    // what is open follows the search: with one, the matches are open so you see what matched; without, all folded unless there is a single entry
+    const resetOpen = () => {
+      opened.clear();
+      const t = terms();
+      if (!h.entries) return;
+      if (t.length) h.entries.filter(e => t.every(x => hay(e).includes(x))).forEach(e => opened.add(e.commit));
+      else if (h.entries.length === 1) opened.add(h.entries[0].commit);
+    };
+    resetOpen(); draw();
+    search.oninput = () => { histQ = search.value; resetOpen(); draw(); };
+    search.onkeydown = e => { if (e.key === "Escape") { if (histQ) { histQ = ""; search.value = ""; resetOpen(); draw(); } else search.blur(); } };
+    const head = pageHead("History", "", search, back);
+    head.querySelector(".sub").replaceWith(note);
+    return [head, body];
+  },
   Issues() {
     // Only what is wrong. A check that passed is never shown.
     const failing = issues.items.filter(it => it.status === "warn" || it.status === "err");
     const summary = !issues.loaded ? "Checking…" : issues.error ? "Could not run the checks" : failing.length === 0 ? "No issues found" : `${plural(failing.length, "problem")} to fix before deploying`;
-    const re = btn(issues.busy ? "Checking…" : "Re-check", () => checkIssues()); re.disabled = issues.busy || issues.fixing;
-    const tools = [re];
+    // while a check runs: a spinner to the left of the button, and the button itself is off (its label does not change)
+    const re = btn("Re-check", () => checkIssues()); re.disabled = issues.busy || issues.fixing;
+    const tools = [];
+    if (issues.busy) { const sp = el("span", null, { className: "sicon running" }); sp.setAttribute("role", "status"); sp.setAttribute("aria-label", "Checking"); tools.push(sp); }
+    tools.push(re);
     if (issues.fixable) { const fx = btn(issues.fixing ? "Fixing…" : "Fix automatically", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing; tools.push(fx); }
     const body = el("div", null, { style: "display:flex;flex-direction:column;gap:10px" });
     if (issues.error) body.append(el("p", issues.error, { className: "err" }));
@@ -1130,7 +1313,7 @@ function renderTabs() {
     TABS.forEach(t => {
       let b = nav.querySelector(`button[data-tab="${t}"]`);
       if (!b) {
-        b = el("button", null, { type: "button", onclick: () => { if (t !== tab) { history.pushState(null, "", "#/" + t.toLowerCase()); redeployAsk = false; } tab = t; render(); $("#main").scrollTop = 0; if (t === "Issues") checkIssues(); } });   // opening Issues re-runs the checks
+        b = el("button", null, { type: "button", onclick: () => { hist = null; if (t !== tab || histHash()) { history.pushState(null, "", "#/" + t.toLowerCase()); redeployAsk = false; } tab = t; render(); $("#main").scrollTop = 0; if (t === "Issues") checkIssues(); } });   // opening Issues re-runs the checks
         b.dataset.tab = t;
         const ic = el("span", null, { className: "ic" }); ic.innerHTML = ICONS[t];   // static markup defined above
         b.append(ic, el("span", t === "Infrastructure" && nav.id === "mtabs" ? "Infra" : t, { className: "label" }));
@@ -1147,7 +1330,7 @@ function renderTabs() {
 }
 function render() {
   renderTabs();
-  $("#view").replaceChildren(...VIEWS[tab]());
+  $("#view").replaceChildren(...(hist ? VIEWS.History() : VIEWS[tab]()));
   const foot = [state.version || "", " · ", Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" })];
   $("#sidefoot").replaceChildren(...foot);
   renderHint();
@@ -1189,7 +1372,7 @@ async function openRaw() {
   $("#etext").value = raw.text || ""; $("#eerr").textContent = "";
   const rawInit = $("#etext").value;
   rawDirty = () => $("#etext").value !== rawInit;
-  $("#edlg").oncancel = e => { if (rawDirty()) e.preventDefault(); };
+  $("#edlg").oncancel = e => { if (rawDirty()) { e.preventDefault(); leave($("#edlg"), rawDirty); } };
   $("#ehelp").textContent = raw.error ? `It does not load yet: ${parseReason(raw.error)}` : "Saving checks that the file loads; text that does not is not saved.";
   $("#ego").disabled = false;
   $("#ecancel").onclick = () => $("#edlg").close();
@@ -1225,6 +1408,7 @@ async function load() {
   pending = changes.files.length && d && !d.error ? d : null;
   loaded = true;
   render();
+  if (pendingHist) { const n = pendingHist; pendingHist = null; openHistory(n, false); }   // a link straight to a service's history
   checkIssues();   // not awaited: keeps the Issues badge current after every change without making anything wait for doctor
 }
 cmdsReady.then(() => { if (!loaded) render(); });
