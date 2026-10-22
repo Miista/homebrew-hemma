@@ -14,7 +14,10 @@ Deploying to 2 hosts: edge, core (here, last).
   ✓ core: pulled
   all hosts at 
 
-== Phase 2: apply ==
+== Phase 2: validate auth ==
+  ✓ sso config validates on core
+
+== Phase 3: apply ==
 
 == edge ==
 
@@ -58,6 +61,7 @@ ssh -o BatchMode=yes ops@192.0.2.20 git -C ~/docker pull --ff-only
 git -C <repo> pull --ff-only
 ssh -o BatchMode=yes ops@192.0.2.20 git -C ~/docker rev-parse HEAD
 git -C <repo> rev-parse HEAD
+docker exec sso authelia config validate
 ssh -o BatchMode=yes ops@192.0.2.20 hemma apply
 docker exec caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 docker exec sso authelia config validate

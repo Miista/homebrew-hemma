@@ -91,11 +91,12 @@ func TestResolveDeployTargets_ExplicitNames(t *testing.T) {
 // fakeRunner records every command and fails/answers per script. Keys are
 // "<host> <first two argv words>"-ish prefixes matched against the joined argv.
 type fakeRunner struct {
-	calls    []string          // "<host>: <argv joined>"
-	probeErr map[string]bool   // host -> fail its phase-0 probe
-	failOn   map[string]bool   // host -> fail its pull
-	applyErr map[string]bool   // host -> fail its apply
-	heads    map[string]string // host -> rev-parse output (default "aaa")
+	calls       []string          // "<host>: <argv joined>"
+	probeErr    map[string]bool   // host -> fail its phase-0 probe
+	failOn      map[string]bool   // host -> fail its pull
+	applyErr    map[string]bool   // host -> fail its apply
+	validateErr map[string]bool   // host -> fail its auth config validate (phase 2)
+	heads       map[string]string // host -> rev-parse output (default "aaa")
 
 	// The state of a remote host's checkout, for the phase-1 sync with origin (default: level, clean).
 	ahead, behind map[string]int    // host -> commits it has that origin lacks / origin has that it lacks
@@ -142,6 +143,11 @@ func (f *fakeRunner) run(t deployTarget, argv []string) (string, error) {
 			return h + "\n", nil
 		}
 		return "aaa\n", nil
+	case strings.Contains(cmd, "config validate"):
+		if f.validateErr[t.Name] {
+			return "configuration validation failed", fmt.Errorf("exit status 1")
+		}
+		return "Configuration parsed and loaded successfully without errors.", nil
 	case strings.Contains(cmd, "apply"):
 		if f.applyErr[t.Name] {
 			return "boom", fmt.Errorf("exit status 1")
@@ -168,7 +174,7 @@ var deployTestTargets = []deployTarget{
 
 func TestRunDeploy_HappyPath(t *testing.T) {
 	f := &fakeRunner{}
-	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil); code != 0 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil, nil); code != 0 {
 		t.Fatalf("happy path should exit 0, got %d (calls: %v)", code, f.calls)
 	}
 	// Phase 0 probes the remote first; phase 1 brings the remote level with origin (fetch, then compare — level here, so
@@ -204,7 +210,7 @@ func TestRunDeploy_HappyPath(t *testing.T) {
 // pull.
 func TestRunDeploy_Phase0ProbesRemotesOnly(t *testing.T) {
 	f := &fakeRunner{}
-	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil); code != 0 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil, nil); code != 0 {
 		t.Fatalf("happy path should exit 0, got %d (calls: %v)", code, f.calls)
 	}
 	// Exactly one probe, for the remote; self (resolver) is never probed.
@@ -220,7 +226,7 @@ func TestRunDeploy_Phase0ProbesRemotesOnly(t *testing.T) {
 // apply.
 func TestRunDeploy_Phase0AbortOnUnreachable(t *testing.T) {
 	f := &fakeRunner{probeErr: map[string]bool{"appbox": true}}
-	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil); code != 1 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil, nil); code != 1 {
 		t.Fatalf("unreachable host should exit 1, got %d", code)
 	}
 	if f.count("pull") != 0 {
@@ -235,7 +241,7 @@ func TestRunDeploy_Phase0AbortOnUnreachable(t *testing.T) {
 // are not pulled and NOTHING is applied.
 func TestRunDeploy_Phase1AbortOnPullFailure(t *testing.T) {
 	f := &fakeRunner{failOn: map[string]bool{"appbox": true}}
-	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil); code != 1 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil, nil); code != 1 {
 		t.Fatalf("pull failure should exit 1, got %d", code)
 	}
 	if f.count("pull") != 1 {
@@ -250,7 +256,7 @@ func TestRunDeploy_Phase1AbortOnPullFailure(t *testing.T) {
 // aborts before anything is applied.
 func TestRunDeploy_Phase1AbortOnHeadMismatch(t *testing.T) {
 	f := &fakeRunner{heads: map[string]string{"appbox": "aaa", "resolver": "bbb"}}
-	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil); code != 1 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil, nil); code != 1 {
 		t.Fatalf("head mismatch should exit 1, got %d", code)
 	}
 	if f.count("apply") != 0 {
@@ -262,12 +268,79 @@ func TestRunDeploy_Phase1AbortOnHeadMismatch(t *testing.T) {
 // remaining hosts still apply, and the exit code is non-zero.
 func TestRunDeploy_ApplyFailureContinues(t *testing.T) {
 	f := &fakeRunner{applyErr: map[string]bool{"appbox": true}}
-	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil); code != 1 {
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", nil, nil); code != 1 {
 		t.Fatalf("apply failure should exit 1, got %d", code)
 	}
 	if f.count("apply") != 2 {
 		t.Errorf("apply must continue to remaining hosts, got calls %v", f.calls)
 	}
+}
+
+// Phase 2 validates the auth config on the auth host — wherever that is — before anything is applied.
+var authValidateArgv = "docker exec authelia authelia config validate"
+
+func TestRunDeploy_AuthValidatesOnItsHostBeforeAnyApply(t *testing.T) {
+	f := &fakeRunner{}
+	a := &authCheck{Service: "authelia", Host: "appbox", Validate: strings.Fields(authValidateArgv)}
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", a, nil); code != 0 {
+		t.Fatalf("exit %d, calls %v", code, f.calls)
+	}
+	v := indexOfCall(f, "appbox: "+authValidateArgv)
+	if v < 0 {
+		t.Fatalf("auth validate must run on the auth host (a REMOTE one here), got calls %v", f.calls)
+	}
+	if first := indexOfCall(f, "apply"); first < v {
+		t.Errorf("validate must come before any apply: %v", f.calls)
+	}
+	if f.count("config validate") != 1 {
+		t.Errorf("validate runs once, on the auth host only: %v", f.calls)
+	}
+}
+
+func TestRunDeploy_AuthValidateFailureAbortsBeforeAnyApply(t *testing.T) {
+	f := &fakeRunner{validateErr: map[string]bool{"appbox": true}}
+	a := &authCheck{Service: "authelia", Host: "appbox", Validate: strings.Fields(authValidateArgv)}
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", a, nil); code != 1 {
+		t.Fatalf("an invalid auth config must abort with 1, got %d", code)
+	}
+	if f.count("apply") != 0 {
+		t.Errorf("nothing may be applied after a failed validate, got calls %v", f.calls)
+	}
+}
+
+func TestRunDeploy_AuthHostOutsideTheDeployIsSkipped(t *testing.T) {
+	f := &fakeRunner{validateErr: map[string]bool{"elsewhere": true}}
+	a := &authCheck{Service: "authelia", Host: "elsewhere", Validate: strings.Fields(authValidateArgv)}
+	if code := runDeploy(stdEnv(), f, deployTestTargets, "/repo", a, nil); code != 0 {
+		t.Fatalf("a deploy that does not touch the auth host has nothing to hold back, got %d", code)
+	}
+	if f.count("config validate") != 0 {
+		t.Errorf("must not validate on a host outside the deploy: %v", f.calls)
+	}
+}
+
+func TestPlanAuthCheck(t *testing.T) {
+	cfg := &config.Config{Defaults: config.Defaults{AuthService: "authelia"}, Services: map[string]config.Service{"authelia": {Host: "pi"}}}
+	a := planAuthCheck(cfg)
+	if a == nil || a.Host != "pi" || strings.Join(a.Validate, " ") != authValidateArgv {
+		t.Fatalf("got %+v", a)
+	}
+	cfg.Services["authelia"] = config.Service{Host: "pi", Disabled: true}
+	if planAuthCheck(cfg) != nil {
+		t.Error("a disabled auth service has nothing to validate")
+	}
+	if planAuthCheck(&config.Config{}) != nil {
+		t.Error("no auth service: nothing to validate")
+	}
+}
+
+func indexOfCall(f *fakeRunner, substr string) int {
+	for i, c := range f.calls {
+		if strings.Contains(c, substr) {
+			return i
+		}
+	}
+	return -1
 }
 
 // --- preflight: deploy refuses a dirty tree, then brings the checkout level with origin (rebase + push) ---
@@ -483,7 +556,7 @@ func TestDeployPreflight_SyncsWithOrigin(t *testing.T) {
 func TestRunDeploy_Phase1SyncsRemotesWithOrigin(t *testing.T) {
 	deploy := func(f *fakeRunner, resync func() error) (code int, out string) {
 		var buf strings.Builder
-		code = runDeploy(&Env{Out: &buf, Err: &buf, NoTerminal: true}, f, deployTestTargets, "/repo", resync)
+		code = runDeploy(&Env{Out: &buf, Err: &buf, NoTerminal: true}, f, deployTestTargets, "/repo", nil, resync)
 		return code, buf.String()
 	}
 	had := func(f *fakeRunner, call string) bool { return f.count(call) > 0 }

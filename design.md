@@ -1211,11 +1211,18 @@ two strictly ordered phases:
   refuses touching nothing. **Any** failure — non-ff/divergence (the host has local commits or
   edits origin doesn't have; boxes must not fork the repo — reconcile manually), a dirty remote
   tree, an unreachable host, ssh auth — prints the host and the git/ssh output and **aborts the
-  entire deploy**: phase 2 never starts and no runtime state changed anywhere.
+  entire deploy**: phase 3 never starts and no runtime state changed anywhere.
   Pulled-but-not-applied checkouts are the normal intermediate state of the manual workflow, so
   an abort leaves nothing to undo. After the pulls, `git rev-parse HEAD` per host must agree —
   hosts on *different* commits (a push raced between the pulls) also abort: re-run deploy.
-- **Phase 2 — apply, per-host best-effort, remotes first and self LAST**: per host,
+- **Phase 2 — validate the auth config on the auth host**: with every checkout on the new commit, the auth
+  provider's validate (`ApplyCommands`' validate argv — for Authelia `docker exec <svc> authelia config validate`)
+  runs on the host of `defaults.auth_service`, locally or over ssh; the auth host need not be the deploy host.
+  A failure aborts the deploy before **any** host is applied: the auth provider signs people in (hemma-ui
+  included), so a config it would refuse must never reach its restart, and must not cost the other hosts a reload
+  either. `apply` validates again before it restarts (that guard stays). No auth service, a disabled one, or an
+  auth host outside this deploy's targets: nothing to validate, the phase says so and continues.
+- **Phase 3 — apply, per-host best-effort, remotes first and self LAST**: per host,
   `hemma apply` (which does its own validate-before-restart, §6.3). Self goes last because
   applying on self can restart the resolver, and a resolver bounce mid-fan-out would break
   DNS-resolved ssh to the remaining hosts — breadth-first: converge the leaves, bounce the
@@ -1227,7 +1234,7 @@ two strictly ordered phases:
   the failing host and re-run (`apply` is idempotent).
 
 Output is streamed per host under bold `== <host> ==` section headers (matching `apply`'s
-style), grouped under `== Phase 1: pull ==` / `== Phase 2: apply ==` phase headers.
+style), grouped under `== Phase 1: pull ==` / `== Phase 2: validate auth ==` / `== Phase 3: apply ==` phase headers.
 
 ## 7. Validation (per-entry, non-fatal)
 

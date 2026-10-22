@@ -27,7 +27,7 @@ type progItem struct {
 type deployProgress struct {
 	deploy bool // `deploy` (several phases) rather than `apply` (this server only)
 	steps  []progItem
-	phase  int // deploy: 0 syncing this host, 1 probing, 2 pulling, 3 applying
+	phase  int // deploy: 0 syncing this host, 1 probing, 2 pulling, 3 validating sign-in, 4 applying
 	failed bool
 }
 
@@ -35,7 +35,8 @@ const (
 	stepSync    = 0
 	stepReach   = 1
 	stepHosts   = 2
-	stepRestart = 3
+	stepAuth    = 3
+	stepRestart = 4
 )
 
 var (
@@ -56,6 +57,7 @@ func newDeployProgress(command string) *deployProgress {
 			{Title: "Syncing your changes", Status: "running"},
 			{Title: "Checking the servers", Status: "pending"},
 			{Title: "Syncing hosts", Status: "pending"},
+			{Title: "Checking sign-in", Status: "pending"},
 			{Title: "Restarting services", Status: "pending"},
 		}
 	} else {
@@ -64,7 +66,7 @@ func newDeployProgress(command string) *deployProgress {
 	return p
 }
 
-// Steps is the checklist as the page shows it. A deploy is four steps and nothing more: which servers it is working
+// Steps is the checklist as the page shows it. A deploy is five steps and nothing more: which servers it is working
 // through is detail nobody following along needs (the failure message still says where it stopped). Only `apply`
 // keeps its sub-steps, because those are what it does (restarting DNS, reloading the proxy), not whose box it is.
 func (p *deployProgress) Steps() []progItem {
@@ -112,18 +114,23 @@ func (p *deployProgress) Feed(line string) {
 		p.phase = 2
 		p.steps[stepReach].Status = "done"
 		p.steps[stepHosts].Status = "running"
-	case line == "== Phase 2: apply ==":
+	case line == "== Phase 2: validate auth ==":
 		p.phase = 3
 		p.steps[stepHosts].Status = "done"
+		p.steps[stepAuth].Status = "running"
+	case line == "== Phase 3: apply ==":
+		p.phase = 4
+		p.steps[stepHosts].Status = "done"
+		p.steps[stepAuth].Status = "done"
 		p.steps[stepRestart].Status = "running"
-	case p.phase == 3 && line == "== Summary ==":
+	case p.phase == 4 && line == "== Summary ==":
 		p.endRunningSub("done")
-	case p.phase == 3 && hostHeaderRe.MatchString(line):
+	case p.phase == 4 && hostHeaderRe.MatchString(line):
 		p.endRunningSub("done")
 		p.setSub(hostHeaderRe.FindStringSubmatch(line)[1], "running")
-	case p.phase == 3 && strings.Contains(line, "apply FAILED"):
+	case p.phase == 4 && strings.Contains(line, "apply FAILED"):
 		p.endRunningSub("failed")
-	case p.phase == 3 && summaryRe.MatchString(line):
+	case p.phase == 4 && summaryRe.MatchString(line):
 		m := summaryRe.FindStringSubmatch(line)
 		st := "done"
 		if m[1] == "✗" {
