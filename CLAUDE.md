@@ -213,7 +213,10 @@ authy). It is NOT a second implementation of hemma:
   list and marks the matches, and does not open anything (what you opened stays open). A save that changed several things folds each change on its own (with Expand / Collapse all);
   a lone change just shows its table. On a service's own history the entry's `host/service:` prefix is dropped from the title (the full message
   stays as the tooltip and is still searched). Removed services show up as entries, so their history is reachable by searching for
-  them. Nothing is stored by hemma; it is all git. Unsaved changes are not in it, and there is no Restore
+  them. Recent saves are dated "Today, 22:31" / "Yesterday, …" and by weekday for the rest of the week; a week or more ago is a date (in the
+  browser's language; the exact time is the tooltip, and both forms are searched). It is read a page at a time (30 saves, then a **Load older** button; one service's changes are read in chunks of 40 commits until 20 are
+  found, the page carrying the name the service had at that point so a rename is followed across pages). Nothing is stored by hemma; it is all
+  git. Unsaved changes are not in it, and there is no Restore
   (yet). A row's chip (Added / Changed / Removed) comes from the diff. Something removed but not saved
   (a service, host or domain) shows struck through with an **Undo**, which re-runs the matching `add …` with the values the
   diff recorded (`undoRemoved`), so no state lives only in the page. Host and domain rows open on a click; hemma cannot
@@ -239,6 +242,10 @@ authy). It is NOT a second implementation of hemma:
   so dialogs never stack, and Redeploy asks for its confirmation inside it. The burger menu also carries the version and Sign out.
   `#/settings` (Settings used to be a page) redirects to Infrastructure; the old `#/tools` lands on Services. The unsaved-change
   badge on a tab counts that page's entities (`diff.go` kinds: Service → Services, Host/Domain/Setting → Infrastructure).
+- **A phone scrolls the page, not a box inside it** (`#main` only scrolls on a wide screen): iOS scrolls to the top when the status
+  bar is tapped, but only for the page itself. So under 720px the header is `position: sticky`, and the tab bar, the bars and the toast
+  are `position: fixed`; while a dialog is open the page behind it is locked (`overflow: hidden`). Use `scrollToTop()`, not
+  `#main.scrollTop`.
 - **Phones are the primary screen:** keep fields at 16px on every touch screen (`@media (pointer: coarse)`, so an iPhone in landscape
   and an iPad too — iOS zooms into smaller ones, as reaparr and albumarr note) and `touch-action: manipulation` everywhere (no double-tap zoom), the shell switches to the phone layout under 720px, and
   nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
