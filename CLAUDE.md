@@ -170,7 +170,7 @@ authy). It is NOT a second implementation of hemma:
   which asks inline, Keep / Discard N changes — and Review & save, which commits with a message) and *deploying*: an
   accent bar ("Saved, not live yet" + Deploy) after a save that was not deployed — remembered in `localStorage`, plus
   unpushed commits that change a file hemma owns (`ahead_hemma`; a commit to a compose file is ahead of origin too, but
-  hemma has nothing to make live for it) — and **Tools → Recovery → Redeploy everything**, which is always there, so deploy still works
+  hemma has nothing to make live for it) — and **Tools → Recovery → Redeploy everything** (the Tools dialog), which is always there, so deploy still works
   on a freshly set-up machine with nothing to save (nothing about what is LIVE is ever inferred from the page). Deploy is the kernel's `deploy`, which first brings this
   checkout level with origin itself (`git pull --rebase`, aborted cleanly on a real conflict; then `git push`; then a
   drift check), so the UI has no push of its own and "origin moved" is never a dead end for the person. With no origin
@@ -188,7 +188,7 @@ authy). It is NOT a second implementation of hemma:
 - **Not exposed on purpose:** credential minting (`create app/user`), and terminal-only `help`/`completion`/
   `version`/`defaults` listings, and `list` (the Services page is the overview). The file browser only ever shows
   the mounted repo (no `..`, no symlinks, no dot-folders). When `hemma doctor` finds nothing, Issues shows just
-  "No issues"; the two checks you can run yourself (Verify, Measure) live on the Tools page.
+  "No issues"; the two checks you can run yourself (Verify, Measure) live in the Tools dialog.
 - **Security posture:** sign-in is **authy** (`github.com/miista/authy`), the outermost layer — nothing,
   not even the page or `/static/`, is reachable without a session. Configure `HEMMA_UI_OIDC_*` (all four
   together; the IdP decides who may sign in) or, with none set, the first visitor creates a local account —
@@ -231,11 +231,12 @@ authy). It is NOT a second implementation of hemma:
   `TestIssues_…` pins it to the real output) — what `--fix` cannot resolve (advisories, known_hosts, …) is just
   listed. Successful changes are confirmed with a plain toast: the warnings a sync prints are repo-wide advisories,
   not about that change, and belong on Issues.
-- **Four pages, one job each:** Services (the list), Infrastructure (hosts, domains and — under them — the repo-wide Settings,
-  the defaults), Issues (doctor), Tools (Verify, Measure, Recovery → Redeploy everything). `#/settings` (Settings used to be a
-  page of its own) redirects to Infrastructure. On a phone the version and Sign out sit at the end of the Infrastructure page,
-  since there is no sidebar to carry them. The unsaved-change badge on a tab counts that page's
-  entities (`diff.go` kinds: Service → Services, Host/Domain/Setting → Infrastructure).
+- **Three pages and a dialog:** Services (the list), Infrastructure (hosts, domains and — under them — the repo-wide Settings, the
+  defaults), Issues (doctor). **Tools** (Verify, Measure, Recovery → Redeploy everything) is a dialog, not a page — rarely needed —
+  opened from the burger in the phone's top bar or the Tools button in the sidebar's foot; choosing a tool closes the dialog first,
+  so dialogs never stack, and Redeploy asks for its confirmation inside it. The burger menu also carries the version and Sign out.
+  `#/settings` (Settings used to be a page) redirects to Infrastructure; the old `#/tools` lands on Services. The unsaved-change
+  badge on a tab counts that page's entities (`diff.go` kinds: Service → Services, Host/Domain/Setting → Infrastructure).
 - **Phones are the primary screen:** keep fields at 16px on every touch screen (`@media (pointer: coarse)`, so an iPhone in landscape
   and an iPad too — iOS zooms into smaller ones, as reaparr and albumarr note) and `touch-action: manipulation` everywhere (no double-tap zoom), the shell switches to the phone layout under 720px, and
   nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
