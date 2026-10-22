@@ -194,7 +194,10 @@ authy). It is NOT a second implementation of hemma:
 - **Not exposed on purpose:** credential minting (`create app/user`), and terminal-only `help`/`completion`/
   `version`/`defaults` listings, and `list` (the Services page is the overview). The file browser only ever shows
   the mounted repo (no `..`, no symlinks, no dot-folders). When `hemma doctor` finds nothing, Issues shows just
-  "No issues"; the two checks you can run yourself (Verify, Measure) live in the Tools dialog.
+  "No issues"; the two checks you can run yourself (Verify, Measure) live in the Tools dialog. Verify's result is drawn like the deploy
+  checklist (`verifyView`: a card per service, a ✓/✗ row per check, the outcome, the raw text under "Raw output"); it only reads the
+  shape of `hemma verify`'s lines and falls back to the raw text when it finds no service. Measure is drawn the same way
+  (`measureView`: a card per measured path — two with `--compare` — with a bar per timing, spread and range beneath, runs folded away).
 - **Security posture:** sign-in is **authy** (`github.com/miista/authy`), the outermost layer — nothing,
   not even the page or `/static/`, is reachable without a session. Configure `HEMMA_UI_OIDC_*` (all four
   together; the IdP decides who may sign in) or, with none set, the first visitor creates a local account —

@@ -54,7 +54,7 @@
 
 <dialog id="rdlg" tabindex="-1" autofocus>
   <div class="dhd"><div class="tt"><h2 id="rtitle"></h2></div><button type="button" class="x" id="rx" aria-label="Close">×</button></div>
-  <div class="dbd"><pre id="rout"></pre></div>
+  <div class="dbd"><div id="rview" hidden></div><pre id="rout"></pre></div>
   <div class="dft"><div class="grp"><button type="button" id="rclose">Close</button></div></div>
 </dialog>
 
@@ -250,7 +250,93 @@ function ask(title, message, { ok = "OK", danger = false, single = false } = {})
 }
 // confirmCmd asks before an allowlisted command: titled with the command, its first word on the button; removals are red.
 const confirmCmd = (key, message) => ask(cmds[key].title, message, { ok: cmds[key].title.split(" ")[0], danger: key.startsWith("remove") });
-function showResult(title, text) { $("#rtitle").textContent = title; $("#rout").textContent = text; openModal($("#rdlg")); }
+// showResult: the raw text in a box, or — when `view` is given — that drawn view (the raw text stays one click away).
+function showResult(title, text, view) {
+  $("#rtitle").textContent = title; $("#rout").textContent = text;
+  $("#rview").replaceChildren(...(view ? [view] : [])); $("#rview").hidden = !view; $("#rout").hidden = !!view;
+  openModal($("#rdlg"));
+}
+// measureView draws `hemma measure`'s output: per measured path (one, or A and B with --compare) a card with a bar per timing — the
+// mean, with the spread and range beneath — and the individual runs folded away. The timings are cumulative (connect includes dns,
+// tls includes connect, …), so the bars read as one request's timeline. Only the shape of measure.sh's lines is read; output with no
+// timing rows is not drawn (null: the caller shows the raw text).
+function measureView(text) {
+  const root = el("div", null, { className: "measure" });
+  const sections = [];
+  let cur = null, m;
+  const open = title => (cur = { title, notes: [], runs: [], stats: [], after: [] }, sections.push(cur));
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    if ((m = line.match(/^==\s*(.+?)\s*==$/))) open(m[1]);
+    else if ((m = line.match(/^Measuring (\S+)/))) { if (!cur || cur.stats.length) open(null); if (!cur.title) cur.title = m[1]; }
+    else if ((m = line.match(/^(\w+)\s+mean=\s*(\d+)ms\s+sd=\s*(\d+)ms\s+min=\s*(\d+)ms\s+max=\s*(\d+)ms$/))) { if (!cur) open(null); cur.stats.push({ label: m[1], mean: +m[2], sd: +m[3], min: +m[4], max: +m[5] }); }
+    else if ((m = line.match(/^run (\d+): (.*)$/))) { if (!cur) open(null); cur.runs.push(line); }
+    else if (/^Warming up/.test(line)) continue;
+    else { if (!cur) open(null); (cur.stats.length ? cur.after : cur.notes).push(line); }   // before the timings: about this path; after: the closing remark
+  }
+  const drawn = sections.filter(s => s.stats.length);
+  if (!drawn.length) return null;
+  const scale = Math.max(1, ...drawn.flatMap(s => s.stats.map(x => x.mean)));
+  for (const s of drawn) {
+    const card = el("div", null, { className: "vgroup mcard" });
+    if (s.title) { const h = el("div", null, { className: "vhead" }); h.append(el("b", s.title)); card.append(h); }
+    const body = el("div", null, { className: "mbody" });
+    s.notes.forEach(n => body.append(el("p", n, { className: "meta vnote" })));
+    for (const x of s.stats) {
+      const row = el("div", null, { className: "mrow" + (x.label === "total" ? " total" : "") });
+      const track = el("span", null, { className: "mtrack" }), fill = el("span", null, { className: "mfill" });
+      fill.style.width = Math.max(1, x.mean / scale * 100) + "%"; track.append(fill);
+      row.append(el("span", x.label, { className: "mlabel" }), track, el("span", `${x.mean} ms`, { className: "mval" }),
+        el("span", x.min === x.max ? `steady at ${x.min} ms` : `${x.min}–${x.max} ms · ±${x.sd}`, { className: "mdet" }));
+      body.append(row);
+    }
+    card.append(body);
+    if (s.runs.length) { const d = el("details", null, { className: "vraw mruns" }); d.append(el("summary", plural(s.runs.length, "run")), el("pre", s.runs.join("\n"))); card.append(d); }
+    root.append(card);
+  }
+  for (const n of sections.flatMap(s => s.after)) root.append(el("p", n, { className: "meta vnote" }));
+  const raw = el("details", null, { className: "vraw" });
+  raw.append(el("summary", "Raw output"), el("pre", text));
+  root.append(raw);
+  return root;
+}
+// verifyView draws `hemma verify`'s output like the deploy checklist: one card per service, a ✓/✗ row per check, then the outcome.
+// Only the shape of the lines is read (== name · fqdn ==, ✓/✗/· rows, the closing summary); anything else is shown as a note, and
+// output that has no service at all is not drawn (null: the caller shows the raw text).
+function verifyView(text) {
+  const root = el("div", null, { className: "verify" });
+  let group = null, services = 0, summary = null;
+  const icon = st => { const i = el("span", st === "done" ? "✓" : st === "failed" ? "✗" : "·", { className: "sicon " + st }); i.setAttribute("aria-hidden", "true"); return i; };
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    let m;
+    if ((m = line.match(/^==\s*(.+?)\s*·\s*(.+?)\s*==$/))) {
+      services++;
+      group = el("div", null, { className: "vgroup" });
+      group.append(el("div", null, { className: "vhead" }));
+      group.firstChild.append(el("b", m[1]), el("span", m[2], { className: "vfqdn" }));
+      root.append(group);
+    } else if ((m = line.match(/^([✓✗·])\s+(.*)$/)) && group) {
+      const st = m[1] === "✓" ? "done" : m[1] === "✗" ? "failed" : "note";
+      const row = el("div", null, { className: "vrow " + st });
+      row.append(icon(st), el("span", m[2], { className: "vtext" }), el("span", st === "done" ? "passed" : st === "failed" ? "failed" : "", { className: "sr-only" }));
+      group.append(row);
+    } else if (/^All checks passed/.test(line) || /^\d+ checks? failed\.?$/.test(line)) {
+      summary = el("div", line, { className: "vsum " + (/^All/.test(line) ? "ok" : "bad") });
+    } else {
+      root.append(el("p", line, { className: "meta vnote" }));
+      group = null;   // a note ends the card above it
+    }
+  }
+  if (!services) return null;
+  if (summary) root.append(summary);
+  const raw = el("details", null, { className: "vraw" });
+  raw.append(el("summary", "Raw output"), el("pre", text));
+  root.append(raw);
+  return root;
+}
 $("#rclose").onclick = () => $("#rdlg").close();
 // toastResult: one line for a finished action; warnings and failures keep the output behind Details.
 function toastResult(title, res, done) {
@@ -263,6 +349,7 @@ function toastResult(title, res, done) {
 // Commands whose output IS the result open it in a dialog; everything else just confirms.
 function notify(key, res) {
   const c = cmds[key];
+  if (key === "verify" || key === "measure") { const out = res.output || res.error || "", view = (key === "verify" ? verifyView : measureView)(out); if (view) return showResult(c.title, out, view); }
   if (c && (c.readonly || key === "doctor")) return showResult(c.title, (res.ok ? "" : "Finished with problems:\n\n") + (res.output || res.error || ""));
   toastResult(c ? c.title : key, res, c ? `${c.title}: done` : "Done");
 }
