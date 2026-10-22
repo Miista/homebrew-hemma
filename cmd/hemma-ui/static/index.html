@@ -1132,7 +1132,7 @@ const VIEWS = {
       if (h.name && e.changes.length === 1 && e.changes[0].svc) { const re = new RegExp("^[^\\s/]+/" + e.changes[0].svc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ":\\s*"); t = t.replace(re, "") || t; }
       return t || "(no message)";
     };
-    const opened = new Set();
+    const opened = new Set(), openChg = new Set();   // entries and, inside a save of several, the changes you have opened
     const draw = () => {
       body.replaceChildren();
       if (h.loading) { body.append(el("p", "Reading the history…", { className: "meta" })); return; }
@@ -1159,25 +1159,46 @@ const VIEWS = {
         head.append(el("span", null, { className: "chev" }), one ? el("span", statusLabel(e.changes[0].status), { className: "chip " + e.changes[0].status }) : el("span", `${e.changes.length} changes`, { className: "chip" }), main);
         const tab2 = el("div", null, { className: "etab", hidden: !open });
         if (e.body) { const bd = el("p", null, { className: "hbody", style: "padding-top:10px" }); bd.append(hlText(e.body, t)); tab2.append(bd); }
-        e.changes.forEach(c => {
-          const blk = el("div", null, { className: "cblk" });
-          if (!one || !c.fields.length) {   // a lone change is already named by the entry's header; several are told apart here
-            const ch = el("div", null, { className: "chgh" }), nm = el("span", null, { className: "en" });
-            nm.append(hlText(c.name, t));
-            ch.append(el("span", statusLabel(c.status), { className: "chip " + c.status }), el("span", c.kind, { className: "ek" }), nm); blk.append(ch);
-          }
+        // With several changes in one save each is folded on its own (a save can touch dozens of services); a lone change is already
+        // named by the entry's header and just shows its table.
+        const togglers = [];
+        e.changes.forEach((c, i) => {
+          const blk = el("div", null, { className: "cblk" }), key = e.commit + ":" + i;
           const rows = c.fields.filter(f => c.status === "changed" || c.status === "renamed" || (c.status === "added" ? f.after !== "—" : f.before !== "—"));
+          const fold = !one && rows.length > 0;
+          const detail = el("div", null, { hidden: fold && !openChg.has(key) });
           if (rows.length) {
-            const hdr = el("div", null, { className: "ehdr" }); ["Field", "Before", "After"].forEach(x => hdr.append(el("div", x))); blk.append(hdr);
+            const hdr = el("div", null, { className: "ehdr" }); ["Field", "Before", "After"].forEach(x => hdr.append(el("div", x))); detail.append(hdr);
             for (const f of rows) {
               const diff = f.before !== f.after, r = el("div", null, { className: "erow" });
               const c1 = el("div"), c2 = el("div", null, { className: "cur" + (diff && f.before !== "—" ? " diff" : "") }), c3 = el("div", null, { className: "nxt" + (diff ? (c.status === "removed" ? " del" : " add") : "") });
               c1.append(hlText(f.field, t)); c2.append(hlText(f.before, t)); c3.append(hlText(f.after, t));
-              r.append(c1, c2, c3); blk.append(r);
+              r.append(c1, c2, c3); detail.append(r);
             }
           }
-          tab2.append(blk);
+          if (!one || !c.fields.length) {
+            const ch = fold ? el("button", null, { type: "button", className: "chgh" }) : el("div", null, { className: "chgh" }), nm = el("span", null, { className: "en" });
+            nm.append(hlText(c.name, t));
+            if (fold) ch.append(el("span", null, { className: "chev" }));
+            ch.append(el("span", statusLabel(c.status), { className: "chip " + c.status }), el("span", c.kind, { className: "ek" }), nm);
+            if (fold) {
+              ch.setAttribute("aria-expanded", String(!detail.hidden));
+              const set = o => { detail.hidden = !o; ch.setAttribute("aria-expanded", String(o)); if (o) openChg.add(key); else openChg.delete(key); };   // in place, so the chevron turns
+              ch.onclick = () => { set(detail.hidden); syncAll(); };
+              togglers.push({ set, isOpen: () => !detail.hidden });
+            }
+            blk.append(ch);
+          }
+          blk.append(detail); tab2.append(blk);
         });
+        let syncAll = () => {};
+        if (togglers.length > 1) {   // many changes: fold or unfold them all at once
+          const all = btn("", () => { const every = togglers.every(x => x.isOpen()); togglers.forEach(x => x.set(!every)); syncAll(); });
+          syncAll = () => { all.textContent = togglers.every(x => x.isOpen()) ? "Collapse all" : "Expand all"; };
+          syncAll();
+          const bar = el("div", null, { className: "cbar" }); bar.append(all);
+          tab2.insertBefore(bar, tab2.querySelector(".cblk"));
+        }
         head.onclick = () => { const o = tab2.hidden; tab2.hidden = !o; head.setAttribute("aria-expanded", String(o)); if (o) opened.add(e.commit); else opened.delete(e.commit); };   // in place, so the chevron turns
         ent.append(head, tab2); list.append(ent);
       });

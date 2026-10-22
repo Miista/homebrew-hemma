@@ -210,7 +210,8 @@ authy). It is NOT a second implementation of hemma:
   an entry is a Save: its message, who, when, and everything it changed (services, hosts, domains, settings). With `?service=` it
   follows that one service back through a rename. Entries start folded (a single entry starts open). The search box matches the
   message, author, date, entity and field names and **both the old and the new values** (every word must match); it narrows the
-  list and marks the matches, and does not open anything (what you opened stays open). On a service's own history the entry's `host/service:` prefix is dropped from the title (the full message
+  list and marks the matches, and does not open anything (what you opened stays open). A save that changed several things folds each change on its own (with Expand / Collapse all);
+  a lone change just shows its table. On a service's own history the entry's `host/service:` prefix is dropped from the title (the full message
   stays as the tooltip and is still searched). Removed services show up as entries, so their history is reachable by searching for
   them. Nothing is stored by hemma; it is all git. Unsaved changes are not in it, and there is no Restore
   (yet). A row's chip (Added / Changed / Removed) comes from the diff. Something removed but not saved

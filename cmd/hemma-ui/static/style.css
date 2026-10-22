@@ -467,4 +467,8 @@ button.primary.deploy:hover:not(:disabled) { background: var(--go); filter: brig
 /* a commit in the history can hold several changes: each is told apart by a small header, then its own table */
 .cblk + .cblk { border-top: 1px solid var(--line); }
 .chgh { display: flex; align-items: center; gap: 10px; padding: 10px 14px 8px 36px; }
+button.chgh { width: 100%; height: auto; min-height: 44px; padding: 8px 14px; border: 0; border-radius: 0; background: none; color: inherit; font-weight: 400; text-align: left; white-space: normal; }
+button.chgh:hover:not(:disabled) { background: var(--hover); }
+.cbar { display: flex; justify-content: flex-end; padding: 6px 10px 2px; border-bottom: 1px solid var(--line); }
+.cbar button { height: 28px; padding: 0 8px; border: 0; background: none; color: var(--accent-text); font-weight: 600; font-size: 13px; }
 .chgh .ek { color: var(--muted); font-size: 13px; } .chgh .en { font-weight: 600; overflow-wrap: anywhere; }
