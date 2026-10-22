@@ -5,12 +5,13 @@ A fully synthetic single-host homelab for exercising `hemma-ui` end to end — i
 
 ```sh
 ./setup.sh                                  # builds .work/: repo + local bare remote + throwaway cert
+(cd ../.. && make ui-binary)                # the image only copies in a cross-compiled binary
 docker compose -f compose.yml up -d --build
 # UI: http://127.0.0.1:18080 — sign-in is authy's local account: the FIRST visitor creates it
 docker compose -f compose.yml down -v       # tear down; re-run setup.sh for a fresh repo
 ```
 
-From the repo root, `make fixture-redeploy` rebuilds and recreates only the UI container (your repo data
+From the repo root, `make fixture-redeploy` cross-compiles the binary (`make ui-binary`) and rebuilds and recreates only the UI container (your repo data
 and account are kept), `make fixture-logs` follows its log, and `make fixture-reset CONFIRM=yes` wipes and
 rebuilds everything. To reach the fixture from another device, put `FIXTURE_BIND=<address>` in a
 `hack/ui-fixture/.env` file (gitignored) and the make targets pick it up.

@@ -1,10 +1,7 @@
-FROM golang:1.26-alpine AS build
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -o /out/hemma-ui ./cmd/hemma-ui
-
+# This image never compiles anything. The binary is cross-compiled with Go on the host and only copied in:
+#   make ui-binary      (CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o dist/hemma-ui ./cmd/hemma-ui)
+# A build stage here would redownload and recompile every dependency on each build, and the build cache that leaves behind
+# filled a whole Docker disk. `make ui-image` and `make fixture-redeploy` run ui-binary first.
 FROM alpine:3.21
 # docker-cli: `hemma apply` shells out to `docker exec/restart` against the host daemon.
 # git: hemma reads repo state. Both are needed at runtime.
@@ -23,7 +20,7 @@ RUN adduser -D -H -h /data -u 1000 hemma \
  && mkdir -p /data/auth /data/.ssh \
  && chmod 700 /data/.ssh \
  && chown -R 1000:1000 /data
-COPY --from=build /out/hemma-ui /usr/local/bin/
+COPY --chmod=755 dist/hemma-ui /usr/local/bin/hemma-ui
 # The bind-mounted repo is owned by the host user, not root: without this git refuses
 # it ("dubious ownership"), which breaks hemma's own git calls (deploy preflight/pull).
 RUN git config --system --add safe.directory '*'

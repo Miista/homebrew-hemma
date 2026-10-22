@@ -10,7 +10,7 @@ GOFILES  = cmd internal tools
 .DEFAULT_GOAL := help
 .PHONY: help build hemma check fmt fmt-check vet test test-fast test-race \
         snapshots snapshots-update man completions \
-        ui-image fixture-redeploy fixture-logs fixture-verify fixture-import fixture-import-authelia fixture-ps fixture-reset clean
+        ui-binary ui-image fixture-redeploy fixture-logs fixture-verify fixture-import fixture-import-authelia fixture-ps fixture-reset clean
 
 help: ## list the targets
 	@awk 'BEGIN{FS=":.*## "} /^[a-zA-Z_-]+:.*## /{printf "  \033[1m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -58,8 +58,15 @@ completions: ## regenerate shell completions into completions/
 	$(GO) run ./tools/gencompletions -dir completions
 
 # ---------- hemma-ui ----------
-ui-image: ## build the hemma-ui image (tag: hemma-ui)
-	docker build -f Dockerfile.ui -t hemma-ui .
+# The image never compiles Go: the binary is cross-compiled here (the Mac is the build machine) and Dockerfile.ui just copies it in.
+# UI_ARCH is the target machine's: arm64 for the pi and for Colima / Docker Desktop on Apple silicon; amd64 for an x86 host.
+UI_ARCH ?= arm64
+ui-binary: ## cross-compile hemma-ui for Linux into dist/ (UI_ARCH=arm64|amd64)
+	mkdir -p dist
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(UI_ARCH) $(GO) build -trimpath -ldflags="-s -w" -o dist/hemma-ui ./cmd/hemma-ui
+
+ui-image: ui-binary ## build the hemma-ui image (tag: hemma-ui) from the cross-compiled binary
+	docker build --platform linux/$(UI_ARCH) -f Dockerfile.ui -t hemma-ui .
 
 # The fixture is synthetic. It listens on loopback only, unless you opt in by putting
 # FIXTURE_BIND=<address> in hack/ui-fixture/.env (gitignored) to reach it from another device.
@@ -74,7 +81,7 @@ ifeq ($(FIXTURE_BIND),auto)
   endif
 endif
 
-fixture-redeploy: ## rebuild + recreate ONLY the hemma-ui container; repo data and your account are kept
+fixture-redeploy: ui-binary ## rebuild + recreate ONLY the hemma-ui container; repo data and your account are kept
 	cd hack/ui-fixture && FIXTURE_BIND=$(FIXTURE_BIND) $(COMPOSE) up -d --build --no-deps hemma-ui
 	@echo "UI: http://$(if $(FIXTURE_BIND),$(FIXTURE_BIND),127.0.0.1):18080"
 
@@ -95,10 +102,10 @@ fixture-import-authelia: ## give the fixture a SECRET-FREE Authelia config from 
 fixture-ps: ## fixture containers and their status
 	cd hack/ui-fixture && $(COMPOSE) ps
 
-fixture-reset: ## DESTRUCTIVE: wipe and rebuild the fixture (repo + account). Needs CONFIRM=yes
+fixture-reset: ui-binary ## DESTRUCTIVE: wipe and rebuild the fixture (repo + account). Needs CONFIRM=yes
 	@[ "$(CONFIRM)" = "yes" ] || { echo "This deletes the fixture repo and the UI account. Re-run with CONFIRM=yes."; exit 1; }
 	cd hack/ui-fixture && $(COMPOSE) down -v && ./setup.sh && $(COMPOSE) up -d --build
 	@echo; echo "Open the UI now and create the account: the first visitor claims it."
 
-clean: ## remove the built ./hemma binary
-	rm -f hemma
+clean: ## remove the built ./hemma binary and dist/
+	rm -rf hemma dist
