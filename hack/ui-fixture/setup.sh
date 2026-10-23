@@ -40,6 +40,7 @@ domains:
     - example.com
 defaults:
     dns_host: pi
+    deploy_host: pi
     tunnel_dir: cloudflared
 $([ "$with_auth" = 1 ] && echo "    auth_service: authelia")
 services:
