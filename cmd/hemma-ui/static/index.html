@@ -773,6 +773,12 @@ const dirty = () => changes.git && changes.files.length > 0;
 // "Saved, not live yet": a save that was not deployed (remembered across reloads), or unpushed commits that change a file hemma owns. A commit to anything else (a compose file) is ahead of origin too, but hemma has nothing to make live for it.
 const undeployed = () => !deploying && !dirty() && (localStorage.getItem("hemma.undeployed") === "1" || (changes.has_remote && changes.ahead_hemma));
 const barsUp = () => dirty() || deploying || undeployed();
+// Without a deploy host nothing can go live: this page deploys from that host and does not guess which one it runs on (the server
+// refuses too, host.go). /api/state's apply.host is the host it resolved, empty when there is none. An unloadable file shows the
+// recovery screen instead, so it is not asked about here.
+const needsDeployHost = () => !broken && !(state.apply && state.apply.host);
+const NO_DEPLOY_HOST = "Set the deploy host first (Infrastructure → Settings).";
+const openDeployHostSetting = () => { const s = state.settings.find(x => x.key === "deploy-host"); if (s) openSetting(s); };
 function renderHint() {
   const [text, cls] = deploying ? ["Deploying…", "busy"] : dirty() ? ["Save changes to deploy", "warn"] : undeployed() ? ["Saved, not live yet", "busy"] : ["No unsaved changes", ""];
   $("#hinttext").textContent = text; $("#hint .dot").className = "dot " + cls;
@@ -786,6 +792,7 @@ const deployMessage = () => `Your saved changes go live on ${deployMany() ? "all
 async function deploy() {
   if (deploying) return;
   if (dirty()) return toast("Save or discard your unsaved changes before deploying", "warn");
+  if (needsDeployHost()) return openDeployHostSetting();
   const key = changes.has_remote ? "deploy" : "apply";
   if (!await ask("Deploy?", deployMessage(), { ok: "Deploy" })) return;
   await deployNow(key, "Deployed", undefined);
@@ -801,6 +808,7 @@ function deployFailedHosts(out) {
 // Sending the saved commits to origin is Deploy's own first step (hemma rebases onto origin and pushes, on this host),
 // so there is nothing to push from here.
 async function deployNow(key, done, failed) {
+  if (needsDeployHost()) return toast(NO_DEPLOY_HOST, "warn");   // the callers check first; this is the backstop
   deploying = true; render();
   const dlg = $("#pdlg");
   renderSteps([]); $("#ptitle").textContent = "Deploying…"; $("#pdetails").hidden = true; $("#pnote").hidden = false;
@@ -966,10 +974,14 @@ function openCommit() {
   // they turn it on, because deploying restarts things.
   const dep = $("#cdep"), act = changes.has_remote ? "deploy" : "apply";
   dep.checked = localStorage.getItem("hemma.deployAfterSave") === "1";
+  // With no deploy host the switch is off and cannot be turned on (the remembered choice is left as it was).
+  const noHost = needsDeployHost();
+  if (noHost) dep.checked = false;
+  dep.disabled = noHost;
   const syncDeploy = () => {
     $("#cgo").textContent = dep.checked ? "Save & deploy" : "Save";
     $("#cgo").classList.toggle("deploy", dep.checked);   // a colour of its own: this is not a plain save
-    $("#cdephelp").textContent = dep.checked ? "Your changes go live right after saving." : "Not live yet — use Deploy when you’re ready.";
+    $("#cdephelp").textContent = noHost ? NO_DEPLOY_HOST : dep.checked ? "Your changes go live right after saving." : "Not live yet — use Deploy when you’re ready.";
   };
   dep.onchange = () => { localStorage.setItem("hemma.deployAfterSave", dep.checked ? "1" : "0"); syncDeploy(); };
   syncDeploy();
@@ -978,7 +990,7 @@ function openCommit() {
     if (!$("#cform").reportValidity()) return;
     $("#cgo").disabled = true;
     try {
-      const wantDeploy = dep.checked;
+      const wantDeploy = dep.checked && !noHost;
       // Saving only commits. Sending the commit to origin is part of Deploy (hemma does it, rebasing onto origin first).
       const text = $("#cmsg").value.trim();
       const res = await post("/api/commit", { message: prefix ? `${prefix} ${text}` : text });
@@ -1030,9 +1042,10 @@ function renderBars() {
   db.classList.toggle("show", ds); db.setAttribute("aria-hidden", String(!ds));
   if (ds) {
     const inner = el("div", null, { className: "in" }), m = el("div", null, { className: "msg" });
-    m.append(el("b", deploying ? "Deploying…" : "Saved, not live yet"), el("span", deploying ? "Sending your saved changes to the servers" : "Deploy to make it live."));
+    const noHost = !deploying && needsDeployHost();
+    m.append(el("b", deploying ? "Deploying…" : "Saved, not live yet"), el("span", deploying ? "Sending your saved changes to the servers" : noHost ? "Set the deploy host to make it live." : "Deploy to make it live."));
     inner.append(el("span", null, { className: "dot" }), m);
-    const go = btn(deploying ? "Deploying…" : "Deploy", () => deploy(), "primary"); go.disabled = deploying; inner.append(go);
+    const go = btn(deploying ? "Deploying…" : noHost ? "Set deploy host" : "Deploy", () => deploy(), "primary"); go.disabled = deploying; inner.append(go);   // deploy() opens the setting when there is none
     db.replaceChildren(inner);
   } else db.replaceChildren();
   $("#toast").classList.toggle("up", barsUp());
@@ -1397,13 +1410,13 @@ function openTools() {
   let confirming = false;
   const draw = () => {
     row.replaceChildren();
-    const d = dirty(), tx = el("div", null, { className: "tx" });
-    tx.append(el("div", "Redeploy everything", { className: "tt" }), el("div", d ? "Save or discard your changes first." : deploying ? "Deploying…" : "Pushes every generated file to every host, even when nothing has changed. Use it after a failed deploy or a rebuilt host.", { className: "td" }));
+    const d = dirty(), noHost = needsDeployHost(), tx = el("div", null, { className: "tx" });
+    tx.append(el("div", "Redeploy everything", { className: "tt" }), el("div", noHost ? NO_DEPLOY_HOST : d ? "Save or discard your changes first." : deploying ? "Deploying…" : "Pushes every generated file to every host, even when nothing has changed. Use it after a failed deploy or a rebuilt host.", { className: "td" }));
     row.append(tx);
-    if (confirming && !d && !deploying) {
+    if (confirming && !d && !deploying && !noHost) {
       const hosts = deployMany() ? `all ${state.hosts.length} hosts` : "this host";
       row.append(btn("Cancel", () => { confirming = false; draw(); }), btn(`Redeploy to ${hosts}`, () => { $("#tdlg").close(); deployNow(changes.has_remote ? "deploy" : "apply", "Deployed"); }, "primary"));
-    } else { const b = btn("Redeploy…", () => { confirming = true; draw(); }); b.disabled = d || deploying || broken; if (d) b.title = "Save or discard your changes first"; row.append(b); }
+    } else { const b = btn("Redeploy…", () => { confirming = true; draw(); }); b.disabled = d || deploying || broken || noHost; if (d) b.title = "Save or discard your changes first"; if (noHost) b.title = NO_DEPLOY_HOST; row.append(b); }
   };
   draw();
   rec.append(sectionHead("Recovery"), row);
