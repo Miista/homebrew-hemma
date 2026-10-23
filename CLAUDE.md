@@ -137,7 +137,7 @@ name, name the mechanism; if new prose needs to talk about reach, say local/publ
 
 ## Host-split commands (`apply`, `verify`)
 
-`apply` and `verify` are **host-split**: they identify which host they run on via a local-IP match and
+`apply` and `verify` are **host-split** (the CLI; `hemma-ui` supplies its host from `deploy_host` instead, see below): they identify which host they run on via a local-IP match and
 perform only the part they own. The DNS half (restart pihole / dig against it) runs only on the resolver;
 the Caddy half (validate + reload) only on a host running Caddy; `apply` additionally has an auth half
 (provider `ApplyCommands`: validate then restart the auth container) that runs only on the host running
@@ -165,6 +165,13 @@ authy). It is NOT a second implementation of hemma:
   and the request's deadline is `Env.Ctx`, which kills hung external commands. The image contains only
   `hemma-ui`: there is no `hemma` binary here (`deploy`'s apply of this host runs in-process; the OTHER hosts
   run their installed `hemma apply` over ssh, as on the CLI).
+- **The UI's host is `defaults.deploy_host`** (`host.go`; `main` hands `deployHostSelf` to `kernel.SetLocalHost`), not a guess from its
+  network interfaces — it is required to run on the deploy host, so it takes that host's name from the file. This is the UI process
+  only: the kernel and the CLI keep matching their own interfaces and still refuse `deploy` from any host but the deploy host. The
+  kernel does NOT refuse when `deploy_host` is unset (it then runs anywhere), so the UI checks for itself: `deploy` and `apply`
+  (`/api/deploy`, `/api/run`) answer 409 `noDeployHost` until it is set (`needDeployHost`), and the page switches Deploy, "Deploy right
+  after saving" and Redeploy off with a pointer to Infrastructure → Settings → Deploy host (`needsDeployHost`). Editing,
+  Verify and the rest stay available, so the setting can be fixed from the page. A deploy host that is not a declared host counts as unset.
 - **Typed fields** (`Ref` in `commands.go`, validators in `refs.go`): a host is picked from hosts, a CIDR list is
   validated as CIDRs, a file is picked from the repo tree, a host's **SSH destination** is the `ssh` type (`[user@]host`, never
   starting with `-`: deploy runs `ssh <dest>`, so free text would be an option-injection hole). Every `defaults:` key is on the

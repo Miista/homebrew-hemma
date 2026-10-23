@@ -14,7 +14,10 @@
 services:
   hemma-ui:
     build: { context: ., dockerfile: Dockerfile.ui }
-    network_mode: host            # apply identifies the host by local IP
+    # The UI does not look at its own IP to learn which host it is: that is defaults.deploy_host, and Deploy / Apply refuse until it
+    # is set. So host networking is no longer needed for that — a normal network with the port published (or reached by name
+    # from your Caddy) works as well.
+    network_mode: host
     # Runs as you, not root: uid 1000 is the image's `hemma` user (passwd entry + owned /data/auth,
     # see Dockerfile.ui). A different uid needs its own passwd entry.
     user: "1000:1000"
