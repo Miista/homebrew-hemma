@@ -227,6 +227,12 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"ok": false, "output": err.Error()})
 		return
 	}
+	if makesLive(c.Key) {
+		if err := s.needDeployHost(); err != nil {
+			writeJSON(w, 409, map[string]any{"ok": false, "noDeployHost": true, "output": err.Error()})
+			return
+		}
+	}
 	// doctor only READS unless asked to fix: an audit must not take the write lock (it runs after every change, to keep
 	// the Issues badge current, and must never make a quick toggle wait) nor outlive the browser.
 	readOnly := c.ReadOnly

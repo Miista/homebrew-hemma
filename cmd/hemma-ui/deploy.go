@@ -303,6 +303,10 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]any{"ok": false, "output": "cannot start"})
 		return
 	}
+	if err := s.needDeployHost(); err != nil {
+		writeJSON(w, 409, map[string]any{"ok": false, "noDeployHost": true, "output": err.Error()})
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	defer s.invalidateChanges()
