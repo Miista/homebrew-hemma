@@ -166,7 +166,9 @@ authy). It is NOT a second implementation of hemma:
   `hemma-ui`: there is no `hemma` binary here (`deploy`'s apply of this host runs in-process; the OTHER hosts
   run their installed `hemma apply` over ssh, as on the CLI).
 - **Typed fields** (`Ref` in `commands.go`, validators in `refs.go`): a host is picked from hosts, a CIDR list is
-  validated as CIDRs, a file is picked from the repo tree. The browser offers only valid choices *and* the
+  validated as CIDRs, a file is picked from the repo tree, a host's **SSH destination** is the `ssh` type (`[user@]host`, never
+  starting with `-`: deploy runs `ssh <dest>`, so free text would be an option-injection hole). Every `defaults:` key is on the
+  Infrastructure page's Settings, `deploy-host` included. The browser offers only valid choices *and* the
   server re-checks every value — the browser is a convenience, not the control.
 - **Git is the change tracker.** Edits land in the repo immediately; the working tree is the "unsaved changes"
   list, `/api/diff` renders it as things (services, hosts, defaults — current vs changed), hemma's generated

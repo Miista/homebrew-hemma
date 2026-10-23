@@ -95,16 +95,16 @@ var commands = []command{
 	{Words: []string{"rename", "service"}, Group: "Services", Title: "Rename service", Fields: []field{ref(pos("old", "Current name", true), "service"), ref(pos("new", "New name", true), "svcname")}},
 
 	{Words: []string{"add", "host"}, Group: "Hosts", Title: "Add host", Help: "A host's name is its directory in the repo, which must already exist.",
-		Fields: []field{ref(pos("name", "Name", true), "svcname"), ref(pos("ip", "IP address", true), "ip"), list("trusted-proxies", "Extra trusted proxies", "ipcidr")}},
+		Fields: []field{ref(pos("name", "Name", true), "svcname"), ref(pos("ip", "IP address", true), "ip"), {Name: "ssh", Label: "SSH destination (optional)", Kind: "str", Ref: "ssh"}, list("trusted-proxies", "Extra trusted proxies", "ipcidr")}},
 	{Words: []string{"update", "host"}, Group: "Hosts", Title: "Update host", Update: true,
-		Fields: []field{ref(pos("name", "Name", true), "host"), {Name: "ip", Label: "IP address", Kind: "str", Ref: "ip"}, list("trusted-proxies", "Extra trusted proxies", "ipcidr")}},
+		Fields: []field{ref(pos("name", "Name", true), "host"), {Name: "ip", Label: "IP address", Kind: "str", Ref: "ip"}, {Name: "ssh", Label: "SSH destination (optional)", Kind: "str", Ref: "ssh"}, list("trusted-proxies", "Extra trusted proxies", "ipcidr")}},
 	{Words: []string{"remove", "host"}, Group: "Hosts", Title: "Remove host", Fields: []field{ref(pos("name", "Name", true), "host")}, Confirm: "Remove this host?"},
 
 	{Words: []string{"add", "domain"}, Group: "Domains", Title: "Add domain", Fields: []field{ref(pos("name", "Domain", true), "dnsname")}},
 	{Words: []string{"remove", "domain"}, Group: "Domains", Title: "Remove domain", Fields: []field{ref(pos("name", "Domain", true), "domain")}, Confirm: "Remove this domain?"},
 
 	{Words: []string{"defaults", "set"}, Group: "Defaults", Title: "Set default", Fields: []field{
-		{Name: "key", Label: "Setting", Kind: "pos", Required: true, Options: []string{"dns-host", "auth-snippet", "auth-service", "local-networks", "tunnel-dir"}},
+		{Name: "key", Label: "Setting", Kind: "pos", Required: true, Options: []string{"dns-host", "deploy-host", "auth-snippet", "auth-service", "local-networks", "tunnel-dir"}},
 		{Name: "value", Label: "Value ('-' clears)", Kind: "pos", Required: true}}},
 
 	{Words: []string{"apply"}, Group: "Operate", Title: "Apply on this host", Timeout: 5 * time.Minute, Fields: nil,

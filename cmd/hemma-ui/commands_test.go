@@ -27,6 +27,11 @@ func TestBuild(t *testing.T) {
 		{"add host", map[string]any{"name": "pi", "ip": "192.0.2.1", "trusted-proxies": ""}, []string{"add", "host", "pi", "192.0.2.1"}, ""},
 		{"update host", map[string]any{"name": "pi", "ip": "192.0.2.2", "trusted-proxies": ""},
 			[]string{"update", "host", "pi", "--ip=192.0.2.2", "--trusted-proxies="}, ""},
+		// an ssh destination is [user@]host; empty clears it on update, is dropped on add
+		{"add host", map[string]any{"name": "pi", "ip": "192.0.2.1", "ssh": "admin@192.0.2.1"},
+			[]string{"add", "host", "pi", "192.0.2.1", "--ssh=admin@192.0.2.1"}, ""},
+		{"add host", map[string]any{"name": "pi", "ip": "192.0.2.1", "ssh": ""}, []string{"add", "host", "pi", "192.0.2.1"}, ""},
+		{"update host", map[string]any{"name": "pi", "ssh": ""}, []string{"update", "host", "pi", "--ssh="}, ""},
 		// flags-first commands
 		{"verify", map[string]any{"all": true, "fqdn": "a.example.com"}, []string{"verify", "--all=true", "a.example.com"}, ""},
 		{"defaults set", map[string]any{"key": "tunnel-dir", "value": "-"}, []string{"defaults", "set", "tunnel-dir", "-"}, ""},
@@ -45,7 +50,12 @@ func TestBuild(t *testing.T) {
 		{"add domain", map[string]any{"name": "-"}, nil, "not a valid domain"},
 		{"measure", map[string]any{"target": "t", "runs": float64(99999)}, nil, "0-1000"},
 		{"add service", map[string]any{"name": "s", "fqdn": "a", "host": "h", "backend": "b:1", "auth-mode": "root"}, nil, "not an allowed"},
-		{"add host", map[string]any{"name": "pi", "ip": "1.2.3.4", "trusted-proxies": "x\n--evil"}, nil, "not an IP address"}}
+		{"add host", map[string]any{"name": "pi", "ip": "1.2.3.4", "trusted-proxies": "x\n--evil"}, nil, "not an IP address"},
+		// ssh runs as `ssh <dest>`: nothing that reads as an option or carries a command
+		{"update host", map[string]any{"name": "pi", "ssh": "-oProxyCommand=evil"}, nil, "not an ssh destination"},
+		{"update host", map[string]any{"name": "pi", "ssh": "-v@host"}, nil, "not an ssh destination"},
+		{"update host", map[string]any{"name": "pi", "ssh": "a b"}, nil, "not an ssh destination"},
+		{"update host", map[string]any{"name": "pi", "ssh": "host;rm"}, nil, "not an ssh destination"}}
 	for _, c := range cases {
 		cmd := lookup(c.key)
 		if cmd == nil {
@@ -64,26 +74,29 @@ func TestBuild(t *testing.T) {
 	}
 }
 
-// The UI is single-host for now: no ssh targets or deploy-host are exposed.
-// `deploy` itself stays: with one host it pulls and applies locally, no ssh.
-func TestSingleHostOnly(t *testing.T) {
+// The UI deploys the whole fleet (the kernel's deploy ssh's to the other hosts), so a host's ssh destination and the
+// deploy host are settable here — but `deploy` itself takes no arguments, and every ssh field is the validated "ssh" type
+// (it runs as `ssh <dest>`, so a free-text field would be an option-injection hole).
+func TestFleetSettings(t *testing.T) {
 	d := lookup("deploy")
 	if d == nil || len(d.Fields) != 0 {
 		t.Error("deploy must exist and take no host arguments")
 	}
+	deployHost := false
 	for _, c := range commands {
 		for _, f := range c.Fields {
-			if f.Name == "ssh" {
-				t.Errorf("%s exposes ssh", c.Key)
+			if f.Name == "ssh" && f.Ref != "ssh" {
+				t.Errorf("%s: the ssh field must be the validated ssh type, not %q", c.Key, f.Ref)
 			}
 			if c.Key == "defaults set" {
 				for _, o := range f.Options {
-					if o == "deploy-host" {
-						t.Error("deploy-host must not be settable")
-					}
+					deployHost = deployHost || o == "deploy-host"
 				}
 			}
 		}
+	}
+	if !deployHost {
+		t.Error("deploy-host must be settable")
 	}
 }
 
@@ -125,6 +138,9 @@ func TestCheckState(t *testing.T) {
 		{"defaults set", map[string]any{"key": "dns-host", "value": "pi"}, ""},
 		{"defaults set", map[string]any{"key": "dns-host", "value": "ghost"}, "no host"},
 		{"defaults set", map[string]any{"key": "dns-host", "value": "-"}, "cannot be cleared"},
+		{"defaults set", map[string]any{"key": "deploy-host", "value": "pi"}, ""},
+		{"defaults set", map[string]any{"key": "deploy-host", "value": "ghost"}, "no host"},
+		{"defaults set", map[string]any{"key": "deploy-host", "value": "-"}, ""},
 		{"defaults set", map[string]any{"key": "auth-service", "value": "web"}, ""},
 		{"defaults set", map[string]any{"key": "auth-service", "value": "ghost"}, "no service"},
 		{"defaults set", map[string]any{"key": "auth-service", "value": "-"}, ""},
@@ -135,7 +151,6 @@ func TestCheckState(t *testing.T) {
 		{"defaults set", map[string]any{"key": "auth-snippet", "value": "../etc/passwd"}, "not a path inside the repo"},
 		{"defaults set", map[string]any{"key": "tunnel-dir", "value": "cloudflared"}, ""},
 		{"defaults set", map[string]any{"key": "tunnel-dir", "value": "/abs"}, "not a path inside the repo"},
-		{"defaults set", map[string]any{"key": "deploy-host", "value": "pi"}, "not a setting"},
 	}
 	for _, c := range cases {
 		err := s.checkState(lookup(c.key), c.vals)

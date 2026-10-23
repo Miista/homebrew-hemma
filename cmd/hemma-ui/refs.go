@@ -27,6 +27,9 @@ var (
 	dnsNameRe = regexp.MustCompile(`^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$`)
 	pathRe    = regexp.MustCompile(`^/[^\s,]*$`)
 	relPathRe = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._/-]*$`)
+	// An ssh(1) destination: [user@]host. It must not start with '-' (deploy runs `ssh <dest>`, so a leading dash would be read as an
+	// option) and has no spaces or '=' — nothing that could carry an option or a command along.
+	sshDestRe = regexp.MustCompile(`^([A-Za-z0-9_][A-Za-z0-9._-]*@)?[A-Za-z0-9][A-Za-z0-9.:_-]*$`)
 )
 
 // stateful refs need the loaded config; everything else is shape-only.
@@ -67,6 +70,10 @@ func validateRef(ref, v string) error {
 	case "path":
 		if !pathRe.MatchString(v) {
 			return fmt.Errorf("%q is not a path starting with '/'", v)
+		}
+	case "ssh":
+		if !sshDestRe.MatchString(v) {
+			return fmt.Errorf("%q is not an ssh destination (host or user@host)", v)
 		}
 	case "relpath":
 		if !relPathRe.MatchString(v) || strings.Contains(v, "..") || strings.HasPrefix(v, "/") || hasDotSegment(v) {
@@ -166,6 +173,7 @@ type defaultSetting struct {
 
 var defaultSettings = []defaultSetting{
 	{"dns-host", "DNS host", "The host that runs the resolver (Pi-hole). Every service's DNS record is served from it.", "host", false},
+	{"deploy-host", "Deploy host", "The one host that Deploy runs from, and that this page must run on. Deploy refuses to run anywhere else.", "host", true},
 	{"auth-service", "Auth service", "The service that is the forward-auth backend (e.g. Authelia). It is exempt from its own gate to avoid a redirect loop.", "service", true},
 	{"auth-snippet", "Auth snippet", "A Caddy file in the repo whose contents become the shared (auth) block. Without it, protected services are not actually gated.", "file", true},
 	{"local-networks", "Local networks", "The ranges that count as 'at home' for services whose auth rules differ between local and public requests.", "cidrs", true},
