@@ -175,12 +175,12 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	sort.Strings(hn)
 	for _, n := range hn {
 		h := cfg.Hosts[n]
-		hosts = append(hosts, map[string]any{"name": n, "ip": h.IP,
+		hosts = append(hosts, map[string]any{"name": n, "ip": h.IP, "ssh": h.SSH,
 			"trusted-proxies": strings.Join(h.TrustedProxies, ",")})
 	}
 	d := cfg.Defaults
 	values := map[string]string{
-		"dns-host": d.DNSHost, "auth-snippet": d.AuthSnippet,
+		"dns-host": d.DNSHost, "deploy-host": d.DeployHost, "auth-snippet": d.AuthSnippet,
 		"auth-service": d.AuthService, "local-networks": strings.Join(d.LocalNetworks, ","),
 		"tunnel-dir": d.TunnelDir,
 	}

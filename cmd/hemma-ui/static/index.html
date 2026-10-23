@@ -375,6 +375,7 @@ const RX = {
   dnsname: /^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/,
   path: /^\/[^\s,]*$/,
   relpath: /^[A-Za-z0-9._][A-Za-z0-9._\/-]*$/,
+  ssh: /^([A-Za-z0-9_][A-Za-z0-9._-]*@)?[A-Za-z0-9][A-Za-z0-9.:_-]*$/,
 };
 const ipv4 = s => { const p = s.split("."); return p.length === 4 && p.every(x => /^\d{1,3}$/.test(x) && +x <= 255); };
 const isIP = s => ipv4(s) || (s.includes(":") && /^[0-9a-fA-F:.]+$/.test(s));
@@ -389,8 +390,9 @@ const CHECK = {  // each returns true or an error message
   ipcidr: v => isIP(v) || isCIDR(v) || "not an IP address or CIDR range",
   path: v => RX.path.test(v) || "must start with '/'",
   relpath: v => (RX.relpath.test(v) && !v.includes("..")) || "must be a path inside the repo",
+  ssh: v => RX.ssh.test(v) || "use host or user@host",
 };
-const HINT = { ip: "192.168.1.10", backend: "name:port", dnsname: "example.com", cidr: "192.168.1.0/24", ipcidr: "IP or CIDR", path: "/path", name: "name", relpath: "folder/file" };
+const HINT = { ip: "192.168.1.10", backend: "name:port", dnsname: "example.com", cidr: "192.168.1.0/24", ipcidr: "IP or CIDR", path: "/path", name: "name", relpath: "folder/file", ssh: "user@10.0.0.2 (blank: the host name)" };
 const names = list => list.map(x => x.name);
 
 // A picker over a known set. `blank` adds a leading empty choice (optional fields).
@@ -1046,7 +1048,7 @@ async function undoRemoved(e) {
     key = "add service";
     values = { name: e.name, fqdn: f["Address"], host: f["Host"], backend: f["Backend"], "auth-mode": f["Auth mode"] || "none", "auth-groups": list(f["Auth groups"]),
                "bypass-paths": list(f["Bypass paths"]), "auth-policy-local": f["Policy: local"] || "", "auth-policy-public": f["Policy: public"] || "", tunnel: f["Reachable from the internet"] === "yes" };
-  } else if (e.kind === "Host") { key = "add host"; values = { name: e.name, ip: f["IP address"], "trusted-proxies": list(f["Extra trusted proxies"]) };
+  } else if (e.kind === "Host") { key = "add host"; values = { name: e.name, ip: f["IP address"], ssh: (f["SSH destination"] || "").replace("—", ""), "trusted-proxies": list(f["Extra trusted proxies"]) };
   } else if (e.kind === "Domain") { key = "add domain"; values = { name: e.name };
   } else return;
   const res = await post("/api/run", { command: key, values });

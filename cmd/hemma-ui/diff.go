@@ -73,12 +73,12 @@ func serviceKV(sv config.Service) []kv {
 }
 
 func hostKV(h config.Host) []kv {
-	return []kv{{"IP address", h.IP}, {"Extra trusted proxies", strings.Join(h.TrustedProxies, ", ")}}
+	return []kv{{"IP address", h.IP}, {"SSH destination", h.SSH}, {"Extra trusted proxies", strings.Join(h.TrustedProxies, ", ")}}
 }
 
 func settingKVs(d config.Defaults) map[string]string {
 	return map[string]string{
-		"dns-host": d.DNSHost, "auth-service": d.AuthService, "auth-snippet": d.AuthSnippet,
+		"dns-host": d.DNSHost, "deploy-host": d.DeployHost, "auth-service": d.AuthService, "auth-snippet": d.AuthSnippet,
 		"local-networks": strings.Join(d.LocalNetworks, ", "), "tunnel-dir": d.TunnelDir,
 	}
 }
