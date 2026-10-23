@@ -256,6 +256,7 @@ func TestRawConfig_ReadReplaceAndRefuse(t *testing.T) {
 // deploy must not leave things half-done); a read-only one stops when the person leaves.
 func TestRunCommand_ChangesFinishWhenTheBrowserLeaves_ReadsDoNot(t *testing.T) {
 	s := repoWithConfig(t)
+	setDeployHost(t, s, "resolver") // apply needs a deploy host (host.go)
 	bin := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "calls.log")
 	// each external call takes a second and then records itself (absolute path: PATH holds only these fakes)
