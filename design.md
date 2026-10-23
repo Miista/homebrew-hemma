@@ -1234,7 +1234,7 @@ two strictly ordered phases:
   the failing host and re-run (`apply` is idempotent).
 
 Output is streamed per host under bold `== <host> ==` section headers (matching `apply`'s
-style), grouped under `== Phase 1: pull ==` / `== Phase 2: validate auth ==` / `== Phase 3: apply ==` phase headers.
+style), grouped under `== Phase 1: pull ==` / `== Phase 2: validate configuration ==` / `== Phase 3: apply ==` phase headers.
 
 ## 7. Validation (per-entry, non-fatal)
 

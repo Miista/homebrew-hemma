@@ -14,7 +14,7 @@ Deploying to 2 hosts: core, edge.
   ✓ edge: pulled
   all hosts at 
 
-== Phase 2: validate auth ==
+== Phase 2: validate configuration ==
   ✓ sso config validates on core
 
 == Phase 3: apply ==

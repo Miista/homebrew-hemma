@@ -23,7 +23,7 @@ import (
 //
 //	Phase 0 — probe reachability: ssh <dest> true  (remotes only)
 //	Phase 1 — pull everywhere:    git -C ~/docker pull --ff-only
-//	Phase 2 — validate auth:      the auth provider's config validate, on the auth host
+//	Phase 2 — validate configuration: the auth provider's config validate, on the auth host
 //	Phase 3 — apply everywhere:   hemma apply   (remotes first, self LAST)
 //
 // Phase 0 aborts up front if any remote is unreachable over ssh, so a
@@ -626,7 +626,7 @@ func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo strin
 
 	// Phase 2 — the auth host must hold a valid auth config. Every checkout is on the new commit now, so the
 	// provider validates what apply would restart it with; a failure aborts before ANY host is applied.
-	fmt.Fprintf(env.Out, "\n%s== Phase 2: validate auth ==%s\n", boldOn, boldOff)
+	fmt.Fprintf(env.Out, "\n%s== Phase 2: validate configuration ==%s\n", boldOn, boldOff)
 	if code := validateAuth(env, r, targets, auth); code != 0 {
 		return code
 	}
