@@ -22,7 +22,7 @@ Makes the fleet match origin, in four strictly ordered phases:
                     host, ssh auth) aborts the ENTIRE deploy before phase 3 —
                     no runtime state changed anywhere. After the pulls, every
                     host must be on the same commit (a racing push aborts too).
-  Phase 2 — auth:   the auth provider's config validate, on the host that runs
+  Phase 2 — config: the auth provider's config validate, on the host that runs
                     the auth service (here or over ssh). An invalid auth config
                     aborts the deploy before anything is applied or restarted.
   Phase 3 — apply:  'hemma apply' per host — remotes first, THIS host last,

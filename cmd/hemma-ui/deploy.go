@@ -57,7 +57,7 @@ func newDeployProgress(command string) *deployProgress {
 			{Title: "Syncing your changes", Status: "running"},
 			{Title: "Checking the servers", Status: "pending"},
 			{Title: "Syncing hosts", Status: "pending"},
-			{Title: "Checking sign-in", Status: "pending"},
+			{Title: "Validating configuration(s)", Status: "pending"},
 			{Title: "Restarting services", Status: "pending"},
 		}
 	} else {
@@ -114,7 +114,7 @@ func (p *deployProgress) Feed(line string) {
 		p.phase = 2
 		p.steps[stepReach].Status = "done"
 		p.steps[stepHosts].Status = "running"
-	case line == "== Phase 2: validate auth ==":
+	case line == "== Phase 2: validate configuration ==":
 		p.phase = 3
 		p.steps[stepHosts].Status = "done"
 		p.steps[stepAuth].Status = "running"

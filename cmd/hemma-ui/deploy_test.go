@@ -67,7 +67,7 @@ Deploying to 2 hosts: edge, core (here, last).
   ✓ core: pulled
   all hosts at abc123
 
-== Phase 2: validate auth ==
+== Phase 2: validate configuration ==
   ✓ sso config validates on core
 
 == Phase 3: apply ==
@@ -94,19 +94,19 @@ Deployed.
 // (with a line per host).
 func TestDeployProgress_FollowsThePhases(t *testing.T) {
 	start := newDeployProgress("deploy")
-	if got := statuses(start); got != "Syncing your changes=running | Checking the servers=pending | Syncing hosts=pending | Checking sign-in=pending | Restarting services=pending" {
+	if got := statuses(start); got != "Syncing your changes=running | Checking the servers=pending | Syncing hosts=pending | Validating configuration(s)=pending | Restarting services=pending" {
 		t.Errorf("start: %s", got)
 	}
 	for marker, want := range map[string]string{
-		"== Phase 0":          "Syncing your changes=done | Checking the servers=pending | Syncing hosts=pending | Checking sign-in=pending | Restarting services=pending[edge=pending core=pending]",
-		"  ✓ edge: reachable": "Syncing your changes=done | Checking the servers=running | Syncing hosts=pending | Checking sign-in=pending | Restarting services=pending[edge=pending core=pending]",
-		"== Phase 1":          "Syncing your changes=done | Checking the servers=running | Syncing hosts=pending | Checking sign-in=pending | Restarting services=pending[edge=pending core=pending]",
-		"  ✓ core: pulled":    "Syncing your changes=done | Checking the servers=done | Syncing hosts=running | Checking sign-in=pending | Restarting services=pending[edge=pending core=pending]",
-		"== Phase 2":          "Syncing your changes=done | Checking the servers=done | Syncing hosts=running | Checking sign-in=pending | Restarting services=pending[edge=pending core=pending]",
-		"== Phase 3":          "Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Checking sign-in=running | Restarting services=pending[edge=pending core=pending]",
-		"== core ==":          "Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Checking sign-in=done | Restarting services=running[edge=running core=pending]",
-		"  Running on host":   "Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Checking sign-in=done | Restarting services=running[edge=done core=running]",
-		"== Summary":          "Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Checking sign-in=done | Restarting services=running[edge=done core=running]",
+		"== Phase 0":          "Syncing your changes=done | Checking the servers=pending | Syncing hosts=pending | Validating configuration(s)=pending | Restarting services=pending[edge=pending core=pending]",
+		"  ✓ edge: reachable": "Syncing your changes=done | Checking the servers=running | Syncing hosts=pending | Validating configuration(s)=pending | Restarting services=pending[edge=pending core=pending]",
+		"== Phase 1":          "Syncing your changes=done | Checking the servers=running | Syncing hosts=pending | Validating configuration(s)=pending | Restarting services=pending[edge=pending core=pending]",
+		"  ✓ core: pulled":    "Syncing your changes=done | Checking the servers=done | Syncing hosts=running | Validating configuration(s)=pending | Restarting services=pending[edge=pending core=pending]",
+		"== Phase 2":          "Syncing your changes=done | Checking the servers=done | Syncing hosts=running | Validating configuration(s)=pending | Restarting services=pending[edge=pending core=pending]",
+		"== Phase 3":          "Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Validating configuration(s)=running | Restarting services=pending[edge=pending core=pending]",
+		"== core ==":          "Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Validating configuration(s)=done | Restarting services=running[edge=running core=pending]",
+		"  Running on host":   "Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Validating configuration(s)=done | Restarting services=running[edge=done core=running]",
+		"== Summary":          "Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Validating configuration(s)=done | Restarting services=running[edge=done core=running]",
 	} {
 		if got := statuses(feed(t, "deploy", upTo(deployOK, marker))); got != want {
 			t.Errorf("before %q:\n got  %s\n want %s", marker, got, want)
@@ -114,7 +114,7 @@ func TestDeployProgress_FollowsThePhases(t *testing.T) {
 	}
 	done := feed(t, "deploy", deployOK)
 	done.Finish(true)
-	if got := statuses(done); got != "Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Checking sign-in=done | Restarting services=done[edge=done core=done]" {
+	if got := statuses(done); got != "Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Validating configuration(s)=done | Restarting services=done[edge=done core=done]" {
 		t.Errorf("end: %s", got)
 	}
 }
@@ -147,23 +147,23 @@ func TestDeployProgress_Failures(t *testing.T) {
 	cases := map[string]struct{ out, want string }{
 		"this host cannot sync with origin": {
 			"Error: origin has 1 new commit that overlap with your 1 unpushed commit, so they could not be combined\n",
-			"Syncing your changes=failed | Checking the servers=pending | Syncing hosts=pending | Checking sign-in=pending | Restarting services=pending",
+			"Syncing your changes=failed | Checking the servers=pending | Syncing hosts=pending | Validating configuration(s)=pending | Restarting services=pending",
 		},
 		"a server is unreachable": {
 			"Deploying to 2 hosts: edge, core (here, last).\n\n== Phase 0: probe ==\n  ✗ edge: unreachable\n    ssh: connect to host edge port 22: Connection refused\n\nError: One or more hosts are unreachable over ssh — deploy aborted\n",
-			"Syncing your changes=done | Checking the servers=failed | Syncing hosts=pending | Checking sign-in=pending | Restarting services=pending[edge=pending core=pending]",
+			"Syncing your changes=done | Checking the servers=failed | Syncing hosts=pending | Validating configuration(s)=pending | Restarting services=pending[edge=pending core=pending]",
 		},
 		"a remote cannot be brought level with origin": {
 			"Deploying to 2 hosts: edge, core (here, last).\n\n== Phase 0: probe ==\n  ✓ edge: reachable\n\n== Phase 1: pull ==\n\nError: Could not bring \"edge\" level with origin — deploy aborted\n",
-			"Syncing your changes=done | Checking the servers=done | Syncing hosts=failed | Checking sign-in=pending | Restarting services=pending[edge=pending core=pending]",
+			"Syncing your changes=done | Checking the servers=done | Syncing hosts=failed | Validating configuration(s)=pending | Restarting services=pending[edge=pending core=pending]",
 		},
 		"the auth config is invalid": {
-			"Deploying to 2 hosts: edge, core (here, last).\n\n== Phase 0: probe ==\n== Phase 1: pull ==\n== Phase 2: validate auth ==\n\n== core ==\n  ✗ sso config validate FAILED\n\nError: The auth config on \"core\" is not valid — deploy aborted\n",
-			"Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Checking sign-in=failed | Restarting services=pending[edge=pending core=pending]",
+			"Deploying to 2 hosts: edge, core (here, last).\n\n== Phase 0: probe ==\n== Phase 1: pull ==\n== Phase 2: validate configuration ==\n\n== core ==\n  ✗ sso config validate FAILED\n\nError: The auth config on \"core\" is not valid — deploy aborted\n",
+			"Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Validating configuration(s)=failed | Restarting services=pending[edge=pending core=pending]",
 		},
 		"one host's apply fails, the other carries on": {
-			"Deploying to 2 hosts: edge, core (here, last).\n\n== Phase 0: probe ==\n== Phase 1: pull ==\n== Phase 2: validate auth ==\n== Phase 3: apply ==\n\n== edge ==\n  boom\n  ✗ apply FAILED\n\n== core ==\n  Applied.\n\n== Summary ==\n  ✗ edge: failed-apply\n  ✓ core: applied\n\nError: Apply failed on 1 host — restarts cannot be rolled back\n",
-			"Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Checking sign-in=done | Restarting services=failed[edge=failed core=done]",
+			"Deploying to 2 hosts: edge, core (here, last).\n\n== Phase 0: probe ==\n== Phase 1: pull ==\n== Phase 2: validate configuration ==\n== Phase 3: apply ==\n\n== edge ==\n  boom\n  ✗ apply FAILED\n\n== core ==\n  Applied.\n\n== Summary ==\n  ✗ edge: failed-apply\n  ✓ core: applied\n\nError: Apply failed on 1 host — restarts cannot be rolled back\n",
+			"Syncing your changes=done | Checking the servers=done | Syncing hosts=done | Validating configuration(s)=done | Restarting services=failed[edge=failed core=done]",
 		},
 	}
 	for name, c := range cases {
