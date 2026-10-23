@@ -483,7 +483,7 @@ hemma            completion <bash|zsh>
 | `update` | Fail if the service doesn't exist. Only the flags you pass are changed. Then regenerate. `--auth-mode` / `--auth[=false]` sets or clears the auth mode. With **no flags** (and stdin a terminal) an interactive editor opens instead: every field pre-filled with current values, host/auth-mode pickers, and auth groups as a multi-select of the groups that actually exist — on real users (members shown per group, `(no members!)` flagged) and on other services — plus a `new group…` escape hatch. On submit it prints the changed fields (old → new) and runs the exact same validation/sync path as the flags form; no changes or Ctrl-C touches nothing. Non-interactive callers must pass flags. |
 | `remove` | Drop the service from YAML, delete its tracked files, drop it from the manifest. |
 | `disable` / `enable` | `disable` keeps the entry in YAML but deletes its generated files immediately; `enable` clears the flag and regenerates. |
-| `add host` / `add domain` | Declare a host / domain. `add host <name> <ip>` (the name is its repo directory, which must already exist; the IP must be unique; `--ssh <dest>` optionally sets the ssh destination `deploy` uses — default: the name). `add domain <name>` — hemma generates the domain's TLS snippet on every host immediately. |
+| `add host` / `add domain` | Declare a host / domain. `add host <name> <ip>` (the name is its repo directory, which must already exist; the IP must be unique; `--ssh <dest>` optionally sets the ssh destination `deploy` uses — default: the name; see [Adding a host to the fleet](#adding-a-host-to-the-fleet) for the keys it needs). `add domain <name>` — hemma generates the domain's TLS snippet on every host immediately. |
 | `update host` | Change a host's `--ip` (regenerates every DNS record pointing at it) and/or `--ssh` destination (`-` clears it back to the host name). Only the flags you pass change. |
 | `remove host` / `remove domain` | **Refuses** while any service still references it (and lists the blockers). Idempotent otherwise. |
 | `set dns-host <name>` | Set the default resolver host (the one whose dnsmasq receives records). |
@@ -646,6 +646,93 @@ with origin: it refuses a dirty tree, runs `git pull --rebase` if origin has wor
 (other hosts commit to the same repo; a rebase that stops on a real conflict is aborted, nothing changed),
 pushes unpushed commits, and refuses — before any host is touched — if the generated files no longer
 match `services.yaml` (a rebase can leave them stale: run `hemma doctor --fix`, commit, push, deploy again).
+
+### Adding a host to the fleet
+
+`hemma deploy` reaches every other host over ssh, so a new host has to trust the **deploy host**
+(`defaults.deploy_host`) before its first deploy. The deploy host itself needs nothing for this: it
+deploys to itself locally, with no ssh. The examples use a deploy host `resolver` (`192.0.2.1`) and a
+new host `appbox` (`192.0.2.2`, user `admin`); run everything on the deploy host unless a step says
+otherwise.
+
+**1. Prepare the new host.** Deploy runs `git -C ~/docker pull --ff-only` and then `hemma apply` there,
+as single non-interactive ssh commands, so the host needs:
+
+- the repo checked out at `~/docker` of the user you will ssh in as (the path is fixed);
+- the `hemma` CLI on that user's `PATH` *in a non-interactive session* — check with
+  `ssh admin@appbox.lan hemma version` once step 3 is done;
+- that user able to run Docker (`apply` restarts and reloads containers);
+- its **own** credentials to the git origin: it pulls from it and, if it ever commits (an updater, say),
+  pushes to it. Do not reuse the deploy key for this.
+
+**2. Create a dedicated deploy key** (once for the whole fleet, not per host):
+
+```sh
+ssh-keygen -t ed25519 -f ~/.ssh/hemma_deploy -C "hemma-deploy@resolver" -N ""
+```
+
+Use a key that exists only for this: not your login key, and not the key that reaches the git origin.
+Whoever holds it gets a shell as the deploy user on every host (and that user can run Docker), so
+give it nothing else to open. It has no passphrase because deploy runs `ssh -o BatchMode=yes` and can
+never be asked for one; keep it mode `600`, or load it into an `ssh-agent` instead. Then tell ssh to
+use it for the host, in `~/.ssh/config` on the deploy host (`--ssh` is passed to ssh verbatim, so users,
+ports and keys belong here):
+
+```
+Host appbox.lan
+    User admin
+    IdentityFile ~/.ssh/hemma_deploy
+    IdentitiesOnly yes
+```
+
+**3. Authorize the key on the new host.** Only the public half ever leaves the deploy host:
+
+```sh
+ssh-copy-id -i ~/.ssh/hemma_deploy.pub admin@appbox.lan
+```
+
+(needs one other way to log in the first time), or append the contents of `hemma_deploy.pub` to
+`~admin/.ssh/authorized_keys` on the new host (directory mode `700`, file `600`). Optionally prefix
+that line to say where the key may be used from:
+
+```
+from="192.0.2.1",no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA… hemma-deploy@resolver
+```
+
+It cannot be pinned to one forced `command=`, because deploy runs two different commands per host.
+
+**4. Accept the host key once.** Deploy uses `BatchMode`, which cannot answer ssh's "trust this host?"
+question, so an unknown host key fails the deploy. Connect once by hand, and compare the fingerprint
+ssh shows with the one printed on the new host (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`)
+before you say yes:
+
+```sh
+ssh -i ~/.ssh/hemma_deploy -o IdentitiesOnly=yes admin@appbox.lan true
+```
+
+Do not use `ssh-keyscan`: it records whatever key answers, unseen.
+
+**5. Declare the host, check, deploy.**
+
+```sh
+hemma add host appbox 192.0.2.2 --ssh admin@appbox.lan   # the name must be an existing directory in the repo
+hemma doctor            # known_hosts has an entry for every remote (it never connects)
+hemma deploy appbox     # phase 0 really connects (ssh … true) and stops before anything is pulled if it cannot
+```
+
+| Failure | Usually |
+|---|---|
+| `Permission denied (publickey)` | the key is not in `authorized_keys`, or its permissions are too open; or ssh is not using `hemma_deploy` (step 2) |
+| `Host key verification failed` | step 4 was skipped, or the host's key changed — find out why before accepting it |
+| `hemma: command not found` | `hemma` is not on the `PATH` of a non-interactive ssh session |
+| `not a git repository` / `No such file` | no checkout at `~/docker` for that user |
+| `permission denied` on the Docker socket | that user is not allowed to run Docker |
+
+**If the deploy host runs the web UI in a container**, the container does the ssh, so it needs the
+same key: mount the dedicated key as `/data/.ssh/id_ed25519` (`${HOME}/.ssh/hemma_deploy:/data/.ssh/id_ed25519:ro`)
+together with `known_hosts`, mode `600` and readable by uid 1000 (see `docker-compose.ui.yml`). No ssh
+config is mounted there, so use a full `user@host` in `--ssh`. The container also has the Docker
+socket, which is one more reason for a key that opens nothing but the fleet.
 
 ## Development
 
