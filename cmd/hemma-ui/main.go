@@ -69,7 +69,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	kernel.DisableColor() // output is captured for a browser, never a terminal
+	kernel.DisableColor()               // output is captured for a browser, never a terminal
+	kernel.SetLocalHost(deployHostSelf) // this page runs on the deploy host (host.go)
 	s := &server{repo: env("HEMMA_REPO", "/repo"), version: "hemma " + cli.Version}
 	handler, err := s.routes(gate)
 	if err != nil {
