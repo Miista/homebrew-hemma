@@ -57,7 +57,7 @@ func newDeployProgress(command string) *deployProgress {
 			{Title: "Syncing your changes", Status: "running"},
 			{Title: "Checking the servers", Status: "pending"},
 			{Title: "Syncing hosts", Status: "pending"},
-			{Title: "Validating configuration(s)", Status: "pending"},
+			{Title: "Validating configuration", Status: "pending"},
 			{Title: "Restarting services", Status: "pending"},
 		}
 	} else {
