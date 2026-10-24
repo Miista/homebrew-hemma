@@ -1,0 +1,112 @@
+name: UI image
+
+# Builds the hemma-ui image and publishes it to ghcr.io/miista/hemma-ui.
+#
+# The image never compiles Go (see Dockerfile.ui): both binaries are cross-compiled here with `make ui-binary`, then
+# Dockerfile.ui only COPIES the one that matches each platform in. That keeps the build fast and the cache small.
+#
+#   - a pushed v* tag (the same trigger as the release workflow) publishes <version>, <major>.<minor> and latest
+#   - a pull request that touches the image build only builds it (no login, nothing is pushed), as a check
+#   - a manual run on main with a `tag` input publishes that one tag (to publish a version whose tag predates this workflow)
+
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - Dockerfile.ui
+      - .dockerignore
+      - Makefile
+      - "cmd/hemma-ui/**"
+      - .github/workflows/image.yml
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Publish the image from main under this tag (e.g. 0.43.0). Leave empty to only build."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io with the workflow's own GITHUB_TOKEN; nothing else is granted
+    env:
+      # Only a release tag, or a manual run on main that names a tag, ever pushes. Pull requests and other branches only build.
+      PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.tag != '') }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cross-compile hemma-ui (both architectures)
+        run: |
+          make ui-binary UI_ARCH=amd64
+          make ui-binary UI_ARCH=arm64
+          ls -l dist/linux_*/hemma-ui
+
+      # The image's RUN steps (apk add, adduser) run under emulation for the architecture the runner is not.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to ghcr.io
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image name, tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/miista/hemma-ui
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+            type=ref,event=pr
+          labels: |
+            org.opencontainers.image.title=hemma-ui
+            org.opencontainers.image.description=Web UI for hemma: view, edit, diagnose and deploy a homelab's split-horizon DNS and Caddy config
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.ui
+          platforms: linux/amd64,linux/arm64
+          push: ${{ env.PUBLISH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Summary
+        run: |
+          {
+            echo "### hemma-ui image"
+            echo "- published: \`${PUBLISH}\`"
+            echo "- digest: \`${{ steps.build.outputs.digest }}\`"
+            echo '- tags:'
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

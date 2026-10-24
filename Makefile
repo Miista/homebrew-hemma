@@ -61,9 +61,11 @@ completions: ## regenerate shell completions into completions/
 # The image never compiles Go: the binary is cross-compiled here (the Mac is the build machine) and Dockerfile.ui just copies it in.
 # UI_ARCH is the target machine's: arm64 for a Raspberry Pi and for Colima / Docker Desktop on Apple silicon; amd64 for an x86 host.
 UI_ARCH ?= arm64
-ui-binary: ## cross-compile hemma-ui for Linux into dist/ (UI_ARCH=arm64|amd64)
-	mkdir -p dist
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(UI_ARCH) $(GO) build -trimpath -ldflags="-s -w" -o dist/hemma-ui ./cmd/hemma-ui
+# One folder per architecture (dist/linux_amd64, dist/linux_arm64): Dockerfile.ui copies the one that matches the platform it is
+# building for, so a multi-platform build (the release workflow, .github/workflows/image.yml) can have both binaries side by side.
+ui-binary: ## cross-compile hemma-ui for Linux into dist/linux_<arch>/ (UI_ARCH=arm64|amd64)
+	mkdir -p dist/linux_$(UI_ARCH)
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(UI_ARCH) $(GO) build -trimpath -ldflags="-s -w" -o dist/linux_$(UI_ARCH)/hemma-ui ./cmd/hemma-ui
 
 ui-image: ui-binary ## build the hemma-ui image (tag: hemma-ui) from the cross-compiled binary
 	docker build --platform linux/$(UI_ARCH) -f Dockerfile.ui -t hemma-ui .

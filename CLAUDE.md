@@ -41,11 +41,17 @@ release workflow; there is no deploy script in this repo.
 
 Per the user's global convention: build and live-verify on the Mac before committing/pushing in this repo.
 
-**Never build Go inside a Docker image.** The `hemma-ui` image (`Dockerfile.ui`) only COPIES `dist/hemma-ui` in; cross-compile it with Go on
-the Mac first — `make ui-binary` (`CGO_ENABLED=0 GOOS=linux GOARCH=$(UI_ARCH) go build`, `UI_ARCH` defaults to arm64: the edge host and Colima on
-Apple silicon). `make ui-image` and `make fixture-redeploy` do that for you, and `.dockerignore` sends Docker nothing but the binary. A build
-stage in the image recompiles every dependency each time and its cache once filled a whole Docker disk. To put the UI on the edge host: `make
-ui-binary`, build the image from it, `docker save | ssh edge docker load`, `docker compose up -d hemma` in `~/docker/edge`.
+**Never build Go inside a Docker image.** The `hemma-ui` image (`Dockerfile.ui`) only COPIES `dist/linux_<arch>/hemma-ui` in (`ARG TARGETARCH` picks
+the folder); cross-compile it with Go first — `make ui-binary` (`CGO_ENABLED=0 GOOS=linux GOARCH=$(UI_ARCH) go build`, `UI_ARCH` defaults to
+arm64: the edge host and Colima on Apple silicon). `make ui-image` and `make fixture-redeploy` do that for you, and `.dockerignore` sends Docker
+nothing but the binaries. A build stage in the image recompiles every dependency each time and its cache once filled a whole Docker disk.
+
+**The image is published by GitHub**, not built by hand: `.github/workflows/image.yml` cross-compiles both architectures (`make ui-binary
+UI_ARCH=amd64` and `arm64`), builds `linux/amd64,linux/arm64` (QEMU only for the image's own `RUN` steps) and pushes to
+`ghcr.io/miista/hemma-ui` on a pushed `v*` tag (`<version>`, `<major>.<minor>`, `latest`). A pull request that touches the image build only builds it
+(no login, nothing pushed); a manual run on main with a `tag` input publishes that one tag. Nothing else ever pushes. The workflow's own
+`GITHUB_TOKEN` with `packages: write` is the only credential. The image was first put on the edge host by hand
+(`docker save | ssh edge docker load`, then `docker compose up -d hemma` in `~/docker/edge`); that still works for a local build.
 
 ## Architecture — the sync pipeline
 
