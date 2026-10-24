@@ -2,6 +2,12 @@ version: 2
 
 project_name: hemma
 
+# The hemma-ui image is released separately, on ui-v<X.Y.Z> tags (.goreleaser.ui.yaml). Those tags are not CLI releases: without
+# this, the changelog could take one of them as "the previous release".
+git:
+  ignore_tags:
+    - "ui-*"
+
 builds:
   - id: hemma
     main: .

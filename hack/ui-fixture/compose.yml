@@ -34,7 +34,7 @@ services:
     networks: { fx: { ipv4_address: 172.28.0.11 } }
   hemma-ui:
     container_name: hemma-ui-fixture
-    build: { context: ../.., dockerfile: Dockerfile.ui }
+    build: { context: ../../dist/ui-context, dockerfile: ../../Dockerfile.ui }   # `make ui-binary` fills dist/ui-context
     # Sign-in is authy's local account: the FIRST visitor to the page creates it. The UI
     # container has the Docker socket, so whoever creates the account controls every container
     # on this machine: after (re)creating this container, open the page and create the
