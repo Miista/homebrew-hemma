@@ -61,12 +61,16 @@ completions: ## regenerate shell completions into completions/
 # The image never compiles Go: the binary is cross-compiled here (the Mac is the build machine) and Dockerfile.ui just copies it in.
 # UI_ARCH is the target machine's: arm64 for a Raspberry Pi and for Colima / Docker Desktop on Apple silicon; amd64 for an x86 host.
 UI_ARCH ?= arm64
-ui-binary: ## cross-compile hemma-ui for Linux into dist/ (UI_ARCH=arm64|amd64)
-	mkdir -p dist
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(UI_ARCH) $(GO) build -trimpath -ldflags="-s -w" -o dist/hemma-ui ./cmd/hemma-ui
+# The image's build context is only the binaries, laid out the way goreleaser lays it out for the release (.goreleaser.ui.yaml):
+# dist/ui-context/linux/<arch>/hemma-ui. Dockerfile.ui copies ${TARGETPLATFORM}/hemma-ui, so a local build and the release use
+# the same Dockerfile.
+UI_CTX := dist/ui-context
+ui-binary: ## cross-compile hemma-ui for Linux into dist/ui-context/linux/<arch>/ (UI_ARCH=arm64|amd64)
+	mkdir -p $(UI_CTX)/linux/$(UI_ARCH)
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(UI_ARCH) $(GO) build -trimpath -ldflags="-s -w" -o $(UI_CTX)/linux/$(UI_ARCH)/hemma-ui ./cmd/hemma-ui
 
 ui-image: ui-binary ## build the hemma-ui image (tag: hemma-ui) from the cross-compiled binary
-	docker build --platform linux/$(UI_ARCH) -f Dockerfile.ui -t hemma-ui .
+	docker build --platform linux/$(UI_ARCH) -f Dockerfile.ui -t hemma-ui $(UI_CTX)
 
 # The fixture is synthetic. It listens on loopback only, unless you opt in by putting
 # FIXTURE_BIND=<address> in hack/ui-fixture/.env (gitignored) to reach it from another device.

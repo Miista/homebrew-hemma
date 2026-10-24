@@ -1,7 +1,11 @@
 # This image never compiles anything. The binary is cross-compiled with Go on the host and only copied in:
-#   make ui-binary      (CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o dist/hemma-ui ./cmd/hemma-ui)
+#   make ui-binary      (CGO_ENABLED=0 GOOS=linux GOARCH=<arch> go build -o dist/ui-context/linux/<arch>/hemma-ui ./cmd/hemma-ui)
 # A build stage here would redownload and recompile every dependency on each build, and the build cache that leaves behind
-# filled a whole Docker disk. `make ui-image` and `make fixture-redeploy` run ui-binary first.
+# filled a whole Docker disk. `make ui-image` and `make fixture-redeploy` run ui-binary first; the release (goreleaser, see
+# .goreleaser.ui.yaml and .github/workflows/release-ui.yml) cross-compiles both architectures and builds this file for ghcr.io.
+#
+# The build context is only the binaries, laid out as <context>/linux/<arch>/hemma-ui: goreleaser builds its context that way,
+# and `make ui-image` stages the same folder (dist/ui-context), so every build of this image uses one Dockerfile.
 FROM alpine:3.21
 # docker-cli: `hemma apply` shells out to `docker exec/restart` against the host daemon.
 # git: hemma reads repo state. Both are needed at runtime.
@@ -20,7 +24,9 @@ RUN adduser -D -H -h /data -u 1000 hemma \
  && mkdir -p /data/auth /data/.ssh \
  && chmod 700 /data/.ssh \
  && chown -R 1000:1000 /data
-COPY --chmod=755 dist/hemma-ui /usr/local/bin/hemma-ui
+# TARGETPLATFORM is set by BuildKit to the platform being built (linux/amd64, linux/arm64).
+ARG TARGETPLATFORM
+COPY --chmod=755 ${TARGETPLATFORM}/hemma-ui /usr/local/bin/hemma-ui
 # The bind-mounted repo is owned by the host user, not root: without this git refuses
 # it ("dubious ownership"), which breaks hemma's own git calls (deploy preflight/pull).
 RUN git config --system --add safe.directory '*'

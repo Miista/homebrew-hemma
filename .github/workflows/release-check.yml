@@ -1,0 +1,59 @@
+name: Release check
+
+# Checks the image release without publishing anything, on every pull request that touches how the image is built or released:
+# the goreleaser config is valid, goreleaser builds both binaries, and Dockerfile.ui builds for linux/amd64 and linux/arm64
+# (goreleaser's own image step only runs when it publishes, so the Dockerfile is built here directly, from the same folder layout
+# `make ui-image` uses).
+
+on:
+  pull_request:
+    paths:
+      - .goreleaser.ui.yaml
+      - Dockerfile.ui
+      - Makefile
+      - "cmd/hemma-ui/**"
+      - docker-compose.ui.yml
+      - hack/ui-fixture/compose.yml
+      - .github/workflows/release-ui.yml
+      - .github/workflows/release-check.yml
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: goreleaser check (image config)
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: check .goreleaser.ui.yaml
+
+      - name: goreleaser build (nothing is published)
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --clean --skip=publish,validate -f .goreleaser.ui.yaml
+        env:
+          GORELEASER_CURRENT_TAG: v0.0.0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build the image for both platforms (not pushed)
+        run: |
+          make ui-binary UI_ARCH=amd64
+          make ui-binary UI_ARCH=arm64
+          docker buildx build --platform linux/amd64,linux/arm64 -f Dockerfile.ui dist/ui-context

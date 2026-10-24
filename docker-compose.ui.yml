@@ -11,9 +11,12 @@
 # LAN-only: the Docker socket mount below gives this container root-equivalent control of the host.
 # The image only COPIES a binary in; it never compiles Go. Cross-compile it first (UI_ARCH=amd64 for an x86 host):
 #   make ui-binary && docker compose -f docker-compose.ui.yml up -d --build
+# Or skip building: every image release (a ui-v<version> tag) publishes it for amd64 and arm64 to
+# ghcr.io/miista/hemma-ui:<version> (see .github/workflows/release-ui.yml) — replace `build:` below with
+# `image: ghcr.io/miista/hemma-ui:<version>`.
 services:
   hemma-ui:
-    build: { context: ., dockerfile: Dockerfile.ui }
+    build: { context: dist/ui-context, dockerfile: ../../Dockerfile.ui }   # `make ui-binary` fills dist/ui-context
     # The UI does not look at its own IP to learn which host it is: that is defaults.deploy_host, and Deploy / Apply refuse until it
     # is set. So host networking is no longer needed for that — a normal network with the port published (or reached by name
     # from your Caddy) works as well.

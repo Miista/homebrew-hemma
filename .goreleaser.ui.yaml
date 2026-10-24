@@ -1,0 +1,52 @@
+version: 2
+
+# The hemma-ui image. Released by .github/workflows/release-ui.yml on a ui-v<X.Y.Z> tag, separately from the hemma CLI
+# (.goreleaser.yaml, v<X.Y.Z> tags): the two have independent version numbers.
+#
+# The workflow strips the prefix from the tag and hands goreleaser the bare version (GORELEASER_CURRENT_TAG=v<X.Y.Z>), because the
+# open-source goreleaser only accepts a plain semver tag. There is no GitHub Release page and no changelog for the image: the
+# tag on ghcr.io is the release.
+#
+# Like Dockerfile.ui says, the image never compiles anything: goreleaser cross-compiles the binary (here, on the runner) and the
+# Dockerfile only copies it in, from <context>/linux/<arch>/hemma-ui.
+project_name: hemma-ui
+
+builds:
+  - id: hemma-ui
+    main: ./cmd/hemma-ui
+    binary: hemma-ui
+    goos: [linux]
+    goarch: [amd64, arm64]
+    env:
+      - CGO_ENABLED=0
+    flags: [-trimpath]
+    ldflags:
+      # the UI shows this version in its footer ("hemma <version>")
+      - -s -w -X hemma/internal/cli.Version={{.Version}}
+
+dockers_v2:
+  - id: hemma-ui
+    ids: [hemma-ui]
+    dockerfile: Dockerfile.ui
+    images:
+      - ghcr.io/miista/hemma-ui
+    tags:
+      - "{{ .Version }}"
+      - "{{ .Major }}.{{ .Minor }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.title: hemma-ui
+      org.opencontainers.image.description: "Web UI for hemma: view, edit, diagnose and deploy a homelab's split-horizon DNS and Caddy config"
+      org.opencontainers.image.source: https://github.com/Miista/homebrew-hemma
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.licenses: MIT
+
+release:
+  disable: true
+
+changelog:
+  disable: true
