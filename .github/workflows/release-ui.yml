@@ -8,6 +8,10 @@ name: Release UI image
 # linux/arm64 (QEMU only runs the image's own RUN steps). The open-source goreleaser only accepts a plain semver tag, so this
 # workflow strips the prefix (ui-v0.3.0 -> v0.3.0) and hands that to goreleaser as the version.
 #
+# The GitHub release ("ui vX.Y.Z", on the ui-v tag, no files) is made here, not by goreleaser: its notes are the commit
+# subjects since the previous ui-v tag — filtered like the CLI's changelog — and a compare link between the two tags.
+# goreleaser cannot write that one, because the only tag it can parse is the bare version, which does not exist in git.
+#
 # A manual run is a dry run: it builds with the version you give and publishes nothing.
 
 on:
@@ -32,7 +36,7 @@ jobs:
   image:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # the GitHub release on the ui-v tag
       packages: write # push to ghcr.io with the workflow's own GITHUB_TOKEN; nothing else is granted
     env:
       # Passed through the environment, never interpolated into the script.
@@ -41,6 +45,8 @@ jobs:
       INPUT_VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # the release notes need the history back to the previous ui-v tag
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -96,6 +102,53 @@ jobs:
         env:
           GORELEASER_CURRENT_TAG: ${{ steps.version.outputs.version }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The notes: every commit since the previous ui-v tag, newest last, minus the noise the CLI's changelog also drops
+      # (chore/docs/test/ci prefixes, the formula bump, merges), then the compare link. The first image release lists
+      # every commit and has no link. Written to a file: subjects are not interpolated into the script.
+      - name: Release notes
+        if: steps.version.outputs.publish == 'true'
+        id: notes
+        run: |
+          set -euo pipefail
+          prev=$(git describe --tags --abbrev=0 --match 'ui-v*' "$TAG^" 2>/dev/null || true)
+          {
+            if [ -n "$prev" ]; then
+              echo "## Changes since $prev"
+            else
+              echo "## Changes"
+            fi
+            echo
+            git log --reverse --format='- %s (%h)' ${prev:+"$prev.."}"$TAG" \
+              | grep -Ev -- '^- (chore|docs|test|ci)(\(.+\))?:' \
+              | grep -Ev -- '^- (Brew formula update|Merge )' \
+              || echo "- (no user-facing changes)"
+            echo
+            echo "Pull: \`docker pull ghcr.io/miista/hemma-ui:${VERSION#v}\`"
+            if [ -n "$prev" ]; then
+              echo
+              echo "**Full changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${prev}...${TAG}"
+            fi
+          } > "$RUNNER_TEMP/notes.md"
+          echo "file=$RUNNER_TEMP/notes.md" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/notes.md"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+
+      # On the ui-v tag, titled by product like the CLI's ("cli vX.Y.Z"), no files: the image on ghcr.io is the artifact.
+      # A re-run finds the release already there and leaves it.
+      - name: GitHub release
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          NOTES: ${{ steps.notes.outputs.file }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists"
+          else
+            gh release create "$TAG" --title "ui $VERSION" --notes-file "$NOTES" --verify-tag
+          fi
 
       - name: Summary
         run: |

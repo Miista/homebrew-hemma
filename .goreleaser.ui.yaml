@@ -4,8 +4,9 @@ version: 2
 # (.goreleaser.yaml, cli-v<X.Y.Z> tags): the two have independent version numbers.
 #
 # The workflow strips the prefix from the tag and hands goreleaser the bare version (GORELEASER_CURRENT_TAG=v<X.Y.Z>), because the
-# open-source goreleaser only accepts a plain semver tag. There is no GitHub Release page and no changelog for the image: the
-# tag on ghcr.io is the release.
+# open-source goreleaser only accepts a plain semver tag. That bare tag does not exist in git, so goreleaser can write no
+# changelog here (release and changelog are disabled below): the workflow makes the GitHub release itself, on the ui-v tag,
+# with the commits since the previous ui-v tag and a compare link. The image on ghcr.io is the artifact; the release has no files.
 #
 # Like Dockerfile.ui says, the image never compiles anything: goreleaser cross-compiles the binary (here, on the runner) and the
 # Dockerfile only copies it in, from <context>/linux/<arch>/hemma-ui.

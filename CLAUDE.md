@@ -53,7 +53,9 @@ proxy and `go install ...@vX.Y.Z` read only plain semver tags and the formula's 
 before. A tag pushed with the workflow's token starts no workflow, so it cannot release twice, and a bare `v*` pushed by hand releases nothing. The
 `hemma-ui` image is released by a `ui-v<X.Y.Z>` tag (`.github/workflows/release-ui.yml`, `.goreleaser.ui.yaml`):
 goreleaser cross-compiles both architectures on the runner, builds `Dockerfile.ui` for `linux/amd64,linux/arm64` (QEMU only for the image's own `RUN`
-steps) and pushes `ghcr.io/miista/hemma-ui:<X.Y.Z>`, `:<X.Y>` and `:latest`. There is no GitHub Release page and no changelog for the image. Tagging is
+steps) and pushes `ghcr.io/miista/hemma-ui:<X.Y.Z>`, `:<X.Y>` and `:latest`. The workflow then makes a GitHub release on the `ui-v` tag itself, titled
+"ui vX.Y.Z" with no files: the commit subjects since the previous `ui-v` tag (filtered like the CLI's changelog) and a compare link — goreleaser cannot
+write that one, since the only tag it can parse is the bare version, which is not in git. Tagging is
 manual, and **which tag(s) to push is the person's call: a change to the kernel (everything both are built from: `internal/cli/kernel`, `config`, `plan`,
 `render`, `sync`, `manifest`, `auth`) means tag both; a UI-only change (`cmd/hemma-ui`, `Dockerfile.ui`) only `ui-v…`; a CLI-only change
 (`internal/cli`, `main.go`) only `v…`.** Push both tags in one `git push` when both are due. The open-source goreleaser only accepts a plain semver tag,
