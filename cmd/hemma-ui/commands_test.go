@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -461,6 +462,22 @@ func TestCommit_LeavesOtherFilesAlone(t *testing.T) {
 	out, _ := s.git(time.Minute, "status", "--porcelain")
 	if !strings.Contains(out, "edge/docker-compose.yml") || !strings.Contains(out, "edge/restic/") {
 		t.Errorf("the other files must still be uncommitted edits, status: %q", out)
+	}
+}
+
+// A Save message is text: line breaks and tabs are fine, other control characters are refused before git sees them.
+func TestCommit_RefusesControlCharactersInMessage(t *testing.T) {
+	s := repoWithConfig(t)
+	for _, a := range [][]string{{"init", "-q", "-b", "main"}, {"add", "-A"}, {"commit", "-q", "-m", "init"}} {
+		if out, err := s.git(time.Minute, a...); err != nil {
+			t.Fatalf("git %v: %v %s", a, err, out)
+		}
+	}
+	rec := httptest.NewRecorder()
+	body, _ := json.Marshal(map[string]string{"message": "bad \x1f message"})
+	s.handleCommit(rec, httptest.NewRequest("POST", "/api/commit", strings.NewReader(string(body))))
+	if rec.Code != 400 || !strings.Contains(rec.Body.String(), "control characters") {
+		t.Errorf("a control character must be refused with 400, got %d %s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -129,6 +129,52 @@ func TestHistoryAll_EveryCommitWithItsChanges(t *testing.T) {
 	}
 }
 
+// A message is text git does not escape: one holding the bytes the parser once split on (or any other control
+// character) must not shift the fields of its own or a neighbouring entry. Save refuses such a message, but a commit
+// from a terminal can still carry one.
+func TestHistoryAll_MessageWithControlCharacters(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "repo")
+	s := &server{repo: dir}
+	if out, err := exec.Command("git", "init", "-q", "-b", "main", dir).CombinedOutput(); err != nil {
+		t.Skipf("git not available: %v %s", err, out)
+	}
+	commit := func(msg, yaml string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "services.yaml"), []byte(yaml), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range [][]string{{"add", "-A"}, {"commit", "-q", "-m", msg}} {
+			if out, err := s.git(time.Minute, a...); err != nil {
+				t.Fatalf("git %v: %v %s", a, err, out)
+			}
+		}
+	}
+	hosts := "hosts:\n    edge:\n        ip: 192.0.2.10\ndomains:\n    - example.com\nservices:\n"
+	svc := func(name, backend string) string {
+		return "    " + name + ":\n        fqdn: " + name + ".example.com\n        host: edge\n        backend: " + backend + "\n"
+	}
+	commit("edge/a: add", hosts+svc("a", "a:1"))
+	commit("odd \x1f message \x1e here\n\nwith a body\x1fto match", hosts+svc("a", "a:2"))
+	commit("edge/a: port", hosts+svc("a", "a:3"))
+
+	res, err := s.historyAll(0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range res.Entries {
+		got = append(got, e.Subject+" ("+e.Author+")")
+	}
+	want := []string{"edge/a: port (hemma-ui)", "odd \x1f message \x1e here (hemma-ui)", "edge/a: add (hemma-ui)"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("entries must keep their own subject and author:\n got  %q\n want %q", got, want)
+	}
+	if len(res.Entries[1].Changes) != 1 || res.Entries[1].Changes[0].Name != "a" {
+		t.Errorf("the odd entry must still carry its own change: %+v", res.Entries[1].Changes)
+	}
+}
+
 // The whole history is read a page at a time, each page saying where the next one starts.
 func TestHistoryAll_Pages(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "repo")

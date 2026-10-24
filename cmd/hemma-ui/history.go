@@ -95,21 +95,19 @@ func (s *server) historyVersions(skip, count int) (commits []gitCommit, cfgAt []
 	if out, err := s.git(10*time.Second, "rev-parse", "--is-inside-work-tree"); err != nil || strings.TrimSpace(out) != "true" {
 		return nil, nil, false
 	}
-	const rec, sep = "\x1e", "\x1f"
-	out, err := s.git(30*time.Second, "log", "--skip="+strconv.Itoa(skip), "--max-count="+strconv.Itoa(count+1), "--format=%H"+sep+"%an"+sep+"%aI"+sep+"%s"+sep+"%b"+rec, "--", "services.yaml")
+	// Five NUL-separated fields per commit, and -z ends each commit with a NUL too. NUL is the one byte git cannot
+	// put in a message, author or date, so a message holding any other control character cannot shift the fields.
+	const fields = 5
+	out, err := s.git(30*time.Second, "log", "-z", "--skip="+strconv.Itoa(skip), "--max-count="+strconv.Itoa(count+1), "--format=%H%x00%an%x00%aI%x00%s%x00%b", "--", "services.yaml")
 	if err != nil {
 		return nil, nil, false
 	}
-	for _, r := range strings.Split(out, rec) {
-		r = strings.TrimLeft(r, "\n")
-		if r == "" {
-			continue
+	f := strings.Split(out, "\x00")
+	for i := 0; i+fields <= len(f); i += fields {
+		if f[i] == "" {
+			break // the trailing terminator
 		}
-		f := strings.SplitN(r, sep, 5)
-		if len(f) < 5 {
-			continue
-		}
-		commits = append(commits, gitCommit{f[0], f[1], f[2], f[3], strings.TrimSpace(f[4])})
+		commits = append(commits, gitCommit{f[i], f[i+1], f[i+2], f[i+3], strings.TrimSpace(f[i+4])})
 	}
 	empty := &config.Config{Services: map[string]config.Service{}}
 	versions := make([]*config.Config, len(commits))
