@@ -1,7 +1,7 @@
 version: 2
 
 # The hemma-ui image. Released by .github/workflows/release-ui.yml on a ui-v<X.Y.Z> tag, separately from the hemma CLI
-# (.goreleaser.yaml, v<X.Y.Z> tags): the two have independent version numbers.
+# (.goreleaser.yaml, cli-v<X.Y.Z> tags): the two have independent version numbers.
 #
 # The workflow strips the prefix from the tag and hands goreleaser the bare version (GORELEASER_CURRENT_TAG=v<X.Y.Z>), because the
 # open-source goreleaser only accepts a plain semver tag. There is no GitHub Release page and no changelog for the image: the

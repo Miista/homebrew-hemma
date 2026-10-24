@@ -2,11 +2,18 @@ version: 2
 
 project_name: hemma
 
-# The hemma-ui image is released separately, on ui-v<X.Y.Z> tags (.goreleaser.ui.yaml). Those tags are not CLI releases: without
-# this, the changelog could take one of them as "the previous release".
+# The CLI is released on the bare v<X.Y.Z> tag that release.yml makes from the cli-v<X.Y.Z> tag you push; the hemma-ui image is
+# released separately, on ui-v<X.Y.Z> tags (.goreleaser.ui.yaml). Neither prefixed tag is a CLI release: without this, the
+# changelog could take one of them as "the previous release".
 git:
   ignore_tags:
+    - "cli-*"
     - "ui-*"
+
+# The release says which product it is: this repo also releases the hemma-ui image, under ui-v<X.Y.Z> tags, with no GitHub
+# release of its own.
+release:
+  name_template: "cli {{ .Tag }}"
 
 builds:
   - id: hemma

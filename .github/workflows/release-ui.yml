@@ -1,6 +1,6 @@
 name: Release UI image
 
-# Publishes ghcr.io/miista/hemma-ui when a ui-v<X.Y.Z> tag is pushed. It is independent of the CLI release (release.yml, v<X.Y.Z> tags):
+# Publishes ghcr.io/miista/hemma-ui when a ui-v<X.Y.Z> tag is pushed. It is independent of the CLI release (release.yml, cli-v<X.Y.Z> tags):
 # the two have their own version numbers, and tagging one does not release the other. Tag the image when the UI or the kernel
 # (everything both are built from) changed; tag the CLI when the CLI or the kernel changed.
 #
