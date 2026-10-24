@@ -734,6 +734,11 @@ together with `known_hosts`, mode `600` and readable by uid 1000 (see `docker-co
 config is mounted there, so use a full `user@host` in `--ssh`. The container also has the Docker
 socket, which is one more reason for a key that opens nothing but the fleet.
 
+The UI itself speaks plain HTTP and requires a sign-in (OIDC or a local account; it cannot run
+ungated). We recommend putting a reverse proxy with TLS in front of it — your Caddy, typically —
+and keeping it reachable from your LAN only. Set `DOCKER_GID` to the host's docker group id
+(`getent group docker`) before starting it; the compose file has no default for it.
+
 ## Development
 
 ```sh

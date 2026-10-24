@@ -7,8 +7,8 @@
 #     <BASE_URL>/auth/callback; restrict the client to your admins at the IdP.
 #   - With no OIDC variables, the FIRST visitor creates a local account: create it yourself,
 #     immediately after starting, before anyone else can reach the port.
-# Put it behind your Caddy (TLS) and keep it LAN-only: the Docker socket mount below
-# gives this container root-equivalent control of the host.
+# It speaks plain HTTP. We recommend a reverse proxy (your Caddy, with TLS) in front of it, and keeping it
+# LAN-only: the Docker socket mount below gives this container root-equivalent control of the host.
 # The image only COPIES a binary in; it never compiles Go. Cross-compile it first (UI_ARCH=amd64 for an x86 host):
 #   make ui-binary && docker compose -f docker-compose.ui.yml up -d --build
 services:
@@ -21,8 +21,9 @@ services:
     # Runs as you, not root: uid 1000 is the image's `hemma` user (passwd entry + owned /data/auth,
     # see Dockerfile.ui). A different uid needs its own passwd entry.
     user: "1000:1000"
-    # Reach the Docker socket: the host's docker group id (`getent group docker`).
-    group_add: ["${DOCKER_GID:-984}"]
+    # Reach the Docker socket: the host's docker group id (`getent group docker`). No default: a wrong id only
+    # shows up as "permission denied" at apply time, so compose refuses to start until it is set.
+    group_add: ["${DOCKER_GID:?set DOCKER_GID to the host's docker group id (getent group docker)}"]
     environment:
       HOME: /data                 # git and ssh keep their files under /data
       HEMMA_UI_ADDR: ":8080"
