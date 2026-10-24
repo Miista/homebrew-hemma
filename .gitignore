@@ -29,8 +29,6 @@ id_*
 # macOS cruft.
 .DS_Store
 .claude/
-mikrotik_backup
-*_deploy
 
 # Editor swap/backup files.
 *.swp
