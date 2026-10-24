@@ -3,15 +3,19 @@ package kernel
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"hemma/internal/config"
 	"hemma/internal/manifest"
+	"hemma/internal/render"
 )
 
 // OwnedPaths is the set of repo paths hemma is responsible for: services.yaml, the manifest, every file the manifest
-// says hemma generated, and .gitignore while the block `doctor --fix` writes in it differs from the committed one.
-// Anything else in the repo (a compose file, a backup list, a note, a hand edit elsewhere in .gitignore) is somebody
-// else's work — hemma neither shows it as its own change, nor commits it, nor lets it block a deploy.
+// says hemma generated, and — while the one part of them hemma writes differs from the committed one — .gitignore
+// (its managed block) and each host's Caddyfile (its import lines, see doctor --fix). Anything else in the repo (a
+// compose file, a backup list, a note, a hand edit elsewhere in .gitignore or the Caddyfile) is somebody else's
+// work — hemma neither shows it as its own change, nor commits it, nor lets it block a deploy.
 //
 // The manifest is the authority, the same one that decides what hemma may delete. Both the working copy and the
 // committed one (headFile reads a path as of HEAD) count: a file sync just removed is already gone from the new
@@ -31,6 +35,20 @@ func OwnedPaths(repoRoot string, headFile func(path string) ([]byte, bool)) map[
 	}
 	if managedBlock(string(wc)) != managedBlock(string(head)) {
 		owned[".gitignore"] = true
+	}
+	// Each host's Caddyfile is the same kind of file: hand-maintained, and hemma writes exactly one thing in it — the
+	// import lines for its generated snippets (doctor --fix adds or renames them). So it is hemma's change only while
+	// those lines differ from the committed ones. Which Caddyfiles there are comes from services.yaml; when that cannot
+	// be read, none are considered.
+	for _, cf := range caddyfilePaths(repoRoot) {
+		wc, _ := os.ReadFile(filepath.Join(repoRoot, cf))
+		var head []byte
+		if headFile != nil {
+			head, _ = headFile(cf)
+		}
+		if hemmaImports(string(wc)) != hemmaImports(string(head)) {
+			owned[cf] = true
+		}
 	}
 	add := func(data []byte) {
 		if m, ok := manifest.Parse(data); ok {
@@ -52,6 +70,45 @@ func OwnedPaths(repoRoot string, headFile func(path string) ([]byte, bool)) map[
 		}
 	}
 	return owned
+}
+
+// caddyfilePaths lists every host's Caddyfile, repo-relative, as services.yaml declares the hosts (the same place
+// doctor looks). An unreadable services.yaml yields none.
+func caddyfilePaths(repoRoot string) []string {
+	data, err := os.ReadFile(filepath.Join(repoRoot, configName))
+	if err != nil {
+		return nil
+	}
+	cfg, err := config.Parse(data, filepath.Join(repoRoot, configName))
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	for name, h := range cfg.Hosts {
+		paths = append(paths, filepath.ToSlash(filepath.Join(h.ResolvedDir(name), config.DefaultCaddyDataDir, "Caddyfile")))
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+// hemmaImportLines are the lines hemma puts in a Caddyfile, current and pre-rename: the import of the generated
+// site blocks and of the trusted-proxies snippet.
+var hemmaImportLines = []string{
+	"import " + render.CaddyImportFilename,
+	"import " + render.TrustedProxiesFilename,
+	"import splitdns.generated.caddy",
+	"import sd.generated.caddy",
+}
+
+// hemmaImports is the set of hemma's import lines present in a Caddyfile, as one comparable string.
+func hemmaImports(content string) string {
+	var present []string
+	for _, l := range hemmaImportLines {
+		if strings.Contains(content, l) {
+			present = append(present, l)
+		}
+	}
+	return strings.Join(present, "\n")
 }
 
 // managedBlock is the text of hemma's marked block in a .gitignore (pre-rename markers read as the current ones),

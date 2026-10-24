@@ -52,6 +52,8 @@ Run 'hemma doctor --fix', commit and push the result, then deploy again.
 --- external commands ---
 git -C <repo> status --porcelain --untracked-files=all
 git -C <repo> show HEAD:.gitignore
+git -C <repo> show HEAD:core/caddy/data/Caddyfile
+git -C <repo> show HEAD:edge/caddy/data/Caddyfile
 git -C <repo> show HEAD:hemma-manifest.yaml
 git -C <repo> show HEAD:splitdns-manifest.yaml
 git -C <repo> show HEAD:sd-manifest.yaml
