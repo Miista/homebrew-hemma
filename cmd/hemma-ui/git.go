@@ -168,16 +168,23 @@ func (s *server) handleCommit(w http.ResponseWriter, r *http.Request) {
 	for _, f := range ch.Files {
 		paths = append(paths, unquoteRename(f.Path))
 	}
-	for _, step := range [][]string{
-		append([]string{"add", "-A", "--"}, paths...),
-		append([]string{"commit", "--message=" + msg, "--"}, paths...), // --only: just these, whatever else is staged
-	} {
-		out, err := s.git(time.Minute, step...)
+	// Two git commands (a new generated file is untracked until it is added, and commit takes only known paths), made
+	// all-or-nothing: if the commit fails after the add (a hook, a lock file), the add is undone for just these
+	// paths, so nothing is left staged — the working tree is untouched either way, and Discard still knows every file.
+	out, err := s.git(time.Minute, append([]string{"add", "-A", "--"}, paths...)...)
+	sb.WriteString(out)
+	if err == nil {
+		out, err = s.git(time.Minute, append([]string{"commit", "--message=" + msg, "--"}, paths...)...) // --only: just these, whatever else is staged
 		sb.WriteString(out)
 		if err != nil {
-			writeJSON(w, 200, map[string]any{"ok": false, "output": sb.String()})
-			return
+			if undo, uerr := s.git(time.Minute, append([]string{"reset", "-q", "--"}, paths...)...); uerr != nil {
+				sb.WriteString("\n(could not unstage after the failed commit: " + undo + ")")
+			}
 		}
+	}
+	if err != nil {
+		writeJSON(w, 200, map[string]any{"ok": false, "output": sb.String()})
+		return
 	}
 	log.Printf("commit: %d files", len(ch.Files))
 	writeJSON(w, 200, map[string]any{"ok": true, "output": sb.String()})

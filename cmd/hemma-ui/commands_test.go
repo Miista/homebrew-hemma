@@ -464,6 +464,58 @@ func TestCommit_LeavesOtherFilesAlone(t *testing.T) {
 	}
 }
 
+// Save is all-or-nothing: when the commit fails after the add (a hook here), the add is undone, so no hemma file is
+// left staged — and Discard, which only knows untracked and committed files, still works.
+func TestCommit_FailedCommitLeavesNothingStaged(t *testing.T) {
+	dir := t.TempDir()
+	s := &server{repo: dir}
+	write := func(rel, body string) {
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		s.invalidateChanges()
+	}
+	write("services.yaml", "services: {}\n")
+	write("hemma-manifest.yaml", "web:\n  - edge/sites/web.caddy\n")
+	for _, a := range [][]string{{"init", "-q", "-b", "main"}, {"add", "-A"}, {"commit", "-q", "-m", "init"}} {
+		if out, err := s.git(time.Minute, a...); err != nil {
+			t.Fatalf("git %v: %v %s", a, err, out)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".git", "hooks", "pre-commit"), []byte("#!/bin/sh\necho no-commits-today\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write("services.yaml", "hosts: {}\nservices: {}\n") // hemma's edit to a committed file
+	write("edge/sites/web.caddy", "# generated\n")      // hemma's new generated file
+
+	rec := httptest.NewRecorder()
+	s.handleCommit(rec, httptest.NewRequest("POST", "/api/commit", strings.NewReader(`{"message":"hemma change"}`)))
+	if !strings.Contains(rec.Body.String(), `"ok":false`) || !strings.Contains(rec.Body.String(), "no-commits-today") {
+		t.Fatalf("the hook must fail the save, with its output: %s", rec.Body.String())
+	}
+	if out, _ := s.git(time.Minute, "diff", "--cached", "--name-only"); strings.TrimSpace(out) != "" {
+		t.Errorf("nothing may be left staged after a failed commit, got %q", out)
+	}
+	status, _ := s.git(time.Minute, "status", "--porcelain", "--untracked-files=all")
+	if !strings.Contains(status, " M services.yaml") || !strings.Contains(status, "?? edge/sites/web.caddy") {
+		t.Errorf("the edits must be intact and the new file untracked again, status: %q", status)
+	}
+	// Discard still works: the new file is removed, the edit put back.
+	s.invalidateChanges()
+	rec = httptest.NewRecorder()
+	s.handleDiscard(rec, httptest.NewRequest("POST", "/api/discard", nil))
+	if !strings.Contains(rec.Body.String(), `"ok":true`) {
+		t.Fatalf("discard: %s", rec.Body.String())
+	}
+	if out, _ := s.git(time.Minute, "status", "--porcelain"); strings.TrimSpace(out) != "" {
+		t.Errorf("after discard the tree must be clean, status: %q", out)
+	}
+}
+
 // "Ahead of origin" only means something to deploy when a commit touches a file hemma owns: a commit to a compose file is
 // ahead too, but there is nothing for hemma to make live.
 func TestChanges_AheadHemmaOnlyForOwnedFiles(t *testing.T) {
