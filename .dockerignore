@@ -1,3 +1,0 @@
-# Dockerfile.ui only copies in the cross-compiled dist/linux_<arch>/hemma-ui (see the Dockerfile): send Docker nothing else.
-*
-!dist/linux_*/hemma-ui

@@ -1,0 +1,109 @@
+name: Release UI image
+
+# Publishes ghcr.io/miista/hemma-ui when a ui-v<X.Y.Z> tag is pushed. It is independent of the CLI release (release.yml, v<X.Y.Z> tags):
+# the two have their own version numbers, and tagging one does not release the other. Tag the image when the UI or the kernel
+# (everything both are built from) changed; tag the CLI when the CLI or the kernel changed.
+#
+# goreleaser (.goreleaser.ui.yaml) cross-compiles the binaries on the runner and builds Dockerfile.ui for linux/amd64 and
+# linux/arm64 (QEMU only runs the image's own RUN steps). The open-source goreleaser only accepts a plain semver tag, so this
+# workflow strips the prefix (ui-v0.3.0 -> v0.3.0) and hands that to goreleaser as the version.
+#
+# A manual run is a dry run: it builds with the version you give and publishes nothing.
+
+on:
+  push:
+    tags:
+      - "ui-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Dry run: build with this version, v<X.Y.Z>. Nothing is pushed."
+        required: true
+        default: "v0.0.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-ui-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io with the workflow's own GITHUB_TOKEN; nothing else is granted
+    env:
+      # Passed through the environment, never interpolated into the script.
+      EVENT: ${{ github.event_name }}
+      TAG: ${{ github.ref_name }}
+      INPUT_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Version from the tag
+        id: version
+        run: |
+          if [ "$EVENT" = push ]; then
+            version="${TAG#ui-}"
+            skip="validate"
+            publish=true
+          else
+            version="$INPUT_VERSION"
+            skip="validate,publish"
+            publish=false
+          fi
+          if ! [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$version' is not a version. Tag the image ui-vX.Y.Z (for example ui-v0.1.0)."
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "skip=$skip"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing the UI image as $version (publish: $publish)"
+
+      # The image's RUN steps (apk add, adduser) run under emulation for the architecture the runner is not.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to ghcr.io
+        if: steps.version.outputs.publish == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # --skip=validate: goreleaser would refuse the bare version below, because that tag does not exist in git (the tag is
+      # ui-v<X.Y.Z>); the version has just been checked above.
+      - name: Run goreleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --clean --skip=${{ steps.version.outputs.skip }} -f .goreleaser.ui.yaml
+        env:
+          GORELEASER_CURRENT_TAG: ${{ steps.version.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          {
+            echo "### hemma-ui image"
+            echo "- version: \`${{ steps.version.outputs.version }}\`"
+            echo "- published: \`${{ steps.version.outputs.publish }}\`"
+            if [ "${{ steps.version.outputs.publish }}" = true ]; then
+              echo "- pull: \`docker pull ghcr.io/miista/hemma-ui:${{ steps.version.outputs.version }}\` (without the leading v)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
