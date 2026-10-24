@@ -57,15 +57,15 @@ git -C <repo> show HEAD:sd-manifest.yaml
 git -C <repo> rev-parse --abbrev-ref @{u}
 git -C <repo> fetch
 git -C <repo> rev-list --left-right --count HEAD...@{u}
-ssh -o BatchMode=yes ops@192.0.2.20 true
-ssh -o BatchMode=yes ops@192.0.2.20 git -C ~/docker fetch
-ssh -o BatchMode=yes ops@192.0.2.20 git -C ~/docker rev-list --left-right --count HEAD...@{u}
-ssh -o BatchMode=yes ops@192.0.2.20 git -C ~/docker pull --ff-only
+ssh -o BatchMode=yes -- ops@192.0.2.20 true
+ssh -o BatchMode=yes -- ops@192.0.2.20 git -C ~/docker fetch
+ssh -o BatchMode=yes -- ops@192.0.2.20 git -C ~/docker rev-list --left-right --count HEAD...@{u}
+ssh -o BatchMode=yes -- ops@192.0.2.20 git -C ~/docker pull --ff-only
 git -C <repo> pull --ff-only
-ssh -o BatchMode=yes ops@192.0.2.20 git -C ~/docker rev-parse HEAD
+ssh -o BatchMode=yes -- ops@192.0.2.20 git -C ~/docker rev-parse HEAD
 git -C <repo> rev-parse HEAD
 docker exec sso authelia config validate
-ssh -o BatchMode=yes ops@192.0.2.20 hemma apply
+ssh -o BatchMode=yes -- ops@192.0.2.20 hemma apply
 docker exec caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 docker exec sso authelia config validate
 docker restart pihole

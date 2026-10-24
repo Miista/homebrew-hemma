@@ -794,3 +794,21 @@ func TestSyncWithOrigin_DirtyRemote(t *testing.T) {
 		}
 	})
 }
+
+// The ssh destination comes from services.yaml, which any host that can push to origin can write. `--` ends ssh's
+// option parsing before it, so a destination starting with `-` is a (failing) host name, never an ssh option that
+// runs something locally.
+func TestExecRunner_SSHDestinationAfterDoubleDash(t *testing.T) {
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte("#!/bin/sh\nprintf '%s\\n' \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	out, err := execRunner{env: stdEnv()}.run(deployTarget{Name: "nas", Dest: "-oProxyCommand=true"}, []string{"hemma", "apply"})
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	if want := "-o\nBatchMode=yes\n--\n-oProxyCommand=true\nhemma apply\n"; out != want {
+		t.Errorf("ssh argv:\n%q\nwant\n%q", out, want)
+	}
+}

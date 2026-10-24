@@ -54,7 +54,7 @@ import (
 //
 // Targets default to every host with a role (runs a non-disabled service, or
 // is the dns_host); explicit names restrict the set. A host is reached via
-// `ssh -o BatchMode=yes <dest>` where <dest> is its verbatim `ssh:` field
+// `ssh -o BatchMode=yes -- <dest>` where <dest> is its verbatim `ssh:` field
 // (default: the host name); a target whose IP matches this machine runs its
 // commands locally instead (same localHost rule as apply). BatchMode forbids
 // interactive prompts — auth failures abort in phase 1, where they're
@@ -183,7 +183,10 @@ func (r execRunner) run(t deployTarget, argv []string) (string, error) {
 	if !t.Local {
 		// The command is passed as a single string for the remote shell to
 		// parse — that is what lets the literal ~/docker expand remotely.
-		argv = []string{"ssh", "-o", "BatchMode=yes", t.Dest, strings.Join(argv, " ")}
+		// `--` ends ssh's option parsing: the destination comes from services.yaml (any host that can push to
+		// origin can write it), and one starting with `-` would otherwise be read as an ssh option
+		// (-oProxyCommand=… runs locally, before any key is checked). After `--` it can only be a host name.
+		argv = []string{"ssh", "-o", "BatchMode=yes", "--", t.Dest, strings.Join(argv, " ")}
 	}
 	out, err := r.env.command(argv[0], argv[1:]...).CombinedOutput()
 	return string(out), err
