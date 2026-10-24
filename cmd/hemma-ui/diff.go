@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"hemma/internal/cli/kernel"
 	"hemma/internal/config"
 )
 
@@ -254,15 +255,22 @@ func (s *server) diff() (diffResult, error) {
 
 // handleDiscard throws away the unsaved changes hemma itself made: services.yaml, the manifest and
 // the generated files go back to the last commit. Files hemma doesn't manage (a snippet you wrote,
-// a note) are never touched — they are your work, not hemma's output.
+// a note) are never touched — they are your work, not hemma's output. Files hemma SHARES with you
+// (.gitignore, a host's Caddyfile: hemma writes one part, the rest is yours — kernel.SharedPath) are
+// listed as hemma's change while that part differs, but are never discarded whole either: they are
+// left as they are and named in the answer, to save or put back by hand.
 func (s *server) handleDiscard(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	defer s.invalidateChanges()
-	var restore []string
+	var restore, kept []string
 	removed := 0
 	for _, f := range s.changes().Files {
 		if strings.HasPrefix(f.Path, `"`) { // git quotes unusual names; leave those alone
+			continue
+		}
+		if kernel.SharedPath(f.Path) {
+			kept = append(kept, f.Path)
 			continue
 		}
 		if f.Status == "??" { // a new generated file: nothing to restore it to, so remove it
@@ -279,8 +287,12 @@ func (s *server) handleDiscard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	log.Printf("discard: restored %d, removed %d", len(restore), removed)
-	writeJSON(w, 200, map[string]any{"ok": true, "output": "Discarded", "restored": len(restore), "removed": removed})
+	log.Printf("discard: restored %d, removed %d, kept %d", len(restore), removed, len(kept))
+	out := "Discarded"
+	if len(kept) > 0 {
+		out = "Discarded. Left as they are, since hemma only writes a part of them: " + strings.Join(kept, ", ") + " — save them, or put them back by hand."
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "output": out, "restored": len(restore), "removed": removed, "kept": kept})
 }
 
 func (s *server) handleDiff(w http.ResponseWriter, r *http.Request) {

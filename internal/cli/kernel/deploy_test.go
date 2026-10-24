@@ -576,8 +576,8 @@ func TestDeployPreflight_SyncsWithOrigin(t *testing.T) {
 		commitFile(t, clone, "f", "mine", "mine")
 		before := gitOut(t, clone, "rev-parse", "HEAD")
 		err := deployPreflight(stdEnv(), clone, nil)
-		if err == nil || !strings.Contains(err.Error(), "nothing was changed") {
-			t.Fatalf("a conflict should be refused with a plain message, got %v", err)
+		if err == nil || !strings.Contains(err.Error(), "could not be combined") || !strings.Contains(err.Error(), "nothing was changed") {
+			t.Fatalf("a real conflict should be refused as one, with a plain message, got %v", err)
 		}
 		if after := gitOut(t, clone, "rev-parse", "HEAD"); after != before {
 			t.Errorf("HEAD moved: %s -> %s", before, after)

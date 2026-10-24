@@ -582,3 +582,59 @@ func TestChanges_AheadHemmaOnlyForOwnedFiles(t *testing.T) {
 		t.Fatalf("a commit to services.yaml is something to deploy: %+v", c)
 	}
 }
+
+// Discard never throws away a file hemma only writes a part of: a Caddyfile written by hand (untracked) that carries
+// hemma's import line, or a tracked one with hand edits next to the line doctor --fix added, is left exactly as it is
+// and named in the answer; hemma's own files are still put back.
+func TestDiscard_LeavesSharedFilesAlone(t *testing.T) {
+	dir := t.TempDir()
+	s := &server{repo: dir}
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		s.invalidateChanges()
+	}
+	read := func(rel string) string {
+		b, _ := os.ReadFile(filepath.Join(dir, rel))
+		return string(b)
+	}
+	write("services.yaml", "hosts:\n    edge:\n        ip: 192.0.2.1\n    core:\n        ip: 192.0.2.2\ndomains:\n    - example.com\nservices: {}\n")
+	write("edge/caddy/data/Caddyfile", "edge.example.com {\n}\n") // tracked, no hemma line yet
+	write(".gitignore", "backups/\n")
+	for _, a := range [][]string{{"init", "-q", "-b", "main"}, {"add", "-A"}, {"commit", "-q", "-m", "init"}} {
+		if out, err := s.git(time.Minute, a...); err != nil {
+			t.Fatalf("git %v: %v %s", a, err, out)
+		}
+	}
+	write("services.yaml", "hosts:\n    edge:\n        ip: 192.0.2.9\n    core:\n        ip: 192.0.2.2\ndomains:\n    - example.com\nservices: {}\n") // hemma's edit
+	edgeCF := "edge.example.com {\n  respond ok\n}\nimport hemma.generated.caddy\n"                                                                   // hand edit + doctor's line
+	coreCF := "import hemma.generated.caddy\ncore.example.com {\n}\n"                                                                                 // written by hand, untracked
+	gi := "backups/\n# >>> hemma managed >>>\n!edge/\n# <<< hemma managed <<<\n"                                                                      // doctor --fix's block
+	write("edge/caddy/data/Caddyfile", edgeCF)
+	write("core/caddy/data/Caddyfile", coreCF)
+	write(".gitignore", gi)
+
+	rec := httptest.NewRecorder()
+	s.handleDiscard(rec, httptest.NewRequest("POST", "/api/discard", nil))
+	body := rec.Body.String()
+	if !strings.Contains(body, `"ok":true`) {
+		t.Fatalf("discard: %s", body)
+	}
+	if !strings.Contains(read("services.yaml"), "192.0.2.1\n") {
+		t.Error("hemma's own file must still be put back")
+	}
+	if read("edge/caddy/data/Caddyfile") != edgeCF || read("core/caddy/data/Caddyfile") != coreCF || read(".gitignore") != gi {
+		t.Errorf("shared files must be left exactly as they are:\n%s\n%s\n%s", read("edge/caddy/data/Caddyfile"), read("core/caddy/data/Caddyfile"), read(".gitignore"))
+	}
+	for _, p := range []string{".gitignore", "core/caddy/data/Caddyfile", "edge/caddy/data/Caddyfile"} {
+		if !strings.Contains(body, p) {
+			t.Errorf("the answer must name %s as left alone: %s", p, body)
+		}
+	}
+}

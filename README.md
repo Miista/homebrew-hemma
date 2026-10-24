@@ -624,9 +624,9 @@ hemma verify    # assert A == host IP and AAAA == :: against the running resolve
 command that SSHes. Deploying means **"make the fleet match origin"**, and it runs exactly the
 manual workflow's two commands per host, in two phases:
 
-1. **Pull everywhere** — first `hemma preflight` on every remote host (its uncommitted files hemma
-   owns stop the deploy, named; edits to other files are left alone), then each remote is brought
-   level with origin, then `git -C ~/docker pull --ff-only` on every target host (over
+1. **Pull everywhere** — first, remote by remote, `hemma preflight` there (its uncommitted files hemma
+   owns stop the deploy, named; edits to other files are left alone) and then that remote is brought
+   level with origin; then `git -C ~/docker pull --ff-only` on every target host (over
    `ssh -o BatchMode=yes`, or locally for the host you're on). `--ff-only` fast-forwards or
    refuses touching nothing, so this phase is **all-or-nothing**: any failure — a diverged
    checkout (local commits/edits origin doesn't have; hosts must not fork the repo — reconcile

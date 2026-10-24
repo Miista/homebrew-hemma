@@ -111,18 +111,24 @@ func hemmaImports(content string) string {
 	return strings.Join(present, "\n")
 }
 
-// managedBlock is the text of hemma's marked block in a .gitignore (pre-rename markers read as the current ones),
-// or "" when there is none.
+// managedBlock is the text of hemma's marked block in a .gitignore, markers included and as written — so a block
+// whose pre-rename markers doctor --fix rewrote to the current ones is a change too, not an invisible diff — or ""
+// when there is none.
 func managedBlock(content string) string {
-	for _, m := range legacyGiBlockStarts {
-		content = strings.ReplaceAll(content, m, giBlockStart)
+	starts := append([]string{giBlockStart}, legacyGiBlockStarts...)
+	ends := append([]string{giBlockEnd}, legacyGiBlockEnds...)
+	for i := range starts {
+		s, e := strings.Index(content, starts[i]), strings.Index(content, ends[i])
+		if s >= 0 && e > s {
+			return content[s : e+len(ends[i])]
+		}
 	}
-	for _, m := range legacyGiBlockEnds {
-		content = strings.ReplaceAll(content, m, giBlockEnd)
-	}
-	s, e := strings.Index(content, giBlockStart), strings.Index(content, giBlockEnd)
-	if s < 0 || e <= s {
-		return ""
-	}
-	return content[s : e+len(giBlockEnd)]
+	return ""
+}
+
+// SharedPath reports whether a repo path is one hemma shares with the person: hemma writes one part of it (see
+// OwnedPaths: .gitignore's managed block, a Caddyfile's import lines) and the rest is theirs. Such a file may be
+// hemma's change to commit, but never hemma's to discard or remove whole.
+func SharedPath(p string) bool {
+	return p == ".gitignore" || filepath.Base(p) == "Caddyfile"
 }

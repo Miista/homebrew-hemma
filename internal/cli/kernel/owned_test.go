@@ -65,9 +65,9 @@ func TestOwnedPaths_GitignoreOnlyForHemmaBlock(t *testing.T) {
 	if !OwnedPaths(root, head)[".gitignore"] {
 		t.Error("a changed hemma block is hemma's change")
 	}
-	write("# mine\ndata/\n\n" + "# >>> splitdns managed >>>\n!edge/sites/\n# <<< splitdns managed <<<\n") // only the markers were migrated
-	if OwnedPaths(root, head)[".gitignore"] {
-		t.Error("pre-rename markers read as the current ones: same block, not a change")
+	write("# mine\ndata/\n\n" + "# >>> splitdns managed >>>\n!edge/sites/\n# <<< splitdns managed <<<\n") // only the markers differ
+	if !OwnedPaths(root, head)[".gitignore"] {
+		t.Error("markers doctor --fix migrates are part of the block: a rename is hemma's change, not an invisible diff")
 	}
 	write("# mine\ndata/\n") // the block was removed
 	if !OwnedPaths(root, head)[".gitignore"] {

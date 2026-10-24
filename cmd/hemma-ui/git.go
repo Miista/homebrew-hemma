@@ -151,8 +151,8 @@ func (s *server) handleCommit(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"ok": false, "output": "a change message is required (max 2000 characters)"})
 		return
 	}
-	// Line breaks and tabs are fine in a message; other control characters are not text and are refused.
-	if strings.ContainsFunc(msg, func(r rune) bool { return r < 0x20 && r != '\n' && r != '\t' || r == 0x7f }) {
+	// Line breaks (LF or CRLF) and tabs are fine in a message; other control characters are not text and are refused.
+	if strings.ContainsFunc(msg, func(r rune) bool { return r < 0x20 && r != '\n' && r != '\r' && r != '\t' || r == 0x7f }) {
 		writeJSON(w, 400, map[string]any{"ok": false, "output": "the change message contains control characters"})
 		return
 	}

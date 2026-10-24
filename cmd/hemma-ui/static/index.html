@@ -875,7 +875,10 @@ async function streamDeploy(command, onSteps) {
 async function discardNow() {
   const res = await post("/api/discard", {});
   if (res.ok) localStorage.removeItem(SAVE_DRAFT);   // the message was about changes that are gone
-  toastResult("Discard", res, "Changes discarded"); await load();
+  // Files hemma only writes a part of (.gitignore, a Caddyfile) are never discarded whole: the server names the ones it left.
+  if (res.ok && res.kept?.length) toast("Left as they are: " + res.kept.join(", "), "warn", { title: "Discard", text: res.output });
+  else toastResult("Discard", res, "Changes discarded");
+  await load();
 }
 async function discard() {
   if (!await ask("Discard your changes?", "Everything you changed since the last save will be undone.", { ok: "Discard", danger: true })) return;
