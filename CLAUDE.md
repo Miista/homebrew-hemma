@@ -194,7 +194,9 @@ authy). It is NOT a second implementation of hemma:
   when it is not, `/api/state` reports why and the page shows a recovery screen: **Discard unsaved changes**
   (the usual cause is an unsaved edit) or **Edit services.yaml** as text. The text goes through
   `kernel.ReplaceConfig` — the UI still never writes the file itself — which refuses text that does not
-  parse (nothing written) and otherwise writes it as given and syncs like any other mutation.
+  parse (nothing written) and otherwise writes it as given and syncs like any other mutation. The raw POST is
+  a recovery only: while the file loads it answers 409, so the typed commands and their checks are the one
+  way to change a healthy file (`TestRawConfig_ReadReplaceAndRefuse` pins it).
 - **hemma must be able to read what it writes.** The none auth mode is the empty string internally and was
   written as `mode: ""`, which the reader refused — a service with mode none plus bypass paths/groups/policy
   made the whole file unloadable. The writer now spells it `none`; the reader still accepts the old `mode: ""`

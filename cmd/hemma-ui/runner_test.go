@@ -207,6 +207,20 @@ func TestRawConfig_ReadReplaceAndRefuse(t *testing.T) {
 	path := filepath.Join(s.repo, "services.yaml")
 	good, _ := os.ReadFile(path)
 
+	save := func(text string) *httptest.ResponseRecorder {
+		b, _ := json.Marshal(map[string]string{"text": text})
+		rec := httptest.NewRecorder()
+		s.handleRawSave(rec, httptest.NewRequest("POST", "/api/config/raw", strings.NewReader(string(b))))
+		return rec
+	}
+	// While the file loads, it is not replaceable as text: the typed forms (and their checks) are the only way.
+	if rec := save("hosts: {}\n"); rec.Code != 409 {
+		t.Errorf("a loadable file must not be replaced as text: want 409, got %d %s", rec.Code, rec.Body.String())
+	}
+	if now, _ := os.ReadFile(path); string(now) != string(good) {
+		t.Errorf("the refusal must leave the file alone:\n%s", now)
+	}
+
 	// break it the way hemma once did: an auth mapping with no mode
 	broken := strings.Replace(string(good), "services: {}", "services:\n  web:\n    fqdn: web.example.com\n    host: appbox\n    backend: web:80\n    auth:\n      groups: [admins]\n", 1)
 	if err := os.WriteFile(path, []byte(broken), 0o644); err != nil {
@@ -228,12 +242,6 @@ func TestRawConfig_ReadReplaceAndRefuse(t *testing.T) {
 		t.Errorf("/api/state should report why it cannot load: %s", state.Body.String())
 	}
 
-	save := func(text string) *httptest.ResponseRecorder {
-		b, _ := json.Marshal(map[string]string{"text": text})
-		rec := httptest.NewRecorder()
-		s.handleRawSave(rec, httptest.NewRequest("POST", "/api/config/raw", strings.NewReader(string(b))))
-		return rec
-	}
 	// still broken text: refused (400), file untouched
 	before := s.configStamp()
 	if rec := save("hosts: [unclosed"); rec.Code != 400 || s.configStamp() != before {

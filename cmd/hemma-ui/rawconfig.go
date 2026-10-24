@@ -44,11 +44,21 @@ func (s *server) handleRawSave(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	defer s.invalidateChanges()
+	// Only a recovery: while the file loads, every change goes through a typed command and its checks, so replacing
+	// the whole file as text is refused (409). The page only offers the editor when the file is broken; this keeps
+	// the endpoint to the same rule. Decided under the lock, so a save cannot slip in between the check and the write.
+	path := filepath.Join(s.repo, "services.yaml")
+	if b, err := os.ReadFile(path); err == nil || os.IsNotExist(err) {
+		if _, perr := config.Parse(b, path); perr == nil {
+			writeJSON(w, 409, map[string]any{"ok": false, "output": "services.yaml loads: use the forms to change it (replacing it as text is only for a file that cannot be read)"})
+			return
+		}
+	}
 	ctx, cancel := workContext(r, false, 2*time.Minute) // a save is not abandoned half-way when the browser goes
 	defer cancel()
 	before := s.configStamp()
 	code, out := s.inKernel(ctx, "replace config", func(env *kernel.Env) int {
-		return kernel.ReplaceConfig(env, s.repo, filepath.Join(s.repo, "services.yaml"), in.Text)
+		return kernel.ReplaceConfig(env, s.repo, path, in.Text)
 	})
 	changed := s.configStamp() != before
 	log.Printf("replace services.yaml -> exit=%d changed=%v", code, changed)
