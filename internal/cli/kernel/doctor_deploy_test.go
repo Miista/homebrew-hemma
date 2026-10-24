@@ -13,8 +13,17 @@ import (
 // hosts don't exist, so the real ssh-keygen -F would report every one of them
 // unknown and flip doctor exit codes across unrelated tests. Individual tests
 // override and restore the hook themselves.
+//
+// It also gives git a fixed identity for the whole package. The code under test runs real
+// `git pull --rebase` / `git push` through the process environment (deploy's sync with origin), and a rebase
+// needs a committer: a developer machine has one configured globally, a fresh CI runner does not.
 func TestMain(m *testing.M) {
 	hostKnown = func(*Env, string) bool { return true }
+	for k, v := range map[string]string{
+		"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+	} {
+		os.Setenv(k, v)
+	}
 	os.Exit(m.Run())
 }
 
@@ -66,8 +75,8 @@ func TestCheckDeployReadiness_ChecksOnlyDeployTargets(t *testing.T) {
 // The @-split for the known_hosts lookup: user@host → host, alias unchanged.
 func TestSSHHostPart(t *testing.T) {
 	cases := map[string]string{
-		"guldmund@10.0.30.200": "10.0.30.200",
-		"optiplex":             "optiplex",
+		"admin@192.0.2.2": "192.0.2.2",
+		"core":             "core",
 		"a@b@c":                "c",
 	}
 	for in, want := range cases {
