@@ -1187,8 +1187,10 @@ two strictly ordered phases:
   `~/docker` (baked-in convention, no per-host override). A target whose IP matches the local
   machine (the same `localHost` rule `apply` uses) runs its commands **locally** — no
   ssh-to-self.
-- **Preflight** (on the local, deploy, host — before any host is touched): refuses a dirty tree, then brings
-  the checkout level with origin. Deploying means "make the fleet match origin", so origin must carry the
+- **Preflight** (on the local, deploy, host — before any host is touched): refuses uncommitted files hemma
+  owns (`hemma preflight`, the same check as a command: services.yaml, the manifest, the files it lists,
+  and `.gitignore` / a host's Caddyfile while the one part hemma writes in them differs from HEAD — anything
+  else in the repo is somebody else's work and is left alone), then brings the checkout level with origin. Deploying means "make the fleet match origin", so origin must carry the
   intent, and other hosts commit to the same repository too, so origin having work this checkout lacks is
   ordinary: `git fetch`; `git pull --rebase` when behind (transactional — a rebase that stops on a real
   conflict is `--abort`ed, the repo exactly as it was, and deploy refuses saying so); `git push` when
@@ -1198,10 +1200,14 @@ two strictly ordered phases:
   drifted repo on every host — so deploy refuses here, before any host pulls or restarts anything, and says
   to run `hemma doctor --fix`, commit and push, then deploy again. Host names and "nothing to deploy" are
   settled from the config alone, before any of this touches git.
-- **Phase 1a — bring every remote level with origin** (before the pulls): each remote checkout gets the same
+- **Phase 1a — bring every remote level with origin** (before the pulls): each remote first runs
+  `hemma preflight` — the deploy host's own dirty-tree rule, on that host with that host's manifest — and
+  uncommitted files hemma owns there stop the deploy naming them: phase 3 would apply them as they are, a
+  state origin has never seen. (A hemma too old to know the command fails it, and with it the deploy: every
+  host needs the new hemma before a deploy can reach it.) Then each remote checkout gets the same
   sync as the local one (`git fetch`; `pull --rebase` when behind; `push` when ahead; the same three rounds and
   transactional abort), so commits made there (an updater's, say) reach origin and origin's reach it. A remote
-  may hold **uncommitted edits** (someone mid-change): they are left alone, and `--autostash` is used around the
+  may hold **uncommitted edits to other files** (someone mid-change): they are left alone, and `--autostash` is used around the
   rebase only when none of those files is also changed by origin's new commits (`git diff --name-only
   HEAD...@{u}` against `git status --porcelain`) — then re-applying cannot conflict. If one is, nothing is
   touched and the deploy stops naming the files. When any remote pushed, origin gained commits this host lacks,

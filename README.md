@@ -624,11 +624,14 @@ hemma verify    # assert A == host IP and AAAA == :: against the running resolve
 command that SSHes. Deploying means **"make the fleet match origin"**, and it runs exactly the
 manual workflow's two commands per host, in two phases:
 
-1. **Pull everywhere** — `git -C ~/docker pull --ff-only` on every target host (over
+1. **Pull everywhere** — first `hemma preflight` on every remote host (its uncommitted files hemma
+   owns stop the deploy, named; edits to other files are left alone), then each remote is brought
+   level with origin, then `git -C ~/docker pull --ff-only` on every target host (over
    `ssh -o BatchMode=yes`, or locally for the host you're on). `--ff-only` fast-forwards or
    refuses touching nothing, so this phase is **all-or-nothing**: any failure — a diverged
    checkout (local commits/edits origin doesn't have; hosts must not fork the repo — reconcile
-   manually), a dirty remote tree, an unreachable host, ssh auth — **aborts the entire deploy**
+   manually), a dirty remote tree, an unreachable host, ssh auth, a host whose `hemma` is too old
+   to know `preflight` — **aborts the entire deploy**
    before anything is applied. No runtime state has changed anywhere; a pulled-but-not-applied
    checkout is just the normal intermediate state of the manual workflow. If hosts end up on
    *different* commits (a push raced between the pulls), that aborts too — re-run.
@@ -643,7 +646,8 @@ to restrict. Each host is reached at its optional `ssh:` destination in `service
 verbatim ssh value (an ssh_config alias, `user@host`, …; ports/users/keys belong in ssh_config),
 defaulting to the host's name — set via `add host --ssh` / `update host --ssh`. The remote repo
 path is the tool's default `~/docker`. On the **local** (deploy) host, deploy first brings the repo level
-with origin: it refuses a dirty tree, runs `git pull --rebase` if origin has work this checkout lacks
+with origin: it refuses uncommitted files hemma owns (the same check as `hemma preflight`; anything else
+in the repo is left alone), runs `git pull --rebase` if origin has work this checkout lacks
 (other hosts commit to the same repo; a rebase that stops on a real conflict is aborted, nothing changed),
 pushes unpushed commits, and refuses — before any host is touched — if the generated files no longer
 match `services.yaml` (a rebase can leave them stale: run `hemma doctor --fix`, commit, push, deploy again).
@@ -656,12 +660,12 @@ deploys to itself locally, with no ssh. The examples use a deploy host `resolver
 new host `appbox` (`192.0.2.2`, user `admin`); run everything on the deploy host unless a step says
 otherwise.
 
-**1. Prepare the new host.** Deploy runs `git -C ~/docker pull --ff-only` and then `hemma apply` there,
-as single non-interactive ssh commands, so the host needs:
+**1. Prepare the new host.** Deploy runs `hemma preflight`, `git -C ~/docker pull --ff-only` and then
+`hemma apply` there, as single non-interactive ssh commands, so the host needs:
 
 - the repo checked out at `~/docker` of the user you will ssh in as (the path is fixed);
-- the `hemma` CLI on that user's `PATH` *in a non-interactive session* — check with
-  `ssh admin@appbox.lan hemma version` once step 3 is done;
+- the `hemma` CLI, a version that knows `preflight`, on that user's `PATH` *in a non-interactive
+  session* — check with `ssh admin@appbox.lan hemma preflight` once step 3 is done;
 - that user able to run Docker (`apply` restarts and reloads containers);
 - its **own** credentials to the git origin: it pulls from it and, if it ever commits (an updater, say),
   pushes to it. Do not reuse the deploy key for this.

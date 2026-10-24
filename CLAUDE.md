@@ -10,8 +10,9 @@ git repo. It is **reconcile-and-report** (Terraform/`make` style): every sync re
 the YAML. Sync and the mutation commands only write files into the local repo checkout; making them live
 is the separate `hemma apply` command, run per host, which restarts/reloads that host's local daemons
 (pihole / caddy / the auth provider). The only command that SSHes is `hemma deploy` — the deliberate
-exception to the no-SSH non-goal (design §6.8/§12) — which fans out `git pull --ff-only` then
-`hemma apply` across the fleet (remotes first, self last); everything else never SSHes.
+exception to the no-SSH non-goal (design §6.8/§12) — which fans out `hemma preflight` (no uncommitted
+hemma-owned files there), a sync with origin, `git pull --ff-only` and then `hemma apply` across the fleet
+(remotes first, self last); everything else never SSHes. Every host needs a `hemma` that knows `preflight`.
 `design.md` is the authoritative design document; read it before non-trivial changes.
 Section references in code comments (`design §6`, etc.) point at it.
 
