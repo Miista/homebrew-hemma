@@ -28,14 +28,14 @@ func TestIgnoredPaths_DetectsDataRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	paths := []string{
-		"optiplex/caddy/data/sites/x.caddy", // ignored
-		"optiplex/README.md",                // not ignored
+		"core/caddy/data/sites/x.caddy", // ignored
+		"core/README.md",                // not ignored
 	}
 	ignored, ok := ignoredPaths(stdEnv(), dir, paths)
 	if !ok {
 		t.Fatal("check should have run")
 	}
-	if len(ignored) != 1 || ignored[0] != "optiplex/caddy/data/sites/x.caddy" {
+	if len(ignored) != 1 || ignored[0] != "core/caddy/data/sites/x.caddy" {
 		t.Errorf("expected the data/ path ignored, got %v", ignored)
 	}
 }
@@ -77,8 +77,8 @@ func TestUnignoreRules_FixedNarrowAndHostAgnostic(t *testing.T) {
 // the host directory, and skipping paths that are not under a data/ directory at all.
 func TestRulesForOutputs_HostAgnosticAndSkipsNonData(t *testing.T) {
 	got := rulesForOutputs([]string{
-		"pi/caddy/data/sites/a.caddy", "optiplex/caddy/data/sites/b.caddy", "nas-box/caddy/data/sites/c.caddy",
-		"pi/cloudflared/config.yml", "shared/auth.caddy",
+		"edge/caddy/data/sites/a.caddy", "core/caddy/data/sites/b.caddy", "nas-box/caddy/data/sites/c.caddy",
+		"edge/cloudflared/config.yml", "shared/auth.caddy",
 	})
 	want := "!**/caddy/data/sites/\n!**/caddy/data/sites/*.caddy"
 	if strings.Join(got, "\n") != want {
@@ -144,15 +144,15 @@ func TestUnignoreRules_RoundTrip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(gi), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, d := range []string{"pi/pihole/data/dnsmasq.d", "optiplex/caddy/data/sites", "pi/pihole/data/data", "pi/authelia/data/config", "pi/registry/data/docker"} {
+	for _, d := range []string{"edge/pihole/data/dnsmasq.d", "core/caddy/data/sites", "edge/pihole/data/data", "edge/authelia/data/config", "edge/registry/data/docker"} {
 		os.MkdirAll(filepath.Join(dir, d), 0o755)
 	}
-	tracked := []string{"pi/pihole/data/dnsmasq.d/x.generated.conf", "optiplex/caddy/data/sites/y.caddy",
-		"pi/authelia/data/config/hemma.access_control.generated.yml",
+	tracked := []string{"edge/pihole/data/dnsmasq.d/x.generated.conf", "core/caddy/data/sites/y.caddy",
+		"edge/authelia/data/config/hemma.access_control.generated.yml",
 		"nas/caddy/data/sites/z.caddy"} // a host that is not in the plan's paths: the rules are host-agnostic
 	os.MkdirAll(filepath.Join(dir, "nas/caddy/data/sites"), 0o755)
-	ignoredStill := []string{"pi/pihole/data/data/gravity.db", "pi/pihole/data/dnsmasq.d/cache.db",
-		"pi/authelia/data/config/db.sqlite3", "pi/registry/data/docker/blob.bin"}
+	ignoredStill := []string{"edge/pihole/data/data/gravity.db", "edge/pihole/data/dnsmasq.d/cache.db",
+		"edge/authelia/data/config/db.sqlite3", "edge/registry/data/docker/blob.bin"}
 	for _, f := range append(append([]string{}, tracked...), ignoredStill...) {
 		os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o644)
 	}
@@ -451,7 +451,7 @@ func TestDoctor_AdvisoriesOnly_NoFixHint(t *testing.T) {
 func TestCheckManagedBlock_StaleBlockIsReportedAndFixed(t *testing.T) {
 	old := "*.env\n**/data/**\n" +
 		giBlockStart + "\n# old comment\n!**/data/\n!**/data/**/\n!**/data/**/*.generated.conf\n!**/caddy/data/**/*.caddy\n" + giBlockEnd + "\n" +
-		"# hand-written, after the block\n!pi/keep/me\n"
+		"# hand-written, after the block\n!edge/keep/me\n"
 	gi := filepath.Join(t.TempDir(), ".gitignore")
 	if err := os.WriteFile(gi, []byte(old), 0o644); err != nil {
 		t.Fatal(err)
@@ -475,7 +475,7 @@ func TestCheckManagedBlock_StaleBlockIsReportedAndFixed(t *testing.T) {
 	if !found || strings.Join(got, ",") != strings.Join(unignoreRules(), ",") {
 		t.Errorf("rewritten rules = %v (found=%v)", got, found)
 	}
-	for _, keep := range []string{"*.env\n**/data/**\n", "# hand-written, after the block\n!pi/keep/me\n"} {
+	for _, keep := range []string{"*.env\n**/data/**\n", "# hand-written, after the block\n!edge/keep/me\n"} {
 		if !strings.Contains(string(b), keep) {
 			t.Errorf("content outside the block was lost (%q):\n%s", keep, b)
 		}

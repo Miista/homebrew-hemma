@@ -44,13 +44,13 @@ const usersDB = `users:
 func TestValidateUsers_GroupTypoAndUnreachableService(t *testing.T) {
 	cfgPath := writeUsersFixture(t, "authentication_backend:\n  file:\n    path: /config/users_database.yml\n", "users_database.yml", usersDB)
 	svcs := []Service{
-		{Name: "jellyfin", FQDN: "jf.example.com", Mode: ModeForward, Groups: []string{"media"}},              // ok
-		{Name: "grafana", FQDN: "gf.example.com", Mode: ModeOIDC, Groups: []string{"adminz"}},                 // typo
-		{Name: "paperless", FQDN: "pl.example.com", Mode: ModeForward, Groups: []string{"admins", "editors"}}, // editors unknown, admins populated
+		{Name: "jellyfin", FQDN: "jf.example.com", Mode: ModeForward, Groups: []string{"media"}},            // ok
+		{Name: "grafana", FQDN: "gf.example.com", Mode: ModeOIDC, Groups: []string{"adminz"}},               // typo
+		{Name: "docsapp", FQDN: "pl.example.com", Mode: ModeForward, Groups: []string{"admins", "editors"}}, // editors unknown, admins populated
 	}
 	w := (authelia{}).ValidateUsers(cfgPath, svcs)
 	joined := joinAdvisories(w)
-	// grafana: adminz typo + nobody-can-access; paperless: editors typo only
+	// grafana: adminz typo + nobody-can-access; docsapp: editors typo only
 	// (admins is populated); jellyfin: clean.
 	if len(w) != 3 {
 		t.Fatalf("want 3 advisories, got %d:\n%s", len(w), joined)
@@ -61,8 +61,8 @@ func TestValidateUsers_GroupTypoAndUnreachableService(t *testing.T) {
 	if !strings.Contains(joined, "nobody can access grafana") || !strings.Contains(joined, "grafana's allowed groups") {
 		t.Errorf("missing nobody-can-access advisory for grafana:\n%s", joined)
 	}
-	if !strings.Contains(joined, `"editors" (service paperless)`) {
-		t.Errorf("missing typo advisory for paperless/editors:\n%s", joined)
+	if !strings.Contains(joined, `"editors" (service docsapp)`) {
+		t.Errorf("missing typo advisory for docsapp/editors:\n%s", joined)
 	}
 	// No hashes or emails may leak into warnings.
 	if strings.Contains(joined, "argon2") || strings.Contains(joined, "@") {

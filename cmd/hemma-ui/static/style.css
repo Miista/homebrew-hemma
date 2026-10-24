@@ -477,7 +477,7 @@ button.primary.deploy { border-color: var(--go); background: var(--go); color: v
 button.primary.deploy:hover:not(:disabled) { background: var(--go); filter: brightness(1.08); }
 #cdlg .switch input:checked + .track { background: var(--go); }
 
-/* iOS Safari zooms the page into any field rendered below 16px (reaparr and albumarr keep theirs at 16px for this). The phone rules above
+/* iOS Safari zooms the page into any field rendered below 16px. The phone rules above
    only cover narrow screens; an iPhone turned sideways or an iPad is wider than that, so every touch screen gets 16px fields. */
 @media (pointer: coarse) { input:not([type=checkbox]), select, textarea, #etext { font-size: 16px; } }
 

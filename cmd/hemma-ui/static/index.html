@@ -95,7 +95,7 @@
   <form method="dialog" id="cform">
     <div class="dhd"><div class="tt"><h2 id="ctitle">Save changes</h2><p class="meta">Saving records these changes with your message.</p></div><button type="button" class="x" id="cx" aria-label="Close">×</button></div>
     <div class="dbd">
-      <label><span>Change message</span><span class="hint" id="cprefix" hidden></span><textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add paperless and move grafana to nas"></textarea></label>
+      <label><span>Change message</span><span class="hint" id="cprefix" hidden></span><textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add docsapp and move grafana to nas"></textarea></label>
       <div id="cdiff" class="chgs"></div>
       <div id="cadv" class="adv" hidden></div>
       <p class="err" id="cerr"></p>
@@ -604,7 +604,7 @@ function openCmd(key, prefill = {}) {
   const hideName = key === "update service" && prefill.__lock === "name";   // the title already is the name
   for (const fd of c.fields) {
     const k = control(fd, prefill, prefill.__lock === fd.name);
-    if (fd.name === "name" && k.node.tagName === "INPUT" && !k.node.readOnly) k.node.placeholder = key === "add host" ? "e.g. nas" : "e.g. paperless";
+    if (fd.name === "name" && k.node.tagName === "INPUT" && !k.node.readOnly) k.node.placeholder = key === "add host" ? "e.g. nas" : "e.g. docsapp";
     const title = fd.label;
     // A list holds buttons, so it must not live inside a <label> (tapping the title would press one).
     const stack = fd.kind === "list" || fd.name === "auth-mode" || fd.name === "host" && k.node.classList?.contains("seg");
@@ -643,7 +643,7 @@ function openCmd(key, prefill = {}) {
     if (isPhone()) left.append(actionsMenu(actions)); else left.append(...actions.map(([l, f, c]) => btn(l, f, c)));
   }
   if (key === "update host") left.append(btn("Remove host", () => { $("#dlg").close(); run("remove host", { name: prefill.name }, cmds["remove host"].confirm); }, "dangerline"));
-  // A new service: the name is usually the address too ("paperless" → paperless.example.com), so offer it as a courtesy.
+  // A new service: the name is usually the address too ("docsapp" → docsapp.example.com), so offer it as a courtesy.
   if (key === "add service") {
     const name = ctl.find(x => x.fd.name === "name"), addr = ctl.find(x => x.k.suggest);
     if (name && addr) name.k.node.addEventListener("input", () => addr.k.suggest(slug(name.k.node.value)));
@@ -963,7 +963,7 @@ function openCommit() {
     if (prefix) hint.append("Will be prefixed with ", el("code", prefix));
     // the message after "host/service:" starts in lower case: the keyboard must not capitalise it for you
     box.setAttribute("autocapitalize", prefix ? "none" : "sentences");
-    box.placeholder = prefix ? "what changed, e.g. point at the new port" : "e.g. Add paperless and move grafana to nas";
+    box.placeholder = prefix ? "what changed, e.g. point at the new port" : "e.g. Add docsapp and move grafana to nas";
   };
   showPrefix();
   fetch("/api/diff").then(r => r.json()).then(d => { $("#cdiff").replaceChildren(d.error ? el("p", d.error, { className: "err" }) : renderDiff(d)); if (!d.error) { fillAdvanced(d); prefix = commitPrefix(d); showPrefix(); } })
@@ -1279,7 +1279,7 @@ const VIEWS = {
     // every search term must appear somewhere in the entry: the message, who, when, what changed, the field names, and BOTH the old and the new values
     const hay = e => [e.subject, e.body, e.author, e.short, when(e.when), whenAbs(e.when), ...e.changes.flatMap(c => [c.kind, c.name, c.status, ...c.fields.flatMap(f => [f.field, f.before, f.after])])].join("\n").toLowerCase();
     const statusLabel = c => c[0].toUpperCase() + c.slice(1);
-    // "pi/jellyfin: change fqdn" on jellyfin's own history reads "change fqdn": the prefix says what the filter already says
+    // "edge/jellyfin: change fqdn" on jellyfin's own history reads "change fqdn": the prefix says what the filter already says
     const subjectOf = e => {
       let t = e.subject || "";
       if (h.name && e.changes.length === 1 && e.changes[0].svc) { const re = new RegExp("^[^\\s/]+/" + e.changes[0].svc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ":\\s*"); t = t.replace(re, "") || t; }

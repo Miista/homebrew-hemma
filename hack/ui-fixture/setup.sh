@@ -28,36 +28,36 @@ mkdir -p "$work"
 hemma="$work/hemma"
 
 seed="$work/seed"
-mkdir -p "$seed/pi/caddy/data/certs/example.com"
+mkdir -p "$seed/edge/caddy/data/certs/example.com"
 cd "$seed"
 git init -q -b main .
 
 cat > services.yaml <<EOF
 hosts:
-    pi:
+    edge:
         ip: $HOST_IP
 domains:
     - example.com
 defaults:
-    dns_host: pi
-    deploy_host: pi
+    dns_host: edge
+    deploy_host: edge
     tunnel_dir: cloudflared
 $([ "$with_auth" = 1 ] && echo "    auth_service: authelia")
 services:
     demo:
         fqdn: demo.example.com
-        host: pi
+        host: edge
         backend: demo:80
-$([ "$with_auth" = 1 ] && printf '    authelia:\n        fqdn: auth.example.com\n        host: pi\n        backend: authelia:9091\n')
+$([ "$with_auth" = 1 ] && printf '    authelia:\n        fqdn: auth.example.com\n        host: edge\n        backend: authelia:9091\n')
 EOF
 
 # Throwaway self-signed cert at the path hemma's TLS snippet expects.
 openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj "/CN=*.example.com" \
-  -keyout pi/caddy/data/certs/example.com/privkey.key \
-  -out pi/caddy/data/certs/example.com/fullchain.cer 2>/dev/null
+  -keyout edge/caddy/data/certs/example.com/privkey.key \
+  -out edge/caddy/data/certs/example.com/fullchain.cer 2>/dev/null
 
 # The hand-maintained Caddyfile hemma requires (trusted_proxies import + generated import).
-cat > pi/caddy/data/Caddyfile <<'EOF'
+cat > edge/caddy/data/Caddyfile <<'EOF'
 {
 	auto_https off
 	servers {
@@ -68,11 +68,11 @@ import hemma.generated.caddy
 EOF
 
 # A hand-written file for the UI's auth-snippet file picker to find (hemma's own outputs can't be picked).
-cat > pi/caddy/data/auth.caddy <<'EOF'
+cat > edge/caddy/data/auth.caddy <<'EOF'
 # Fixture auth snippet (hand-written). A real one would hold the forward_auth directive.
 EOF
 
-mkdir -p pi/cloudflared
+mkdir -p edge/cloudflared
 "$hemma" -C "$seed" doctor --fix >/dev/null 2>&1 || true
 
 git add -A

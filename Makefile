@@ -59,7 +59,7 @@ completions: ## regenerate shell completions into completions/
 
 # ---------- hemma-ui ----------
 # The image never compiles Go: the binary is cross-compiled here (the Mac is the build machine) and Dockerfile.ui just copies it in.
-# UI_ARCH is the target machine's: arm64 for the pi and for Colima / Docker Desktop on Apple silicon; amd64 for an x86 host.
+# UI_ARCH is the target machine's: arm64 for a Raspberry Pi and for Colima / Docker Desktop on Apple silicon; amd64 for an x86 host.
 UI_ARCH ?= arm64
 ui-binary: ## cross-compile hemma-ui for Linux into dist/ (UI_ARCH=arm64|amd64)
 	mkdir -p dist

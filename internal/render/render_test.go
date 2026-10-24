@@ -31,11 +31,11 @@ func TestDNSRecord_SuppressesAAAAWithUnspecified(t *testing.T) {
 }
 
 func TestCaddySite(t *testing.T) {
-	got := CaddySite("docs.example.com", "tls_example_com", "paperless:8000", config.AuthNone, false)
+	got := CaddySite("docs.example.com", "tls_example_com", "docsapp:8000", config.AuthNone, false)
 	want := Header + "\n" +
 		"docs.example.com {\n" +
 		"\timport tls_example_com\n" +
-		"\treverse_proxy paperless:8000\n" +
+		"\treverse_proxy docsapp:8000\n" +
 		"}\n"
 	if got != want {
 		t.Fatalf("CaddySite mismatch:\n got: %q\nwant: %q", got, want)
@@ -55,12 +55,12 @@ func TestCaddySite_OIDC(t *testing.T) {
 }
 
 func TestCaddySite_Auth(t *testing.T) {
-	got := CaddySite("docs.example.com", "tls_example_com", "paperless:8000", config.AuthForward, false)
+	got := CaddySite("docs.example.com", "tls_example_com", "docsapp:8000", config.AuthForward, false)
 	want := Header + "\n" +
 		"docs.example.com {\n" +
 		"\timport tls_example_com\n" +
 		"\timport auth\n" +
-		"\treverse_proxy paperless:8000\n" +
+		"\treverse_proxy docsapp:8000\n" +
 		"}\n"
 	if got != want {
 		t.Fatalf("CaddySite(auth) mismatch:\n got: %q\nwant: %q", got, want)
@@ -120,9 +120,9 @@ func TestTrustedProxiesSnippet_Empty(t *testing.T) {
 }
 
 func TestTrustedProxiesSnippet_Body(t *testing.T) {
-	got := TrustedProxiesSnippet([]string{"10.0.5.50/32", "172.18.0.12/32"})
+	got := TrustedProxiesSnippet([]string{"192.0.2.50/32", "172.18.0.12/32"})
 	want := Header + "\n" +
-		"trusted_proxies static 10.0.5.50/32 172.18.0.12/32\n" +
+		"trusted_proxies static 192.0.2.50/32 172.18.0.12/32\n" +
 		"client_ip_headers Cf-Connecting-Ip X-Forwarded-For\n"
 	if got != want {
 		t.Fatalf("TrustedProxiesSnippet body mismatch:\n got: %q\nwant: %q", got, want)

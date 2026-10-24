@@ -43,7 +43,7 @@ func TestDoctorFix_MigratesSplitdnsArtifacts(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
 	if code := Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"}); code != 0 {
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"}); code != 0 {
 		t.Fatalf("add failed: %d", code)
 	}
 

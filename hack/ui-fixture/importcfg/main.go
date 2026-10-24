@@ -25,7 +25,7 @@ func main() {
 	src := flag.String("src", "", "the real services.yaml (read only)")
 	dst := flag.String("dst", "", "where to write the neutralized services.yaml")
 	domain := flag.String("domain", "example.com", "the one domain every service moves under")
-	host := flag.String("host", "pi", "the one fixture host every service moves to")
+	host := flag.String("host", "edge", "the one fixture host every service moves to")
 	hostIP := flag.String("host-ip", "172.28.0.10", "the fixture host's address")
 	proxy := flag.String("proxy", "172.28.0.13/32", "the fixture's trusted proxy (its cloudflared stub)")
 	flag.Parse()

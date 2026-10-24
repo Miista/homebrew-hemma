@@ -58,7 +58,7 @@ Global flags:
   -C, --chdir <dir>   Operate on <dir> instead of the default ~/docker.
 
 Notes:
-  - A host's name is its repo directory (e.g. host "pi" -> ./pi/), which must already exist.
+  - A host's name is its repo directory (e.g. host "edge" -> ./edge/), which must already exist.
   - Each domain gets a TLS snippet generated on every host, deriving cert paths from
     the convention caddy/data/certs/<domain>/{fullchain.cer,privkey.key}.
   - Config edits (add/update/remove/enable/disable/rename) regenerate files automatically, then

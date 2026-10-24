@@ -31,10 +31,10 @@ services:
     auth:
       mode: oidc
       groups: [admins]
-  paperless:
+  docsapp:
     fqdn: docs.example.com
     host: appbox
-    backend: paperless:8000
+    backend: docsapp:8000
     auth:
       mode: oidc
 `
@@ -80,7 +80,7 @@ func TestCreateAppOIDC_ServiceWithoutGroupsKeepsOneFactor(t *testing.T) {
 	dir := t.TempDir()
 	seedWithAuth(t, dir)
 	out := captureStdout(t, func() {
-		Run([]string{"-C", dir, "create", "app", "oidc", "paperless", "/accounts/oidc/authelia/login/callback/"})
+		Run([]string{"-C", dir, "create", "app", "oidc", "docsapp", "/accounts/oidc/authelia/login/callback/"})
 	})
 	if !strings.Contains(out, "authorization_policy: 'one_factor'") {
 		t.Errorf("service without groups should keep one_factor:\n%s", out)

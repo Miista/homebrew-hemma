@@ -48,7 +48,7 @@ func TestServiceTunnelFlag_PublicAliasAccepted(t *testing.T) {
 			t.Fatalf("%s: set tunnel-dir exit %d", flag, code)
 		}
 		if code := Run([]string{"-C", dir, "add", "service", "docs",
-			"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", flag}); code != 0 {
+			"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000", flag}); code != 0 {
 			t.Fatalf("add with %s should exit 0, got %d", flag, code)
 		}
 		if !mustLoad(t, dir).Services["docs"].Tunnel {
@@ -85,7 +85,7 @@ func TestRun_AddCreatesConfig(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
 	code := Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"})
 	if code != 0 {
 		t.Fatalf("valid add should exit 0, got %d", code)
 	}
@@ -104,7 +104,7 @@ func TestRun_AddServiceRefusesUnknownFQDN(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir) // defines example.com + hosts
 	code := Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.dl", "--host", "appbox", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.dl", "--host", "appbox", "--backend", "docsapp:8000"})
 	if code != 1 {
 		t.Errorf("add with unmatched fqdn should exit 1, got %d", code)
 	}
@@ -117,7 +117,7 @@ func TestRun_AddServiceRefusesUnknownHost(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
 	code := Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "ghost", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.com", "--host", "ghost", "--backend", "docsapp:8000"})
 	if code != 1 {
 		t.Errorf("add with unknown host should exit 1, got %d", code)
 	}
@@ -130,7 +130,7 @@ func TestRun_AddDuplicateFails(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
 	args := []string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"}
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"}
 	if code := Run(args); code != 0 {
 		t.Fatalf("first add should succeed, got %d", code)
 	}
@@ -181,7 +181,7 @@ func TestRun_UpdateNoOpRejected(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"})
 	if code := Run([]string{"-C", dir, "update", "docs"}); code != 2 {
 		t.Errorf("update with no field flags should exit 2, got %d", code)
 	}
@@ -192,7 +192,7 @@ func TestRun_List(t *testing.T) {
 	seed(t, dir) // resolver + appbox, dns_host resolver, example.com
 	mkdirs(t, dir, "resolver", "appbox")
 	Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"})
 
 	// list is plain inventory — always exits 0, regardless of service validity.
 	if code := Run([]string{"-C", dir, "list"}); code != 0 {
@@ -290,11 +290,11 @@ func TestRun_UnreadableAuthSnippetExitsNonZero(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "snip.caddy"), []byte("forward_auth x { }\n"), 0o644)
 	Run([]string{"-C", dir, "defaults", "set", "auth-snippet", "snip.caddy"})
 	Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"})
 
 	// Break the source, then run another mutation: exit 1, last-good kept.
 	os.Remove(filepath.Join(dir, "snip.caddy"))
-	if code := Run([]string{"-C", dir, "update", "service", "docs", "--backend", "paperless:8001"}); code != 1 {
+	if code := Run([]string{"-C", dir, "update", "service", "docs", "--backend", "docsapp:8001"}); code != 1 {
 		t.Errorf("mutation with unreadable auth_snippet should exit 1, got %d", code)
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "appbox", "caddy/data/hemma.auth.generated.caddy"))
@@ -302,7 +302,7 @@ func TestRun_UnreadableAuthSnippetExitsNonZero(t *testing.T) {
 		t.Errorf("generated auth snippet should keep last-good content, got: %s", b)
 	}
 	// The mutation itself still lands (report-but-proceed).
-	if got := load(t, dir).Services["docs"].Backend; got != "paperless:8001" {
+	if got := load(t, dir).Services["docs"].Backend; got != "docsapp:8001" {
 		t.Errorf("update should still persist despite the auth_snippet error, backend = %q", got)
 	}
 }
@@ -457,7 +457,7 @@ func TestRun_SetTunnelDirThenClears(t *testing.T) {
 		t.Fatalf("set tunnel-dir should exit 0, got %d", code)
 	}
 	if code := Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", "--public"}); code != 0 {
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000", "--public"}); code != 0 {
 		t.Fatalf("add --public should exit 0 once tunnel_dir is set, got %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "appbox", "cloudflared", "config.yml")); err != nil {
@@ -492,7 +492,7 @@ func TestRun_PublicServiceUnresolvedWithoutTunnelDir(t *testing.T) {
 	seed(t, dir)
 	out := captureStdout(t, func() {
 		if code := Run([]string{"-C", dir, "add", "service", "docs",
-			"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", "--public"}); code != 1 {
+			"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000", "--public"}); code != 1 {
 			t.Errorf("add --public should exit 1 (unresolved tunnel) while tunnel_dir is unset, got %d", code)
 		}
 	})

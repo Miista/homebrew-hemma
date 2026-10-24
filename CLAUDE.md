@@ -41,10 +41,10 @@ release workflow; there is no deploy script in this repo.
 Per the user's global convention: build and live-verify on the Mac before committing/pushing in this repo.
 
 **Never build Go inside a Docker image.** The `hemma-ui` image (`Dockerfile.ui`) only COPIES `dist/hemma-ui` in; cross-compile it with Go on
-the Mac first — `make ui-binary` (`CGO_ENABLED=0 GOOS=linux GOARCH=$(UI_ARCH) go build`, `UI_ARCH` defaults to arm64: the pi and Colima on
+the Mac first — `make ui-binary` (`CGO_ENABLED=0 GOOS=linux GOARCH=$(UI_ARCH) go build`, `UI_ARCH` defaults to arm64: the edge host and Colima on
 Apple silicon). `make ui-image` and `make fixture-redeploy` do that for you, and `.dockerignore` sends Docker nothing but the binary. A build
-stage in the image recompiles every dependency each time and its cache once filled a whole Docker disk. To put the UI on the pi: `make
-ui-binary`, build the image from it, `docker save | ssh pi docker load`, `docker compose up -d hemma` in `~/docker/pi`.
+stage in the image recompiles every dependency each time and its cache once filled a whole Docker disk. To put the UI on the edge host: `make
+ui-binary`, build the image from it, `docker save | ssh edge docker load`, `docker compose up -d hemma` in `~/docker/edge`.
 
 ## Architecture — the sync pipeline
 
@@ -265,7 +265,7 @@ authy). It is NOT a second implementation of hemma:
   are `position: fixed`; while a dialog is open the page behind it is locked (`overflow: hidden`). Use `scrollToTop()`, not
   `#main.scrollTop`.
 - **Phones are the primary screen:** keep fields at 16px on every touch screen (`@media (pointer: coarse)`, so an iPhone in landscape
-  and an iPad too — iOS zooms into smaller ones, as reaparr and albumarr note) and `touch-action: manipulation` everywhere (no double-tap zoom), the shell switches to the phone layout under 720px, and
+  and an iPad too — iOS zooms into smaller ones) and `touch-action: manipulation` everywhere (no double-tap zoom), the shell switches to the phone layout under 720px, and
   nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
 - **Look and feel:** the "direction c" design handoff (`form-redesign-request-*/` in the checkout, not committed; the latest numbered one wins):
   Instrument Sans + JetBrains Mono, a blue accent, a sidebar on a wide screen and a top bar + bottom tab bar under

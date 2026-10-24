@@ -17,7 +17,7 @@ func TestRun_UpdateZeroFlagsNonTTYRefused(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"})
 
 	var code int
 	out := captureStderr(t, func() {
@@ -37,16 +37,16 @@ func TestRun_UpdateWithFlagsStaysNonInteractive(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"})
 
-	if code := Run([]string{"-C", dir, "update", "service", "docs", "--backend", "paperless:8001"}); code != 0 {
+	if code := Run([]string{"-C", dir, "update", "service", "docs", "--backend", "docsapp:8001"}); code != 0 {
 		t.Fatalf("flag update should exit 0 without a TTY, got %d", code)
 	}
 	cfg, err := config.Load(dir + "/" + configName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := cfg.Services["docs"].Backend; got != "paperless:8001" {
+	if got := cfg.Services["docs"].Backend; got != "docsapp:8001" {
 		t.Errorf("backend not updated via flags path: %q", got)
 	}
 }
@@ -159,7 +159,7 @@ func TestPersistUpdatedService_DisablingRemovesGeneratedFiles(t *testing.T) {
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
 	if code := Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"}); code != 0 {
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"}); code != 0 {
 		t.Fatalf("add exit %d", code)
 	}
 	site := filepath.Join(dir, "appbox", "caddy", "data", "sites", "docs.caddy")
@@ -202,7 +202,7 @@ func TestPersistUpdatedService_ReEnablingRegenerates(t *testing.T) {
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
 	if code := Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"}); code != 0 {
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"}); code != 0 {
 		t.Fatalf("add exit %d", code)
 	}
 	site := filepath.Join(dir, "appbox", "caddy", "data", "sites", "docs.caddy")
@@ -239,7 +239,7 @@ func TestPersistUpdatedService_OrdinaryEditKeepsFiles(t *testing.T) {
 	mkdirs(t, dir, "resolver", "appbox")
 	seed(t, dir)
 	if code := Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"}); code != 0 {
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"}); code != 0 {
 		t.Fatalf("add exit %d", code)
 	}
 	cfg, err := config.Load(filepath.Join(dir, "services.yaml"))

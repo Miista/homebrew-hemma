@@ -244,8 +244,8 @@ type gitFunc func(args ...string) (string, error)
 
 // syncWho words the messages of syncWithOrigin for whose checkout it is.
 type syncWho struct {
-	owner string // "your" | "optiplex's"
-	where string // "here" | "on optiplex"
+	owner string // "your" | "core's"
+	where string // "here" | "on core"
 }
 
 var syncLocal = syncWho{"your", "here"}

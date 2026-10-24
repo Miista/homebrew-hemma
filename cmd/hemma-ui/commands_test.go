@@ -21,17 +21,17 @@ func TestBuild(t *testing.T) {
 		want []string
 		err  string
 	}{
-		{"add host", map[string]any{"name": "pi", "ip": "192.0.2.1", "trusted-proxies": "192.0.2.9"},
-			[]string{"add", "host", "pi", "192.0.2.1", "--trusted-proxies=192.0.2.9"}, ""},
+		{"add host", map[string]any{"name": "edge", "ip": "192.0.2.1", "trusted-proxies": "192.0.2.9"},
+			[]string{"add", "host", "edge", "192.0.2.1", "--trusted-proxies=192.0.2.9"}, ""},
 		// empty optional flags are dropped on add, kept (clearing) on update
-		{"add host", map[string]any{"name": "pi", "ip": "192.0.2.1", "trusted-proxies": ""}, []string{"add", "host", "pi", "192.0.2.1"}, ""},
-		{"update host", map[string]any{"name": "pi", "ip": "192.0.2.2", "trusted-proxies": ""},
-			[]string{"update", "host", "pi", "--ip=192.0.2.2", "--trusted-proxies="}, ""},
+		{"add host", map[string]any{"name": "edge", "ip": "192.0.2.1", "trusted-proxies": ""}, []string{"add", "host", "edge", "192.0.2.1"}, ""},
+		{"update host", map[string]any{"name": "edge", "ip": "192.0.2.2", "trusted-proxies": ""},
+			[]string{"update", "host", "edge", "--ip=192.0.2.2", "--trusted-proxies="}, ""},
 		// an ssh destination is [user@]host; empty clears it on update, is dropped on add
-		{"add host", map[string]any{"name": "pi", "ip": "192.0.2.1", "ssh": "admin@192.0.2.1"},
-			[]string{"add", "host", "pi", "192.0.2.1", "--ssh=admin@192.0.2.1"}, ""},
-		{"add host", map[string]any{"name": "pi", "ip": "192.0.2.1", "ssh": ""}, []string{"add", "host", "pi", "192.0.2.1"}, ""},
-		{"update host", map[string]any{"name": "pi", "ssh": ""}, []string{"update", "host", "pi", "--ssh="}, ""},
+		{"add host", map[string]any{"name": "edge", "ip": "192.0.2.1", "ssh": "admin@192.0.2.1"},
+			[]string{"add", "host", "edge", "192.0.2.1", "--ssh=admin@192.0.2.1"}, ""},
+		{"add host", map[string]any{"name": "edge", "ip": "192.0.2.1", "ssh": ""}, []string{"add", "host", "edge", "192.0.2.1"}, ""},
+		{"update host", map[string]any{"name": "edge", "ssh": ""}, []string{"update", "host", "edge", "--ssh="}, ""},
 		// flags-first commands
 		{"verify", map[string]any{"all": true, "fqdn": "a.example.com"}, []string{"verify", "--all=true", "a.example.com"}, ""},
 		{"defaults set", map[string]any{"key": "tunnel-dir", "value": "-"}, []string{"defaults", "set", "tunnel-dir", "-"}, ""},
@@ -39,23 +39,23 @@ func TestBuild(t *testing.T) {
 		// rejections
 		{"add host", map[string]any{"name": "--evil", "ip": "1.2.3.4"}, nil, "not a valid name"},
 		{"add host", map[string]any{"name": "a b", "ip": "1.2.3.4"}, nil, "not a valid name"},
-		{"add host", map[string]any{"name": "pi", "ip": "999.1.1.1"}, nil, "not an IP address"},
-		{"add host", map[string]any{"name": "pi", "ip": "1.2.3.4", "trusted-proxies": "10.0.0.0/8,nope"}, nil, "not an IP address or CIDR"},
+		{"add host", map[string]any{"name": "edge", "ip": "999.1.1.1"}, nil, "not an IP address"},
+		{"add host", map[string]any{"name": "edge", "ip": "1.2.3.4", "trusted-proxies": "10.0.0.0/8,nope"}, nil, "not an IP address or CIDR"},
 		{"add service", map[string]any{"name": "s", "fqdn": "a", "host": "h", "backend": "web:99999"}, nil, "port must be"},
 		{"add service", map[string]any{"name": "s", "fqdn": "a", "host": "h", "backend": "http://web:80"}, nil, "not name:port"},
 		{"add service", map[string]any{"name": "s", "fqdn": "a", "host": "h", "backend": "b:1", "bypass-paths": "/ok,nope"}, nil, "not a path"},
 		{"add service", map[string]any{"name": "s", "fqdn": "a", "host": "h", "backend": "b:1", "auth-groups": "a,,b"}, nil, "not a valid name"},
-		{"add host", map[string]any{"name": "pi"}, nil, "required"},
+		{"add host", map[string]any{"name": "edge"}, nil, "required"},
 		{"defaults set", map[string]any{"key": "shell", "value": "x"}, nil, "not an allowed"},
 		{"add domain", map[string]any{"name": "-"}, nil, "not a valid domain"},
 		{"measure", map[string]any{"target": "t", "runs": float64(99999)}, nil, "0-1000"},
 		{"add service", map[string]any{"name": "s", "fqdn": "a", "host": "h", "backend": "b:1", "auth-mode": "root"}, nil, "not an allowed"},
-		{"add host", map[string]any{"name": "pi", "ip": "1.2.3.4", "trusted-proxies": "x\n--evil"}, nil, "not an IP address"},
+		{"add host", map[string]any{"name": "edge", "ip": "1.2.3.4", "trusted-proxies": "x\n--evil"}, nil, "not an IP address"},
 		// ssh runs as `ssh <dest>`: nothing that reads as an option or carries a command
-		{"update host", map[string]any{"name": "pi", "ssh": "-oProxyCommand=evil"}, nil, "not an ssh destination"},
-		{"update host", map[string]any{"name": "pi", "ssh": "-v@host"}, nil, "not an ssh destination"},
-		{"update host", map[string]any{"name": "pi", "ssh": "a b"}, nil, "not an ssh destination"},
-		{"update host", map[string]any{"name": "pi", "ssh": "host;rm"}, nil, "not an ssh destination"}}
+		{"update host", map[string]any{"name": "edge", "ssh": "-oProxyCommand=evil"}, nil, "not an ssh destination"},
+		{"update host", map[string]any{"name": "edge", "ssh": "-v@host"}, nil, "not an ssh destination"},
+		{"update host", map[string]any{"name": "edge", "ssh": "a b"}, nil, "not an ssh destination"},
+		{"update host", map[string]any{"name": "edge", "ssh": "host;rm"}, nil, "not an ssh destination"}}
 	for _, c := range cases {
 		cmd := lookup(c.key)
 		if cmd == nil {
@@ -113,8 +113,8 @@ func TestNoCredentialMinting(t *testing.T) {
 // services.yaml is refused even if someone bypasses the UI and posts it directly.
 func TestCheckState(t *testing.T) {
 	dir := t.TempDir()
-	yaml := "hosts:\n    pi:\n        ip: 192.0.2.50\ndomains:\n    - example.com\ndefaults:\n    dns_host: pi\n" +
-		"services:\n    web:\n        fqdn: web.example.com\n        host: pi\n        backend: web:80\n"
+	yaml := "hosts:\n    edge:\n        ip: 192.0.2.50\ndomains:\n    - example.com\ndefaults:\n    dns_host: edge\n" +
+		"services:\n    web:\n        fqdn: web.example.com\n        host: edge\n        backend: web:80\n"
 	if err := os.WriteFile(filepath.Join(dir, "services.yaml"), []byte(yaml), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -127,18 +127,18 @@ func TestCheckState(t *testing.T) {
 		vals map[string]any
 		err  string // "" = must pass
 	}{
-		{"add service", map[string]any{"name": "n", "fqdn": "n.example.com", "host": "pi", "backend": "n:1"}, ""},
+		{"add service", map[string]any{"name": "n", "fqdn": "n.example.com", "host": "edge", "backend": "n:1"}, ""},
 		{"add service", map[string]any{"name": "n", "fqdn": "n.example.com", "host": "ghost", "backend": "n:1"}, "no host"},
-		{"add service", map[string]any{"name": "n", "fqdn": "n.other.org", "host": "pi", "backend": "n:1"}, "not under a defined domain"},
+		{"add service", map[string]any{"name": "n", "fqdn": "n.other.org", "host": "edge", "backend": "n:1"}, "not under a defined domain"},
 		{"remove service", map[string]any{"name": "web"}, ""},
 		{"remove service", map[string]any{"name": "ghost"}, "no service"},
 		{"remove domain", map[string]any{"name": "nope.com"}, "no domain"},
 		{"verify", map[string]any{"fqdn": "web.example.com"}, ""},
 		{"verify", map[string]any{"fqdn": "x.example.com"}, "no service has the address"},
-		{"defaults set", map[string]any{"key": "dns-host", "value": "pi"}, ""},
+		{"defaults set", map[string]any{"key": "dns-host", "value": "edge"}, ""},
 		{"defaults set", map[string]any{"key": "dns-host", "value": "ghost"}, "no host"},
 		{"defaults set", map[string]any{"key": "dns-host", "value": "-"}, "cannot be cleared"},
-		{"defaults set", map[string]any{"key": "deploy-host", "value": "pi"}, ""},
+		{"defaults set", map[string]any{"key": "deploy-host", "value": "edge"}, ""},
 		{"defaults set", map[string]any{"key": "deploy-host", "value": "ghost"}, "no host"},
 		{"defaults set", map[string]any{"key": "deploy-host", "value": "-"}, ""},
 		{"defaults set", map[string]any{"key": "auth-service", "value": "web"}, ""},
@@ -172,9 +172,9 @@ func TestBrowse(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write(dir, "pi/caddy/data/auth.caddy", "# mine\n")
-	write(dir, "pi/caddy/data/hemma.generated.caddy", "# GENERATED by hemma — do not edit\n")
-	write(dir, "pi/caddy/data/Caddyfile", "import hemma.generated.caddy\n")
+	write(dir, "edge/caddy/data/auth.caddy", "# mine\n")
+	write(dir, "edge/caddy/data/hemma.generated.caddy", "# GENERATED by hemma — do not edit\n")
+	write(dir, "edge/caddy/data/Caddyfile", "import hemma.generated.caddy\n")
 	write(dir, "zeta.txt", "x\n")
 	write(dir, ".git/config", "secret\n")
 	write(dir, ".hidden", "x\n")
@@ -192,11 +192,11 @@ func TestBrowse(t *testing.T) {
 		return o
 	}
 	_, root, err := s.browse("")
-	if err != nil || !reflect.DeepEqual(names(root), []string{"pi", "zeta.txt"}) {
-		t.Errorf("root = %v, %v; want [pi zeta.txt] (folders first; .git, dotfiles and symlinks hidden)", names(root), err)
+	if err != nil || !reflect.DeepEqual(names(root), []string{"edge", "zeta.txt"}) {
+		t.Errorf("root = %v, %v; want [edge zeta.txt] (folders first; .git, dotfiles and symlinks hidden)", names(root), err)
 	}
-	p, data, err := s.browse("pi/caddy/data")
-	if err != nil || p != "pi/caddy/data" || !reflect.DeepEqual(names(data), []string{"Caddyfile", "auth.caddy", "hemma.generated.caddy"}) {
+	p, data, err := s.browse("edge/caddy/data")
+	if err != nil || p != "edge/caddy/data" || !reflect.DeepEqual(names(data), []string{"Caddyfile", "auth.caddy", "hemma.generated.caddy"}) {
 		t.Errorf("data = %q %v %v", p, names(data), err)
 	}
 	for _, e := range data {
@@ -204,11 +204,11 @@ func TestBrowse(t *testing.T) {
 			t.Errorf("%s: generated = %v", e.Name, e.Generated)
 		}
 	}
-	if data[1].Path != "pi/caddy/data/auth.caddy" {
+	if data[1].Path != "edge/caddy/data/auth.caddy" {
 		t.Errorf("path = %q", data[1].Path)
 	}
 	// Anything that could leave the repo must be refused, or at worst be confined to it.
-	for _, bad := range []string{"escape", "escape/secret.caddy", "pi/../../etc"} {
+	for _, bad := range []string{"escape", "escape/secret.caddy", "edge/../../etc"} {
 		if _, es, err := s.browse(bad); err == nil && len(es) > 0 && es[0].Name == "secret.caddy" {
 			t.Errorf("browse(%q) leaked the outside directory", bad)
 		}
@@ -216,7 +216,7 @@ func TestBrowse(t *testing.T) {
 	if _, _, err := s.browse("escape"); err == nil {
 		t.Error("a symlink leaving the repo must be refused")
 	}
-	for _, hidden := range []string{".git", ".git/hooks", "pi/.secret"} {
+	for _, hidden := range []string{".git", ".git/hooks", "edge/.secret"} {
 		if _, es, err := s.browse(hidden); err == nil || len(es) != 0 {
 			t.Errorf("browse(%q) must refuse hidden folders, got %v %v", hidden, es, err)
 		}
@@ -224,7 +224,7 @@ func TestBrowse(t *testing.T) {
 	if err := s.checkDefault(&config.Config{}, "auth-snippet", ".git/config"); err == nil {
 		t.Error("a file inside a hidden folder must not be choosable as the auth snippet")
 	}
-	if p, es, err := s.browse("../../.."); err != nil || p != "" || !reflect.DeepEqual(names(es), []string{"pi", "zeta.txt"}) {
+	if p, es, err := s.browse("../../.."); err != nil || p != "" || !reflect.DeepEqual(names(es), []string{"edge", "zeta.txt"}) {
 		t.Errorf("'..' must clamp to the repo root, got %q %v %v", p, names(es), err)
 	}
 	if p, es, err := s.browse("/etc"); err == nil && len(es) > 0 && p != "etc" {
@@ -233,11 +233,11 @@ func TestBrowse(t *testing.T) {
 	// Choosing a snippet: must exist, be inside the repo, and not be one of hemma's outputs.
 	cfg := &config.Config{}
 	for rel, want := range map[string]string{
-		"pi/caddy/data/auth.caddy":            "",
-		"pi/caddy/data/hemma.generated.caddy": "generated by hemma",
-		"pi/caddy/data/nope.caddy":            "no ",
-		"escape/secret.caddy":                 "outside the repo",
-		"pi/caddy":                            "there is no file",
+		"edge/caddy/data/auth.caddy":            "",
+		"edge/caddy/data/hemma.generated.caddy": "generated by hemma",
+		"edge/caddy/data/nope.caddy":            "no ",
+		"escape/secret.caddy":                   "outside the repo",
+		"edge/caddy":                            "there is no file",
 	} {
 		err := s.checkDefault(cfg, "auth-snippet", rel)
 		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
@@ -260,12 +260,12 @@ func TestDiff(t *testing.T) {
 		}
 		s.invalidateChanges() // the handlers do this after every change; this test edits the files itself
 	}
-	v1 := "hosts:\n    pi:\n        ip: 192.0.2.50\ndomains:\n    - example.com\ndefaults:\n    dns_host: pi\n" +
-		"services:\n    demo:\n        fqdn: demo.example.com\n        host: pi\n        backend: demo:80\n" +
-		"    web:\n        fqdn: web.example.com\n        host: pi\n        backend: web:80\n"
+	v1 := "hosts:\n    edge:\n        ip: 192.0.2.50\ndomains:\n    - example.com\ndefaults:\n    dns_host: edge\n" +
+		"services:\n    demo:\n        fqdn: demo.example.com\n        host: edge\n        backend: demo:80\n" +
+		"    web:\n        fqdn: web.example.com\n        host: edge\n        backend: web:80\n"
 	write("services.yaml", v1)
-	write("pi/caddy/data/sites/demo.caddy", "# GENERATED by hemma — do not edit\nold\n")
-	write("hemma-manifest.yaml", "demo:\n    - pi/caddy/data/sites/demo.caddy\n") // what hemma wrote: this is what makes a file its own
+	write("edge/caddy/data/sites/demo.caddy", "# GENERATED by hemma — do not edit\nold\n")
+	write("hemma-manifest.yaml", "demo:\n    - edge/caddy/data/sites/demo.caddy\n") // what hemma wrote: this is what makes a file its own
 	for _, a := range [][]string{{"init", "-q", "-b", "main"}, {"add", "-A"}, {"commit", "-q", "-m", "init"}} {
 		if out, err := s.git(time.Minute, a...); err != nil {
 			t.Fatalf("git %v: %v %s", a, err, out)
@@ -282,16 +282,16 @@ func TestDiff(t *testing.T) {
 	}
 	write("services.yaml", v1)
 
-	v2 := "hosts:\n    pi:\n        ip: 192.0.2.50\n        trusted_proxies:\n            - 10.0.0.0/8\ndomains:\n    - example.com\n    - example.net\n" +
-		"defaults:\n    dns_host: pi\n    local_networks:\n        - 10.0.10.0/24\n" +
-		"services:\n    demo:\n        fqdn: demo.example.com\n        host: pi\n        backend: demo:8080\n        tunnel: true\n" +
-		"    paperless:\n        fqdn: docs.example.com\n        host: pi\n        backend: paperless:8000\n"
+	v2 := "hosts:\n    edge:\n        ip: 192.0.2.50\n        trusted_proxies:\n            - 10.0.0.0/8\ndomains:\n    - example.com\n    - example.net\n" +
+		"defaults:\n    dns_host: edge\n    local_networks:\n        - 10.0.10.0/24\n" +
+		"services:\n    demo:\n        fqdn: demo.example.com\n        host: edge\n        backend: demo:8080\n        tunnel: true\n" +
+		"    docsapp:\n        fqdn: docs.example.com\n        host: edge\n        backend: docsapp:8000\n"
 	write("services.yaml", v2)
-	write("pi/caddy/data/sites/demo.caddy", "# GENERATED by hemma — do not edit\nnew\n")
-	write("pi/caddy/data/sites/paperless.caddy", "# GENERATED by hemma — do not edit\n")
-	write("hemma-manifest.yaml", "demo:\n    - pi/caddy/data/sites/demo.caddy\npaperless:\n    - pi/caddy/data/sites/paperless.caddy\n")
+	write("edge/caddy/data/sites/demo.caddy", "# GENERATED by hemma — do not edit\nnew\n")
+	write("edge/caddy/data/sites/docsapp.caddy", "# GENERATED by hemma — do not edit\n")
+	write("hemma-manifest.yaml", "demo:\n    - edge/caddy/data/sites/demo.caddy\ndocsapp:\n    - edge/caddy/data/sites/docsapp.caddy\n")
 	write("notes.txt", "hand edited\n") // not in the manifest: somebody else's file
-	write("pi/docker-compose.yml", "services: {}\n")
+	write("edge/docker-compose.yml", "services: {}\n")
 
 	d, err := s.diff()
 	if err != nil {
@@ -326,13 +326,13 @@ func TestDiff(t *testing.T) {
 	if field(demo, "Address") != nil || field(demo, "Host") != nil {
 		t.Errorf("unchanged fields must not be listed: %+v", demo.Fields)
 	}
-	if p := get("Service", "paperless"); p == nil || p.Status != "added" || field(p, "Address").Before != none || field(p, "Address").After != "docs.example.com" {
-		t.Errorf("paperless = %+v", p)
+	if p := get("Service", "docsapp"); p == nil || p.Status != "added" || field(p, "Address").Before != none || field(p, "Address").After != "docs.example.com" {
+		t.Errorf("docsapp = %+v", p)
 	}
 	if w := get("Service", "web"); w == nil || w.Status != "removed" || field(w, "Backend").Before != "web:80" || field(w, "Backend").After != none {
 		t.Errorf("web = %+v", w)
 	}
-	if h := get("Host", "pi"); h == nil || field(h, "Extra trusted proxies").After != "10.0.0.0/8" || field(h, "Extra trusted proxies").Before != none {
+	if h := get("Host", "edge"); h == nil || field(h, "Extra trusted proxies").After != "10.0.0.0/8" || field(h, "Extra trusted proxies").Before != none {
 		t.Errorf("host = %+v", h)
 	}
 	if dm := get("Domain", "example.net"); dm == nil || dm.Status != "added" {
@@ -342,12 +342,12 @@ func TestDiff(t *testing.T) {
 		t.Errorf("setting = %+v", st)
 	}
 	sort.Strings(d.Generated)
-	if !reflect.DeepEqual(d.Generated, []string{"hemma-manifest.yaml", "pi/caddy/data/sites/demo.caddy", "pi/caddy/data/sites/paperless.caddy"}) {
+	if !reflect.DeepEqual(d.Generated, []string{"edge/caddy/data/sites/demo.caddy", "edge/caddy/data/sites/docsapp.caddy", "hemma-manifest.yaml"}) {
 		t.Errorf("generated = %v", d.Generated)
 	}
 	// Files that are not hemma's — a hand-edited note, a compose file — are not part of the change at all.
 	for _, f := range s.changes().Files {
-		if f.Path == "notes.txt" || f.Path == "pi/docker-compose.yml" {
+		if f.Path == "notes.txt" || f.Path == "edge/docker-compose.yml" {
 			t.Errorf("%s is not hemma's and must not be listed as a change", f.Path)
 		}
 	}
@@ -368,21 +368,21 @@ func TestDiscard(t *testing.T) {
 	}
 	read := func(rel string) string { b, _ := os.ReadFile(filepath.Join(dir, rel)); return string(b) }
 	const gen = "# GENERATED by hemma — do not edit\n"
-	write("services.yaml", "hosts:\n    pi:\n        ip: 192.0.2.50\ndomains:\n    - example.com\nservices: {}\n")
-	write("pi/caddy/data/sites/a.caddy", gen+"a-original\n")
-	write("pi/caddy/data/sites/gone.caddy", gen+"gone-original\n")
+	write("services.yaml", "hosts:\n    edge:\n        ip: 192.0.2.50\ndomains:\n    - example.com\nservices: {}\n")
+	write("edge/caddy/data/sites/a.caddy", gen+"a-original\n")
+	write("edge/caddy/data/sites/gone.caddy", gen+"gone-original\n")
 	write("auth.caddy", "my snippet, original\n")
-	write("hemma-manifest.yaml", "a:\n    - pi/caddy/data/sites/a.caddy\n    - pi/caddy/data/sites/gone.caddy\n")
+	write("hemma-manifest.yaml", "a:\n    - edge/caddy/data/sites/a.caddy\n    - edge/caddy/data/sites/gone.caddy\n")
 	for _, a := range [][]string{{"init", "-q", "-b", "main"}, {"add", "-A"}, {"commit", "-q", "-m", "init"}} {
 		if out, err := s.git(time.Minute, a...); err != nil {
 			t.Fatalf("git %v: %v %s", a, err, out)
 		}
 	}
-	write("services.yaml", "hosts:\n    pi:\n        ip: 192.0.2.99\ndomains:\n    - example.com\nservices: {}\n") // hemma edit
-	write("pi/caddy/data/sites/a.caddy", gen+"a-changed\n")                                                        // regenerated
-	write("pi/caddy/data/sites/new.caddy", gen+"new\n")                                                            // newly generated (untracked)
-	write("hemma-manifest.yaml", "a:\n    - pi/caddy/data/sites/a.caddy\n    - pi/caddy/data/sites/gone.caddy\n    - pi/caddy/data/sites/new.caddy\n")
-	if err := os.Remove(filepath.Join(dir, "pi/caddy/data/sites/gone.caddy")); err != nil { // generated, then deleted
+	write("services.yaml", "hosts:\n    edge:\n        ip: 192.0.2.99\ndomains:\n    - example.com\nservices: {}\n") // hemma edit
+	write("edge/caddy/data/sites/a.caddy", gen+"a-changed\n")                                                        // regenerated
+	write("edge/caddy/data/sites/new.caddy", gen+"new\n")                                                            // newly generated (untracked)
+	write("hemma-manifest.yaml", "a:\n    - edge/caddy/data/sites/a.caddy\n    - edge/caddy/data/sites/gone.caddy\n    - edge/caddy/data/sites/new.caddy\n")
+	if err := os.Remove(filepath.Join(dir, "edge/caddy/data/sites/gone.caddy")); err != nil { // generated, then deleted
 		t.Fatal(err)
 	}
 	write("auth.caddy", "my snippet, EDITED BY HAND\n") // the operator's own work
@@ -396,13 +396,13 @@ func TestDiscard(t *testing.T) {
 	if !strings.Contains(read("services.yaml"), "192.0.2.50") {
 		t.Error("services.yaml must be restored to the last commit")
 	}
-	if read("pi/caddy/data/sites/a.caddy") != gen+"a-original\n" {
+	if read("edge/caddy/data/sites/a.caddy") != gen+"a-original\n" {
 		t.Error("a regenerated file must be restored")
 	}
-	if read("pi/caddy/data/sites/gone.caddy") != gen+"gone-original\n" {
+	if read("edge/caddy/data/sites/gone.caddy") != gen+"gone-original\n" {
 		t.Error("a deleted generated file must be restored")
 	}
-	if _, err := os.Stat(filepath.Join(dir, "pi/caddy/data/sites/new.caddy")); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, "edge/caddy/data/sites/new.caddy")); err == nil {
 		t.Error("a newly generated file must be removed")
 	}
 	if read("auth.caddy") != "my snippet, EDITED BY HAND\n" || read("notes.txt") != "hand written\n" {
@@ -435,15 +435,15 @@ func TestCommit_LeavesOtherFilesAlone(t *testing.T) {
 		s.invalidateChanges()
 	}
 	write("services.yaml", "services: {}\n")
-	write("pi/docker-compose.yml", "services: {}\n")
+	write("edge/docker-compose.yml", "services: {}\n")
 	for _, a := range [][]string{{"init", "-q", "-b", "main"}, {"add", "-A"}, {"commit", "-q", "-m", "init"}} {
 		if out, err := s.git(time.Minute, a...); err != nil {
 			t.Fatalf("git %v: %v %s", a, err, out)
 		}
 	}
 	write("services.yaml", "hosts: {}\nservices: {}\n")
-	write("pi/docker-compose.yml", "services: {x: {}}\n") // somebody's edit, tracked
-	write("pi/restic/coverage-ignore", "*.tmp\n")         // somebody's new file, untracked
+	write("edge/docker-compose.yml", "services: {x: {}}\n") // somebody's edit, tracked
+	write("edge/restic/coverage-ignore", "*.tmp\n")         // somebody's new file, untracked
 
 	rec := httptest.NewRecorder()
 	s.handleCommit(rec, httptest.NewRequest("POST", "/api/commit", strings.NewReader(`{"message":"hemma change"}`)))
@@ -454,7 +454,7 @@ func TestCommit_LeavesOtherFilesAlone(t *testing.T) {
 		t.Errorf("only hemma's file may be committed, got %q", out)
 	}
 	out, _ := s.git(time.Minute, "status", "--porcelain")
-	if !strings.Contains(out, "pi/docker-compose.yml") || !strings.Contains(out, "pi/restic/") {
+	if !strings.Contains(out, "edge/docker-compose.yml") || !strings.Contains(out, "edge/restic/") {
 		t.Errorf("the other files must still be uncommitted edits, status: %q", out)
 	}
 }
@@ -487,7 +487,7 @@ func TestChanges_AheadHemmaOnlyForOwnedFiles(t *testing.T) {
 		}
 	}
 	write("services.yaml", "services: {}\n")
-	write("pi/docker-compose.yml", "services: {}\n")
+	write("edge/docker-compose.yml", "services: {}\n")
 	git("add", "-A")
 	git("commit", "-q", "-m", "init")
 	git("push", "-q", "-u", "origin", "main")
@@ -496,8 +496,8 @@ func TestChanges_AheadHemmaOnlyForOwnedFiles(t *testing.T) {
 		t.Fatalf("level with origin: %+v", c)
 	}
 	// a commit to somebody else's file: ahead, but nothing for hemma to deploy
-	write("pi/docker-compose.yml", "services: {x: {}}\n")
-	git("commit", "-q", "-am", "pi/homepage: follow the moving tag")
+	write("edge/docker-compose.yml", "services: {x: {}}\n")
+	git("commit", "-q", "-am", "edge/homepage: follow the moving tag")
 	if c := s.changes(); c.Ahead != 1 || c.AheadHemma {
 		t.Fatalf("a compose-only commit must not count as something to deploy: %+v", c)
 	}

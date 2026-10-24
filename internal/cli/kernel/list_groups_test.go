@@ -8,7 +8,7 @@ import (
 
 func TestList_GroupsSection_UnionOfUsersAndServices(t *testing.T) {
 	dir := t.TempDir()
-	seedWithAuth(t, dir) // grafana restricts to [admins]; paperless oidc, no groups
+	seedWithAuth(t, dir) // grafana restricts to [admins]; docsapp oidc, no groups
 	writeAutheliaFixture(t, dir, `users:
   alice:
     displayname: alice

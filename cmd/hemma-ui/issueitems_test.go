@@ -10,10 +10,10 @@ import (
 
 // doctor's output, in the shapes it really prints (a finding with and without a glyph, its follow-up lines, steps with
 // a continuation, and the closing note about advisories).
-const sampleDoctorOutput = `✓ optiplex: Caddyfile imports hemma.generated.caddy
+const sampleDoctorOutput = `✓ core: Caddyfile imports hemma.generated.caddy
 7 generated files ignored by git — they won't be committed or deployed:
-  pi/authelia/data/config/hemma.access_control.generated.yml
-  pi/caddy/data/hemma.auth.generated.caddy
+  edge/authelia/data/config/hemma.access_control.generated.yml
+  edge/caddy/data/hemma.auth.generated.caddy
 
 Add to .gitignore to un-ignore them (or run 'hemma doctor --fix'):
   !**/authelia/data/config/
@@ -23,16 +23,16 @@ Run 'hemma doctor --fix' to add these entries automatically.
 ⚠ hemma's .gitignore block is out of date: this version of hemma writes narrower rules and no longer re-includes whole data/ directories.
   Run 'hemma doctor --fix' to rewrite it.
 ✗ 2 generated files out of sync with services.yaml:
-  - missing: pi/caddy/data/sites/a.caddy
-  - modified: pi/pihole/data/dnsmasq.d/a.generated.conf
+  - missing: edge/caddy/data/sites/a.caddy
+  - modified: edge/pihole/data/dnsmasq.d/a.generated.conf
 
 Run 'hemma doctor --fix' to reconcile (regenerate missing/modified, remove orphaned).
-⚠ pi: no known_hosts entry for its deploy destination (pi)
+⚠ edge: no known_hosts entry for its deploy destination (edge)
   'hemma deploy' uses 'ssh -o BatchMode=yes' and will fail host-key verification.
-  fix: connect once interactively to accept and record the host key — ssh pi (verify the fingerprint before accepting.)
+  fix: connect once interactively to accept and record the host key — ssh edge (verify the fingerprint before accepting.)
 ⚠ OIDC logins to grafana will fail — no client is registered for it
     service grafana is auth: oidc but no Authelia OIDC client registers a redirect_uri for https://grafana.home.example/.
-    fix:  register the client in pi/authelia/data/config/configuration.yml
+    fix:  register the client in edge/authelia/data/config/configuration.yml
           ('hemma create app oidc grafana' prints a paste-in snippet)
     then: hemma apply
 
@@ -49,7 +49,7 @@ func TestParseDoctorItems_Shapes(t *testing.T) {
 		t.Fatalf("want 6 items (the closing advisory note is not one), got %d: %+v", len(items), items)
 	}
 
-	if it := byTitle["optiplex: Caddyfile imports hemma.generated.caddy"]; it.Status != "ok" || it.Fixable {
+	if it := byTitle["core: Caddyfile imports hemma.generated.caddy"]; it.Status != "ok" || it.Fixable {
 		t.Errorf("a passed check: %+v", it)
 	}
 	// the glyph-less finding is a warning; the rules to add by hand and the "Run …" hint belong to it and are not shown
@@ -62,12 +62,12 @@ func TestParseDoctorItems_Shapes(t *testing.T) {
 		t.Errorf("a long first sentence splits into a title and its explanation; the hint becomes the Fix button: %+v", blk)
 	}
 	drift := byTitle["2 generated files out of sync with services.yaml"]
-	if drift.Status != "err" || !drift.Fixable || len(drift.List) != 2 || drift.List[0] != "missing: pi/caddy/data/sites/a.caddy" {
+	if drift.Status != "err" || !drift.Fixable || len(drift.List) != 2 || drift.List[0] != "missing: edge/caddy/data/sites/a.caddy" {
 		t.Errorf("drift: %+v", drift)
 	}
 	// not fixable by doctor: the how-to is the item
-	kh := byTitle["pi: no known_hosts entry for its deploy destination (pi)"]
-	if kh.Status != "warn" || kh.Fixable || len(kh.Steps) != 1 || kh.Steps[0].Label != "fix" || !strings.Contains(kh.Steps[0].Text, "ssh pi") || !strings.Contains(kh.Summary, "'hemma deploy' uses") {
+	kh := byTitle["edge: no known_hosts entry for its deploy destination (edge)"]
+	if kh.Status != "warn" || kh.Fixable || len(kh.Steps) != 1 || kh.Steps[0].Label != "fix" || !strings.Contains(kh.Steps[0].Text, "ssh edge") || !strings.Contains(kh.Summary, "'hemma deploy' uses") {
 		t.Errorf("known_hosts: %+v", kh)
 	}
 	oidc := byTitle["OIDC logins to grafana will fail — no client is registered for it"]

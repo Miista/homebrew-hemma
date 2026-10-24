@@ -28,7 +28,7 @@ func base() *config.Config {
 
 func TestBuild_ValidService(t *testing.T) {
 	c := base()
-	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000"}
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "docsapp:8000"}
 
 	p := Build(c)
 	if len(p.Skipped) != 0 {
@@ -216,7 +216,7 @@ func TestBuild_AuthSnippetUnresolvedTarget(t *testing.T) {
 func TestBuild_ServiceAuthImportsSnippet(t *testing.T) {
 	c := base()
 	c.AuthSnippetBody = "forward_auth https://auth.example.com {\n\turi /api/authz/forward-auth\n}"
-	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Auth: config.Auth{Mode: config.AuthForward}}
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "docsapp:8000", Auth: config.Auth{Mode: config.AuthForward}}
 
 	p := Build(c)
 	if len(p.Skipped) != 0 {
@@ -302,7 +302,7 @@ func TestBuild_AuthServiceHeaderPreserve(t *testing.T) {
 	c := base()
 	c.Defaults.AuthService = "portal"
 	c.Services["portal"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091"}
-	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000"}
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "docsapp:8000"}
 
 	p := Build(c)
 	caddyOf := func(svc string) string {
@@ -442,7 +442,7 @@ func TestBuild_AccessControlArtifact(t *testing.T) {
 	c := base()
 	c.Defaults.AuthService = "portal"
 	c.Services["portal"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091"}
-	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Auth: config.Auth{Mode: config.AuthForward, Groups: []string{"admins"}}}
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "docsapp:8000", Auth: config.Auth{Mode: config.AuthForward, Groups: []string{"admins"}}}
 
 	p := Build(c)
 	files := p.Files[authAccessKey]
@@ -467,7 +467,7 @@ func TestBuild_AccessControlArtifact(t *testing.T) {
 func TestBuild_AccessControlArtifactOmitted(t *testing.T) {
 	// No auth_service set.
 	c := base()
-	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Auth: config.Auth{Mode: config.AuthForward}}
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "docsapp:8000", Auth: config.Auth{Mode: config.AuthForward}}
 	if files := Build(c).Files[authAccessKey]; files != nil {
 		t.Errorf("no auth_service → no artifact, got %+v", files)
 	}
@@ -538,7 +538,7 @@ func TestBuild_CloudflaredConfig_AggregatesPerHostSorted(t *testing.T) {
 // the moment the last public service on that host loses public: true.
 func TestBuild_CloudflaredConfig_OmittedWhenNoPublicServices(t *testing.T) {
 	c := base()
-	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000"} // Tunnel: false
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "docsapp:8000"} // Tunnel: false
 	p := Build(c)
 	for k := range p.Files {
 		if IsCloudflaredConfigOwner(k) {
@@ -571,7 +571,7 @@ func TestBuild_CloudflaredConfig_ExcludesSkippedServices(t *testing.T) {
 func TestBuild_CloudflaredConfig_HonorsConfiguredDir(t *testing.T) {
 	c := base()
 	c.Defaults.TunnelDir = "cloudflared-local/data"
-	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Tunnel: true}
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "docsapp:8000", Tunnel: true}
 	p := Build(c)
 	key := cloudflaredConfigOwnerPrefix + "appbox"
 	files := p.Files[key]
@@ -590,7 +590,7 @@ func TestBuild_CloudflaredConfig_HonorsConfiguredDir(t *testing.T) {
 // guess (verified: two real hosts once genuinely disagreed on it).
 func TestBuild_CloudflaredConfig_UnresolvedWithoutTunnelDirKeepsOtherFiles(t *testing.T) {
 	c := base() // no Defaults.TunnelDir set
-	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "paperless:8000", Tunnel: true}
+	c.Services["docs"] = config.Service{FQDN: "docs.example.com", Host: "appbox", Backend: "docsapp:8000", Tunnel: true}
 
 	p := Build(c)
 	if _, skipped := p.Skipped["docs"]; skipped {

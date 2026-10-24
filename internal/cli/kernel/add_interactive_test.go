@@ -34,14 +34,14 @@ func TestRun_AddWithFlagsStaysNonInteractive(t *testing.T) {
 	seed(t, dir)
 
 	if code := Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"}); code != 0 {
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"}); code != 0 {
 		t.Fatalf("flag add should exit 0 without a TTY, got %d", code)
 	}
 	cfg, err := config.Load(dir + "/" + configName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := cfg.Services["docs"].Backend; got != "paperless:8000" {
+	if got := cfg.Services["docs"].Backend; got != "docsapp:8000" {
 		t.Errorf("service not added via flags path: %q", got)
 	}
 }

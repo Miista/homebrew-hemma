@@ -51,7 +51,7 @@ func write(t *testing.T, body string) (src, dst string) {
 // Everything real is replaced: one host, one domain, no ssh — and the services and their auth survive.
 func TestImport_NeutralizesHostsDomainsAndSSH(t *testing.T) {
 	src, dst := write(t, source)
-	if err := run(src, dst, "example.com", "pi", "172.28.0.10", "172.28.0.13/32"); err != nil {
+	if err := run(src, dst, "example.com", "resolver", "172.28.0.10", "172.28.0.13/32"); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(dst)
@@ -61,7 +61,7 @@ func TestImport_NeutralizesHostsDomainsAndSSH(t *testing.T) {
 			t.Errorf("%q survived:\n%s", real, out)
 		}
 	}
-	for _, want := range []string{"auth.example.com", "app.example.com", "172.28.0.10", "172.28.0.13/32", "dns_host: pi", "deploy_host: pi", "mode: forward", "admins", "disabled: true", "tunnel: true"} {
+	for _, want := range []string{"auth.example.com", "app.example.com", "172.28.0.10", "172.28.0.13/32", "dns_host: resolver", "deploy_host: resolver", "mode: forward", "admins", "disabled: true", "tunnel: true"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q:\n%s", want, out)
 		}
@@ -73,7 +73,7 @@ func TestImport_NeutralizesHostsDomainsAndSSH(t *testing.T) {
 func TestImport_RefusesAndWritesNothingWhenSomethingRealSurvives(t *testing.T) {
 	leaky := strings.Replace(source, "backend: app:80", "backend: app.real.example.net:80", 1)
 	src, dst := write(t, leaky)
-	err := run(src, dst, "example.com", "pi", "172.28.0.10", "172.28.0.13/32")
+	err := run(src, dst, "example.com", "resolver", "172.28.0.10", "172.28.0.13/32")
 	if err == nil || !strings.Contains(err.Error(), "survived") {
 		t.Fatalf("want a refusal, got %v", err)
 	}
@@ -86,7 +86,7 @@ func TestImport_RefusesAndWritesNothingWhenSomethingRealSurvives(t *testing.T) {
 func TestImport_RefusesAddressCollisions(t *testing.T) {
 	clash := strings.Replace(source, "app.other.example.org", "auth.other.example.org", 1)
 	src, dst := write(t, clash)
-	if err := run(src, dst, "example.com", "pi", "172.28.0.10", "172.28.0.13/32"); err == nil || !strings.Contains(err.Error(), "both be") {
+	if err := run(src, dst, "example.com", "resolver", "172.28.0.10", "172.28.0.13/32"); err == nil || !strings.Contains(err.Error(), "both be") {
 		t.Fatalf("want a collision error, got %v", err)
 	}
 }

@@ -115,8 +115,8 @@ func sortedKeys[V any](m map[string]V) []string {
 // findRenames pairs a service that disappeared with one that appeared when it is the same service under a new name,
 // so the dialog can say "renamed" instead of "one removed, one added". It is deliberately strict — a wrong pairing would
 // hide a real removal and a real addition: the two must be on the same host, and each of the address and the backend
-// must either be unchanged or have followed the name (albumreq.example.com → albumarr.example.com,
-// albumreq:8768 → albumarr:8768). Anything else (a service replaced by an unrelated one) stays removed + added.
+// must either be unchanged or have followed the name (oldapp.example.com → newapp.example.com,
+// oldapp:8768 → newapp:8768). Anything else (a service replaced by an unrelated one) stays removed + added.
 func findRenames(old, now map[string]config.Service) map[string]string {
 	out := map[string]string{}
 	used := map[string]bool{}

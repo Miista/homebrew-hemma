@@ -11,7 +11,7 @@ import (
 // servicesYAML builds a services.yaml with the given services (name → "fqdn host backend [extra auth lines]").
 func servicesYAML(svcs ...[4]string) string {
 	var b strings.Builder
-	b.WriteString("hosts:\n    optiplex:\n        ip: 192.0.2.2\n    pi:\n        ip: 192.0.2.50\ndomains:\n    - example.com\ndefaults:\n    dns_host: pi\nservices:\n")
+	b.WriteString("hosts:\n    core:\n        ip: 192.0.2.2\n    edge:\n        ip: 192.0.2.50\ndomains:\n    - example.com\ndefaults:\n    dns_host: edge\nservices:\n")
 	for _, s := range svcs { // name, fqdn, host, backend
 		b.WriteString("    " + s[0] + ":\n        fqdn: " + s[1] + "\n        host: " + s[2] + "\n        backend: " + s[3] + "\n")
 	}
@@ -55,23 +55,23 @@ func serviceEntities(d diffResult) (names, statuses []string) {
 func TestDiff_RenamedService(t *testing.T) {
 	cases := map[string][2]string{
 		"address and backend followed the name": {
-			servicesYAML([4]string{"albumreq", "albumreq.example.com", "optiplex", "albumreq:8768"}),
-			servicesYAML([4]string{"albumarr", "albumarr.example.com", "optiplex", "albumarr:8768"}),
+			servicesYAML([4]string{"oldapp", "oldapp.example.com", "core", "oldapp:8768"}),
+			servicesYAML([4]string{"newapp", "newapp.example.com", "core", "newapp:8768"}),
 		},
 		"only the name changed": {
-			servicesYAML([4]string{"albumreq", "albumreq.example.com", "optiplex", "albumreq:8768"}),
-			servicesYAML([4]string{"albumarr", "albumreq.example.com", "optiplex", "albumreq:8768"}),
+			servicesYAML([4]string{"oldapp", "oldapp.example.com", "core", "oldapp:8768"}),
+			servicesYAML([4]string{"newapp", "oldapp.example.com", "core", "oldapp:8768"}),
 		},
 		"address followed, backend stayed": {
-			servicesYAML([4]string{"albumreq", "albumreq.example.com", "optiplex", "albumreq:8768"}),
-			servicesYAML([4]string{"albumarr", "albumarr.example.com", "optiplex", "albumreq:8768"}),
+			servicesYAML([4]string{"oldapp", "oldapp.example.com", "core", "oldapp:8768"}),
+			servicesYAML([4]string{"newapp", "newapp.example.com", "core", "oldapp:8768"}),
 		},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			names, statuses := serviceEntities(diffAfter(t, c[0], c[1]))
-			if len(names) != 1 || statuses[0] != "renamed" || names[0] != "albumreq → albumarr" {
-				t.Errorf("want one 'renamed' service 'albumreq → albumarr', got %v %v", names, statuses)
+			if len(names) != 1 || statuses[0] != "renamed" || names[0] != "oldapp → newapp" {
+				t.Errorf("want one 'renamed' service 'oldapp → newapp', got %v %v", names, statuses)
 			}
 		})
 	}
@@ -82,7 +82,7 @@ func TestDiff_RenamedService(t *testing.T) {
 	for _, f := range d.Entities[0].Fields {
 		fields = append(fields, f.Field+": "+f.Before+" → "+f.After)
 	}
-	want := []string{"Name: albumreq → albumarr", "Address: albumreq.example.com → albumarr.example.com", "Backend: albumreq:8768 → albumarr:8768"}
+	want := []string{"Name: oldapp → newapp", "Address: oldapp.example.com → newapp.example.com", "Backend: oldapp:8768 → newapp:8768"}
 	if strings.Join(fields, "|") != strings.Join(want, "|") {
 		t.Errorf("fields = %v, want %v", fields, want)
 	}
@@ -93,16 +93,16 @@ func TestDiff_RenamedService(t *testing.T) {
 func TestDiff_NotARename(t *testing.T) {
 	for name, c := range map[string][2]string{
 		"replaced by an unrelated service": {
-			servicesYAML([4]string{"web", "web.example.com", "pi", "web:80"}),
-			servicesYAML([4]string{"paperless", "docs.example.com", "pi", "paperless:8000"}),
+			servicesYAML([4]string{"web", "web.example.com", "edge", "web:80"}),
+			servicesYAML([4]string{"docsapp", "docs.example.com", "edge", "docsapp:8000"}),
 		},
 		"same name pattern but another host": {
-			servicesYAML([4]string{"albumreq", "albumreq.example.com", "optiplex", "albumreq:8768"}),
-			servicesYAML([4]string{"albumarr", "albumarr.example.com", "pi", "albumarr:8768"}),
+			servicesYAML([4]string{"oldapp", "oldapp.example.com", "core", "oldapp:8768"}),
+			servicesYAML([4]string{"newapp", "newapp.example.com", "edge", "newapp:8768"}),
 		},
 		"address unrelated to the name": {
-			servicesYAML([4]string{"albumreq", "albumreq.example.com", "optiplex", "albumreq:8768"}),
-			servicesYAML([4]string{"albumarr", "music.example.com", "optiplex", "albumarr:8768"}),
+			servicesYAML([4]string{"oldapp", "oldapp.example.com", "core", "oldapp:8768"}),
+			servicesYAML([4]string{"newapp", "music.example.com", "core", "newapp:8768"}),
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

@@ -30,7 +30,7 @@ services:
     container_name: caddy
     image: caddy:2-alpine
     volumes:
-      - ./.work/repo/pi/caddy/data:/etc/caddy
+      - ./.work/repo/edge/caddy/data:/etc/caddy
     networks: { fx: { ipv4_address: 172.28.0.11 } }
   hemma-ui:
     container_name: hemma-ui-fixture

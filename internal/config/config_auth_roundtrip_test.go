@@ -80,7 +80,7 @@ func TestAuth_LegacyEmptyModeLoads_MissingModeStillRefused(t *testing.T) {
 // End to end through the real file: the exact shape of the reported failure loads again.
 func TestLoad_FileWithNoneModeAndBypassPathsIsReadable(t *testing.T) {
 	dir := t.TempDir()
-	doc := "hosts:\n  pi: {ip: 192.0.2.10}\ndomains:\n  - example.com\ndefaults:\n  dns_host: pi\nservices:\n  lol:\n    fqdn: lol.example.com\n    host: pi\n    backend: test:80\n    auth:\n      mode: \"\"\n      bypass_paths:\n        - /api\n      policy:\n        local: bypass\n        public: bypass\n"
+	doc := "hosts:\n  edge: {ip: 192.0.2.10}\ndomains:\n  - example.com\ndefaults:\n  dns_host: edge\nservices:\n  lol:\n    fqdn: lol.example.com\n    host: edge\n    backend: test:80\n    auth:\n      mode: \"\"\n      bypass_paths:\n        - /api\n      policy:\n        local: bypass\n        public: bypass\n"
 	p := filepath.Join(dir, "services.yaml")
 	if err := os.WriteFile(p, []byte(doc), 0o644); err != nil {
 		t.Fatal(err)

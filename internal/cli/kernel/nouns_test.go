@@ -74,7 +74,7 @@ func TestHostRemove_RefusesWhenReferenced(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir) // defines resolver + appbox, dns_host resolver
 	Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"})
 
 	// appbox is host of docs -> refuse.
 	if code := Run([]string{"-C", dir, "remove", "host", "appbox"}); code != 1 {
@@ -117,7 +117,7 @@ func TestDomainRemove_RefusesWhenReferenced(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"})
 
 	if code := Run([]string{"-C", dir, "remove", "domain", "example.com"}); code != 1 {
 		t.Errorf("removing referenced domain should exit 1, got %d", code)
@@ -136,7 +136,7 @@ func TestBootstrap_ViaCLIOnly(t *testing.T) {
 		{"-C", dir, "add", "host", "resolver", "192.0.2.1"},
 		{"-C", dir, "defaults", "set", "dns-host", "resolver"},
 		{"-C", dir, "add", "domain", "example.com"},
-		{"-C", dir, "add", "service", "docs", "--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"},
+		{"-C", dir, "add", "service", "docs", "--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"},
 	}
 	for _, s := range steps {
 		if code := Run(s); code != 0 {
@@ -181,7 +181,7 @@ func TestSync_RefusesWithoutDNSHost(t *testing.T) {
 	Run([]string{"-C", dir, "add", "domain", "example.com"})
 	// add triggers a sync; with no dns_host set it must refuse (exit 1).
 	if code := Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"}); code != 1 {
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"}); code != 1 {
 		t.Errorf("sync without dns_host should exit 1, got %d", code)
 	}
 	// set dns-host now reconciles itself: with the blocker resolved it succeeds
@@ -256,14 +256,14 @@ func TestServiceRename_RegeneratesUnderNewName(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"})
 
 	oldDNS := filepath.Join(dir, "resolver", "pihole/data/dnsmasq.d/docs.generated.conf")
 	if _, err := os.Stat(oldDNS); err != nil {
 		t.Fatalf("old service's DNS file should exist before rename: %v", err)
 	}
 
-	if code := Run([]string{"-C", dir, "rename", "service", "docs", "paperless"}); code != 0 {
+	if code := Run([]string{"-C", dir, "rename", "service", "docs", "docsapp"}); code != 0 {
 		t.Fatalf("rename should exit 0, got %d", code)
 	}
 
@@ -271,18 +271,18 @@ func TestServiceRename_RegeneratesUnderNewName(t *testing.T) {
 	if _, ok := c.Services["docs"]; ok {
 		t.Error("old service name should no longer exist")
 	}
-	svc, ok := c.Services["paperless"]
+	svc, ok := c.Services["docsapp"]
 	if !ok {
 		t.Fatal("new service name should exist")
 	}
-	if svc.FQDN != "docs.example.com" || svc.Host != "appbox" || svc.Backend != "paperless:8000" {
+	if svc.FQDN != "docs.example.com" || svc.Host != "appbox" || svc.Backend != "docsapp:8000" {
 		t.Errorf("renamed service should keep its fields, got %+v", svc)
 	}
 
 	if _, err := os.Stat(oldDNS); !os.IsNotExist(err) {
 		t.Error("old service's DNS file should be deleted by rename")
 	}
-	newDNS := filepath.Join(dir, "resolver", "pihole/data/dnsmasq.d/paperless.generated.conf")
+	newDNS := filepath.Join(dir, "resolver", "pihole/data/dnsmasq.d/docsapp.generated.conf")
 	if _, err := os.Stat(newDNS); err != nil {
 		t.Errorf("new service's DNS file should exist after rename: %v", err)
 	}
@@ -296,7 +296,7 @@ func TestServiceRename_RefusesOnCollision(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"})
 	Run([]string{"-C", dir, "add", "service", "photos",
 		"--fqdn", "photos.example.com", "--host", "appbox", "--backend", "photoprism:2342"})
 
@@ -401,7 +401,7 @@ func TestHostUpdate_IPChangeRegeneratesDNS(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir) // resolver (dns_host) + appbox
 	Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"})
 	rec := filepath.Join(dir, "resolver", "pihole/data/dnsmasq.d/docs.generated.conf")
 	if b, err := os.ReadFile(rec); err != nil || !strings.Contains(string(b), "192.0.2.2") {
 		t.Fatalf("precondition: record should point at appbox's old ip: %v", err)
@@ -428,7 +428,7 @@ func TestHostUpdate_SSHOnlyTouchesNothingGenerated(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
 	Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000"})
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000"})
 	rec := filepath.Join(dir, "resolver", "pihole/data/dnsmasq.d/docs.generated.conf")
 	before, err := os.ReadFile(rec)
 	if err != nil {
@@ -551,14 +551,14 @@ func TestHost_TrustedProxiesValidation(t *testing.T) {
 }
 
 func TestSummarizeHostChanges(t *testing.T) {
-	old := config.Host{IP: "10.0.0.1", SSH: "pi", TrustedProxies: []string{"172.18.0.6/32"}}
+	old := config.Host{IP: "10.0.0.1", SSH: "edge", TrustedProxies: []string{"172.18.0.6/32"}}
 	if lines := summarizeHostChanges(old, old); len(lines) != 0 {
 		t.Errorf("identical hosts should produce no lines, got %v", lines)
 	}
 	next := config.Host{IP: "10.0.0.2", TrustedProxies: []string{"172.18.0.6/32", "172.18.0.9/32"}}
 	lines := summarizeHostChanges(old, next)
 	joined := strings.Join(lines, "\n")
-	for _, want := range []string{"ip: 10.0.0.1 -> 10.0.0.2", "ssh: pi -> (unset)", "trusted_proxies:"} {
+	for _, want := range []string{"ip: 10.0.0.1 -> 10.0.0.2", "ssh: edge -> (unset)", "trusted_proxies:"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("summary missing %q:\n%s", want, joined)
 		}
@@ -569,10 +569,10 @@ func TestSummarizeHostChanges(t *testing.T) {
 func TestHostAdd_WithSSH(t *testing.T) {
 	dir := t.TempDir()
 	mkdirs(t, dir, "resolver")
-	if code := Run([]string{"-C", dir, "add", "host", "resolver", "192.0.2.1", "--ssh", "pi"}); code != 0 {
+	if code := Run([]string{"-C", dir, "add", "host", "resolver", "192.0.2.1", "--ssh", "edge"}); code != 0 {
 		t.Fatalf("add host --ssh should exit 0, got %d", code)
 	}
-	if got := load(t, dir).Hosts["resolver"].SSH; got != "pi" {
+	if got := load(t, dir).Hosts["resolver"].SSH; got != "edge" {
 		t.Errorf("ssh not stored, got %q", got)
 	}
 }

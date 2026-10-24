@@ -30,18 +30,18 @@ func TestHistory_FollowsOneServiceThroughARename(t *testing.T) {
 			}
 		}
 	}
-	base := "hosts:\n    pi:\n        ip: 192.0.2.10\ndomains:\n    - example.com\nservices:\n"
+	base := "hosts:\n    edge:\n        ip: 192.0.2.10\ndomains:\n    - example.com\nservices:\n"
 	svc := func(name, backend string) string {
-		return "    " + name + ":\n        fqdn: " + name + ".example.com\n        host: pi\n        backend: " + backend + "\n"
+		return "    " + name + ":\n        fqdn: " + name + ".example.com\n        host: edge\n        backend: " + backend + "\n"
 	}
-	other := "    other:\n        fqdn: other.example.com\n        host: pi\n        backend: other:1\n"
-	commit("Add albumreq", base+svc("albumreq", "albumreq:80")+other)
-	commit("Point albumreq at a new port", base+svc("albumreq", "albumreq:8080")+other)
-	commit("Touch another service", base+svc("albumreq", "albumreq:8080")+strings.Replace(other, "other:1", "other:2", 1))
-	commit("Rename albumreq to albumarr", base+svc("albumarr", "albumarr:8080")+strings.Replace(other, "other:1", "other:2", 1))
-	commit("Move albumarr to 9090", base+svc("albumarr", "albumarr:9090")+strings.Replace(other, "other:1", "other:2", 1))
+	other := "    other:\n        fqdn: other.example.com\n        host: edge\n        backend: other:1\n"
+	commit("Add oldapp", base+svc("oldapp", "oldapp:80")+other)
+	commit("Point oldapp at a new port", base+svc("oldapp", "oldapp:8080")+other)
+	commit("Touch another service", base+svc("oldapp", "oldapp:8080")+strings.Replace(other, "other:1", "other:2", 1))
+	commit("Rename oldapp to newapp", base+svc("newapp", "newapp:8080")+strings.Replace(other, "other:1", "other:2", 1))
+	commit("Move newapp to 9090", base+svc("newapp", "newapp:9090")+strings.Replace(other, "other:1", "other:2", 1))
 
-	res, err := s.history("albumarr", 0, "")
+	res, err := s.history("newapp", 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,18 +49,18 @@ func TestHistory_FollowsOneServiceThroughARename(t *testing.T) {
 	for _, e := range res.Entries {
 		got = append(got, e.Status+": "+e.Subject)
 	}
-	want := []string{"changed: Move albumarr to 9090", "renamed: Rename albumreq to albumarr", "changed: Point albumreq at a new port", "added: Add albumreq"}
+	want := []string{"changed: Move newapp to 9090", "renamed: Rename oldapp to newapp", "changed: Point oldapp at a new port", "added: Add oldapp"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Fatalf("history of albumarr:\n got  %q\n want %q", got, want)
+		t.Fatalf("history of newapp:\n got  %q\n want %q", got, want)
 	}
-	if e := res.Entries[1]; e.From != "albumreq" || e.Fields[0].Field != "Name" || e.Fields[0].Before != "albumreq" || e.Fields[0].After != "albumarr" {
+	if e := res.Entries[1]; e.From != "oldapp" || e.Fields[0].Field != "Name" || e.Fields[0].Before != "oldapp" || e.Fields[0].After != "newapp" {
 		t.Errorf("the rename entry: %+v", e)
 	}
-	if e := res.Entries[0]; len(e.Fields) != 1 || e.Fields[0].Field != "Backend" || e.Fields[0].Before != "albumarr:8080" || e.Fields[0].After != "albumarr:9090" {
+	if e := res.Entries[0]; len(e.Fields) != 1 || e.Fields[0].Field != "Backend" || e.Fields[0].Before != "newapp:8080" || e.Fields[0].After != "newapp:9090" {
 		t.Errorf("the backend change shows only what changed: %+v", e.Fields)
 	}
 	// the name the service had at each commit: the commit messages of an older entry mention the old name
-	if got := []string{res.Entries[0].Name, res.Entries[1].Name, res.Entries[2].Name, res.Entries[3].Name}; strings.Join(got, ",") != "albumarr,albumarr,albumreq,albumreq" {
+	if got := []string{res.Entries[0].Name, res.Entries[1].Name, res.Entries[2].Name, res.Entries[3].Name}; strings.Join(got, ",") != "newapp,newapp,oldapp,oldapp" {
 		t.Errorf("names per entry: %v", got)
 	}
 	if e := res.Entries[0]; e.Author == "" || e.When == "" || len(e.Short) != 7 {
@@ -95,14 +95,14 @@ func TestHistoryAll_EveryCommitWithItsChanges(t *testing.T) {
 			}
 		}
 	}
-	hosts := "hosts:\n    pi:\n        ip: 192.0.2.10\ndomains:\n    - example.com\nservices:\n"
+	hosts := "hosts:\n    edge:\n        ip: 192.0.2.10\ndomains:\n    - example.com\nservices:\n"
 	svc := func(name, backend string) string {
-		return "    " + name + ":\n        fqdn: " + name + ".example.com\n        host: pi\n        backend: " + backend + "\n"
+		return "    " + name + ":\n        fqdn: " + name + ".example.com\n        host: edge\n        backend: " + backend + "\n"
 	}
-	commit("pi/a: add", hosts+svc("a", "a:1"))
-	commit("pi/a: port", hosts+svc("a", "a:2"))
+	commit("edge/a: add", hosts+svc("a", "a:1"))
+	commit("edge/a: port", hosts+svc("a", "a:2"))
 	commit("whitespace only", "# a comment\n"+hosts+svc("a", "a:2"))
-	commit("pi/b: add one and move a", hosts+svc("a", "a:3")+svc("b", "b:1"))
+	commit("edge/b: add one and move a", hosts+svc("a", "a:3")+svc("b", "b:1"))
 
 	res, err := s.historyAll(0, 100)
 	if err != nil {
@@ -117,9 +117,9 @@ func TestHistoryAll_EveryCommitWithItsChanges(t *testing.T) {
 		got = append(got, e.Subject+" => "+strings.Join(ch, ", "))
 	}
 	want := []string{
-		"pi/b: add one and move a => changed Service a, added Service b",
-		"pi/a: port => changed Service a",
-		"pi/a: add => added Service a, added Host pi, added Domain example.com",
+		"edge/b: add one and move a => changed Service a, added Service b",
+		"edge/a: port => changed Service a",
+		"edge/a: add => added Service a, added Host edge, added Domain example.com",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("history of everything:\n got  %q\n want %q", got, want)
@@ -137,7 +137,7 @@ func TestHistoryAll_Pages(t *testing.T) {
 		t.Skipf("git not available: %v %s", err, out)
 	}
 	for i := 1; i <= 5; i++ {
-		y := "hosts:\n    pi:\n        ip: 192.0.2.10\ndomains:\n    - example.com\nservices:\n    a:\n        fqdn: a.example.com\n        host: pi\n        backend: a:" + strconv.Itoa(i) + "\n"
+		y := "hosts:\n    edge:\n        ip: 192.0.2.10\ndomains:\n    - example.com\nservices:\n    a:\n        fqdn: a.example.com\n        host: edge\n        backend: a:" + strconv.Itoa(i) + "\n"
 		if err := os.WriteFile(filepath.Join(dir, "services.yaml"), []byte(y), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -187,12 +187,12 @@ func TestHistory_PagesFollowARenameAcrossThem(t *testing.T) {
 			}
 		}
 	}
-	base := "hosts:\n    pi:\n        ip: 192.0.2.10\ndomains:\n    - example.com\nservices:\n"
+	base := "hosts:\n    edge:\n        ip: 192.0.2.10\ndomains:\n    - example.com\nservices:\n"
 	svc := func(n, b string) string {
-		return "    " + n + ":\n        fqdn: " + n + ".example.com\n        host: pi\n        backend: " + b + "\n"
+		return "    " + n + ":\n        fqdn: " + n + ".example.com\n        host: edge\n        backend: " + b + "\n"
 	}
 	other := func(v string) string {
-		return "    other:\n        fqdn: other.example.com\n        host: pi\n        backend: other:" + v + "\n"
+		return "    other:\n        fqdn: other.example.com\n        host: edge\n        backend: other:" + v + "\n"
 	}
 	commit("add", base+svc("old", "old:1")+other("1"))
 	commit("port", base+svc("old", "old:2")+other("1"))

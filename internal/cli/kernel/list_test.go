@@ -50,7 +50,7 @@ func listSetup(t *testing.T, snippet string) string {
 		}
 	}
 	if code := Run([]string{"-C", dir, "add", "service", "docs",
-		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "paperless:8000", "--auth"}); code != 0 {
+		"--fqdn", "docs.example.com", "--host", "appbox", "--backend", "docsapp:8000", "--auth"}); code != 0 {
 		t.Fatalf("add auth service exit %d", code)
 	}
 	if code := Run([]string{"-C", dir, "add", "service", "blog",
@@ -72,7 +72,7 @@ func serviceLine(out, fqdn string) string {
 
 // containsField reports whether one of line's whitespace-delimited fields is
 // exactly want — a plain substring check would false-positive on something
-// like "-" matching inside "paperless:8000" or "oidc" matching a longer word.
+// like "-" matching inside "docsapp:8000" or "oidc" matching a longer word.
 func containsField(line, want string) bool {
 	for _, f := range strings.Fields(line) {
 		if f == want {
@@ -131,7 +131,7 @@ func TestList_JSON(t *testing.T) {
 	for _, s := range got {
 		byName[s.Name] = struct{ FQDN, Host, Backend string }{s.FQDN, s.Host, s.Backend}
 	}
-	if docs := byName["docs"]; docs.FQDN != "docs.example.com" || docs.Host != "appbox" || docs.Backend != "paperless:8000" {
+	if docs := byName["docs"]; docs.FQDN != "docs.example.com" || docs.Host != "appbox" || docs.Backend != "docsapp:8000" {
 		t.Errorf("docs entry wrong: %+v", docs)
 	}
 	if blog := byName["blog"]; blog.FQDN != "blog.example.com" || blog.Host != "appbox" || blog.Backend != "ghost:2368" {

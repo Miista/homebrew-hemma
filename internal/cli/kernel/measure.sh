@@ -42,7 +42,7 @@ for i in $(seq 1 $N); do
         -w "%{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{time_total}" \
         "$URL") || true
     dns+=($d) connect+=($c) tls+=($t) ttfb+=($s) total+=($o)
-    # awk (not bc — not installed everywhere, e.g. optiplex) converts s -> ms.
+    # awk (not bc — not installed everywhere, e.g. core) converts s -> ms.
     # With a pin, dns is ~0 and omitted from the per-run line.
     if [ -n "$PIN" ]; then
         awk -v i="$i" -v c="$c" -v t="$t" -v s="$s" -v o="$o" 'BEGIN {

@@ -30,7 +30,7 @@ id_*
 .DS_Store
 .claude/
 mikrotik_backup
-optiplex_deploy
+*_deploy
 
 # Editor swap/backup files.
 *.swp

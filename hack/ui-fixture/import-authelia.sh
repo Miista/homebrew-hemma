@@ -3,7 +3,7 @@
 # OIDC clients' redirect URIs and authorization policies survive (what hemma reads), moved to the fixture's domain
 # (see importauthelia/main.go). The real file is read from STDIN and never touches disk:
 #
-#   ssh pi 'cat ~/docker/pi/authelia/data/config/configuration.yml' | make fixture-import-authelia SERVICES=<the real services.yaml>
+#   ssh edge 'cat ~/docker/edge/authelia/data/config/configuration.yml' | make fixture-import-authelia SERVICES=<the real services.yaml>
 #
 # SERVICES is the real services.yaml of the same repo (its declared domains are what gets moved). Commits ONLY the
 # new file, so unsaved changes in the fixture repo are left alone.
@@ -14,7 +14,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 repo="$here/.work/repo"
 bare="$here/.work/remote.git"
-rel="pi/authelia/data/config/configuration.yml"     # the fixture's host is "pi"; hemma's convention is <host>/authelia/data/config/
+rel="edge/authelia/data/config/configuration.yml"     # the fixture's host is "edge"; hemma's convention is <host>/authelia/data/config/
 
 [ -f "$services" ] || { echo "no such file: $services" >&2; exit 2; }
 [ -d "$repo/.git" ] || { echo "no fixture at $repo — run ./setup.sh first" >&2; exit 2; }
@@ -26,7 +26,7 @@ go run ./hack/ui-fixture/importauthelia -services "$services" -dst "$repo/$rel"
 # hemma's wiring check reads <host>/docker-compose.yml: it wants the authelia service's X_AUTHELIA_CONFIG to list the
 # generated access-control file. A minimal stand-in with exactly that (NOT a copy of a real compose file, which
 # describes a whole stack and may carry secrets). Written only if the fixture has none.
-compose="pi/docker-compose.yml"
+compose="edge/docker-compose.yml"
 if [ ! -f "$repo/$compose" ]; then
   cat > "$repo/$compose" <<'EOF'
 # Fixture only: a minimal stand-in for this host's docker-compose.yml, with just what hemma's Authelia wiring check reads.

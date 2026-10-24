@@ -125,7 +125,7 @@ func (f *fakeRunner) run(t deployTarget, argv []string) (string, error) {
 		return f.incoming[t.Name], nil
 	case strings.Contains(cmd, "pull --rebase"):
 		if f.rebaseFail[t.Name] {
-			return "CONFLICT (content): Merge conflict in optiplex/docker-compose.yml", fmt.Errorf("exit status 1")
+			return "CONFLICT (content): Merge conflict in core/docker-compose.yml", fmt.Errorf("exit status 1")
 		}
 		return "Successfully rebased.", nil
 	case strings.HasSuffix(cmd, " push"):
@@ -320,12 +320,12 @@ func TestRunDeploy_AuthHostOutsideTheDeployIsSkipped(t *testing.T) {
 }
 
 func TestPlanAuthCheck(t *testing.T) {
-	cfg := &config.Config{Defaults: config.Defaults{AuthService: "authelia"}, Services: map[string]config.Service{"authelia": {Host: "pi"}}}
+	cfg := &config.Config{Defaults: config.Defaults{AuthService: "authelia"}, Services: map[string]config.Service{"authelia": {Host: "edge"}}}
 	a := planAuthCheck(cfg)
-	if a == nil || a.Host != "pi" || strings.Join(a.Validate, " ") != authValidateArgv {
+	if a == nil || a.Host != "edge" || strings.Join(a.Validate, " ") != authValidateArgv {
 		t.Fatalf("got %+v", a)
 	}
-	cfg.Services["authelia"] = config.Service{Host: "pi", Disabled: true}
+	cfg.Services["authelia"] = config.Service{Host: "edge", Disabled: true}
 	if planAuthCheck(cfg) != nil {
 		t.Error("a disabled auth service has nothing to validate")
 	}
@@ -723,7 +723,7 @@ func TestSyncWithOrigin_DirtyRemote(t *testing.T) {
 			return strings.TrimSpace(string(out)), err
 		}
 	}
-	who := syncWho{owner: "optiplex's", where: "on optiplex"}
+	who := syncWho{owner: "core's", where: "on core"}
 	say := func(string, ...any) {}
 
 	t.Run("edits origin does not touch are carried across", func(t *testing.T) {
