@@ -123,6 +123,7 @@ Other:
   hemma list [--all] [--policy] [--json]  Overview: hosts, domains, services (with TUNNEL: internet-reachable or local-only, echoing each service's declared 'tunnel' field), and auth groups (users + restricted services). Services default to THIS host; --all shows every host. --policy adds LOCAL and PUBLIC columns with the per-horizon auth policy. --json prints a JSON array of {name, fqdn, host, backend, auth_mode, policy_local, policy_public, tunnel} objects (every service, regardless of host) for scripts; suppresses everything else.
   hemma verify [--all] [<fqdn>]  Check live DNS/Caddy per service. Defaults to services this host can check; --all includes the rest. Run on each host; needs docker.
   hemma measure [--compare] [-n <runs>] [-w <warmup>] <service|fqdn|url>  Time the request breakdown (dns/connect/tls/ttfb) for a service or any URL. --compare A/Bs split-horizon vs public read-only (dns-host only, services only).
+  hemma preflight                List uncommitted files hemma owns (exit 1 if any); 'hemma deploy' runs it on every remote host first.
   hemma doctor [--fix]           Audit the repo (gitignored files, Caddyfile imports — including trusted_proxies, generated-file drift — including cloudflared config.yml, auth wiring); --fix reconciles files and .gitignore.
   hemma version
   hemma completion <bash|zsh>    Print a shell completion script to stdout (see 'hemma help completion' to install).

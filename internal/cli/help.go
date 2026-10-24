@@ -412,6 +412,17 @@ dirty tree; runs 'git pull --rebase' if origin has work this checkout lacks
 any unpushed commits; and refuses if the generated files then no longer match
 services.yaml (run 'hemma doctor --fix', commit, push, deploy again).`},
 
+	{"preflight", `hemma preflight — list uncommitted files hemma owns (exit 1 if any)
+
+Usage: hemma preflight
+
+The dirty-tree rule of 'hemma deploy', as a command: only the files hemma
+owns (services.yaml, the manifest, the files it lists, its .gitignore block)
+must be committed, since they are what goes live; anything else in the repo
+is left alone. deploy runs it on every remote host first and stops, naming
+the files, if any host is not ready — so every host needs a hemma that knows
+this command before it can be deployed to. Needs no services.yaml.`},
+
 	{"doctor", `hemma doctor — audit the repo (gitignore, Caddyfile imports, drift, auth,
 deploy readiness)
 

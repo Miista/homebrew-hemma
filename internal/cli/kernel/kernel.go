@@ -125,6 +125,8 @@ func Route(env *Env, repoRoot, cfgPath, cmd string, args []string) (code int, ok
 		return Apply(env, repoRoot, cfgPath, args), true
 	case "deploy":
 		return Deploy(env, repoRoot, cfgPath, args), true
+	case "preflight":
+		return Preflight(env, repoRoot, args), true
 	case "measure":
 		return Measure(env, cfgPath, args), true
 	}

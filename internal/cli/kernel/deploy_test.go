@@ -106,6 +106,7 @@ type fakeRunner struct {
 	incoming      map[string]string // host -> `git diff --name-only HEAD...@{u}` output
 	rebaseFail    map[string]bool   // host -> `git pull --rebase` stops on a conflict
 	pushRejected  map[string]bool   // host -> `git push` is refused (origin moved)
+	preflightErr  map[string]string // host -> `hemma preflight` fails with this output (uncommitted hemma files, or an old hemma)
 }
 
 func (f *fakeRunner) run(t deployTarget, argv []string) (string, error) {
@@ -117,6 +118,11 @@ func (f *fakeRunner) run(t deployTarget, argv []string) (string, error) {
 			return "ssh: connect to host appbox.lan port 22: Connection refused", fmt.Errorf("exit status 255")
 		}
 		return "", nil
+	case cmd == "hemma preflight":
+		if out, bad := f.preflightErr[t.Name]; bad {
+			return out, fmt.Errorf("exit status 1")
+		}
+		return "Nothing uncommitted that hemma owns.", nil
 	case strings.HasSuffix(cmd, " fetch"), strings.HasSuffix(cmd, "rebase --abort"):
 		return "", nil
 	case strings.Contains(cmd, "rev-list --left-right --count"):
@@ -183,6 +189,7 @@ func TestRunDeploy_HappyPath(t *testing.T) {
 	// nothing more), then every host pulls: the remote at the convention path, the local at the local checkout.
 	wantPrefix := []string{
 		"appbox: true",
+		"appbox: hemma preflight",
 		"appbox: git -C ~/docker fetch",
 		"appbox: git -C ~/docker rev-list --left-right --count HEAD...@{u}",
 		"appbox: git -C ~/docker pull --ff-only",
@@ -893,5 +900,60 @@ func TestExecRunner_RebaseAbortRunsOnADoneContext(t *testing.T) {
 	out, err := r.run(local, []string{"git", "-C", "/repo", "rebase", "--abort"})
 	if err != nil || !strings.Contains(out, "ran -C /repo rebase --abort") {
 		t.Errorf("rebase --abort must still run: err=%v out=%q", err, out)
+	}
+}
+
+// Phase 1 runs the deploy host's own dirty-tree rule on every remote (`hemma preflight` there): uncommitted hemma files
+// on a remote would be applied as they are, a state origin has never seen, so the deploy stops before anything is synced
+// or applied. An older hemma that does not know the command fails the same way: every host needs one that does.
+func TestDeploy_RemoteWithUncommittedHemmaFilesIsRefused(t *testing.T) {
+	cfg := deployCfg()
+	targets, _ := resolveDeployTargets(cfg, "resolver", nil)
+	f := &fakeRunner{preflightErr: map[string]string{"appbox": "The repo has uncommitted files hemma owns — commit them before deploying:\n M services.yaml"}}
+	var out strings.Builder
+	env := &Env{Out: &out, Err: &out, NoTerminal: true}
+	if code := runDeploy(env, f, targets, "/repo", nil, nil); code != 1 {
+		t.Fatalf("want exit 1, got %d\n%s", code, out.String())
+	}
+	for _, c := range f.calls {
+		if strings.Contains(c, "pull") || strings.Contains(c, "apply") || strings.Contains(c, "fetch") {
+			t.Errorf("nothing may be pulled, synced or applied after a failed preflight, got %q", c)
+		}
+	}
+	if !strings.Contains(out.String(), "M services.yaml") || !strings.Contains(out.String(), `"appbox" is not ready to deploy`) {
+		t.Errorf("the remote's own output and the host must be shown:\n%s", out.String())
+	}
+	// an old hemma on the remote
+	f = &fakeRunner{preflightErr: map[string]string{"appbox": "hemma: unknown command \"preflight\""}}
+	out.Reset()
+	if code := runDeploy(env, f, targets, "/repo", nil, nil); code != 1 || !strings.Contains(out.String(), "too old") {
+		t.Errorf("an old hemma must stop the deploy with the upgrade hint: %d\n%s", code, out.String())
+	}
+}
+
+// `hemma preflight` is the deploy host's dirty-tree check as a command: the uncommitted hemma files, exit 1; clean, exit 0.
+func TestPreflight(t *testing.T) {
+	clone := gitRepo(t)
+	var out strings.Builder
+	env := &Env{Out: &out, Err: &out, NoTerminal: true}
+	if code := cmdPreflight(env, clone, nil); code != 0 || !strings.Contains(out.String(), "Nothing uncommitted") {
+		t.Errorf("clean: want 0, got %d %q", code, out.String())
+	}
+	if err := os.WriteFile(filepath.Join(clone, "f"), []byte("2"), 0o644); err != nil { // not hemma's
+		t.Fatal(err)
+	}
+	out.Reset()
+	if code := cmdPreflight(env, clone, nil); code != 0 {
+		t.Errorf("somebody else's edit: want 0, got %d %q", code, out.String())
+	}
+	if err := os.WriteFile(filepath.Join(clone, "services.yaml"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if code := cmdPreflight(env, clone, nil); code != 1 || !strings.Contains(out.String(), "?? services.yaml") || strings.Contains(out.String(), "\n M f") {
+		t.Errorf("hemma's file: want 1 naming it and only it, got %d %q", code, out.String())
+	}
+	if code := cmdPreflight(env, clone, []string{"x"}); code != 2 {
+		t.Errorf("arguments are refused with 2, got %d", code)
 	}
 }

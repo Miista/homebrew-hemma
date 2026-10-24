@@ -22,7 +22,7 @@ import (
 // the same way. It runs in three strictly ordered phases:
 //
 //	Phase 0 — probe reachability: ssh <dest> true  (remotes only)
-//	Phase 1 — pull everywhere:    git -C ~/docker pull --ff-only
+//	Phase 1 — pull everywhere:    hemma preflight (remotes: no uncommitted hemma files), sync with origin, git -C ~/docker pull --ff-only
 //	Phase 2 — validate configuration: the auth provider's config validate, on the auth host
 //	Phase 3 — apply everywhere:   hemma apply   (remotes first, self LAST)
 //
@@ -288,12 +288,28 @@ func deployPreflight(env *Env, repoRoot string, beforePush func() error) error {
 		out, err := cmd.CombinedOutput()
 		return strings.TrimSpace(string(out)), err
 	}
+	ours, err := dirtyOwned(git, repoRoot)
+	if err != nil {
+		return err
+	}
+	if len(ours) > 0 {
+		return fmt.Errorf("the local repo is dirty — commit before deploying:\n%s", strings.Join(ours, "\n"))
+	}
+	if out, err := git("rev-parse", "--abbrev-ref", "@{u}"); err != nil {
+		return fmt.Errorf("cannot find the upstream of the current branch in %s (no upstream configured?): %v\n%s", repoRoot, err, out)
+	}
+	_, err = syncWithOrigin(git, syncLocal, true, beforePush, func(format string, a ...any) { fmt.Fprintf(env.Out, format+"\n", a...) })
+	return err
+}
+
+// dirtyOwned lists the `git status --porcelain` lines of hemma-owned files that are uncommitted in the checkout. Only
+// hemma's own files must be committed: they are what goes live, so they must carry a commit message. Anything else in
+// the repo is somebody else's work in progress (see OwnedPaths) and is left alone.
+func dirtyOwned(git gitFunc, repoRoot string) ([]string, error) {
 	out, err := git("status", "--porcelain", "--untracked-files=all")
 	if err != nil {
-		return fmt.Errorf("cannot check the repo's git status in %s: %v\n%s", repoRoot, err, out)
+		return nil, fmt.Errorf("cannot check the repo's git status in %s: %v\n%s", repoRoot, err, out)
 	}
-	// Only hemma's own files must be committed: they are what goes live, so they must carry a commit message. Anything
-	// else in the repo is somebody else's work in progress (see OwnedPaths) and is left alone, as on a remote host.
 	owned := OwnedPaths(repoRoot, func(p string) ([]byte, bool) {
 		b, err := git("show", "HEAD:"+p)
 		return []byte(b), err == nil
@@ -304,14 +320,38 @@ func deployPreflight(env *Env, repoRoot string, beforePush func() error) error {
 			ours = append(ours, line)
 		}
 	}
+	return ours, nil
+}
+
+// cmdPreflight is `hemma preflight`: the dirty-tree rule of the deploy host, as a command, so that `hemma deploy` can
+// apply the same rule to every REMOTE host (phase 1 runs it there over ssh, before anything is synced or applied).
+// Lists the uncommitted files hemma owns and exits 1 if there are any; a clean checkout exits 0 and says so. It needs
+// no services.yaml: the files it reads are the manifest and git's own state.
+func cmdPreflight(env *Env, repoRoot string, args []string) int {
+	if len(args) > 0 {
+		errf(env, "preflight takes no arguments.")
+		return 2
+	}
+	git := func(args ...string) (string, error) {
+		out, err := env.command("git", append([]string{"-C", repoRoot}, args...)...).CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+	ours, err := dirtyOwned(git, repoRoot)
+	if err != nil {
+		errf(env, "%v", err)
+		return 1
+	}
 	if len(ours) > 0 {
-		return fmt.Errorf("the local repo is dirty — commit before deploying:\n%s", strings.Join(ours, "\n"))
+		errf(env, "The repo has uncommitted files hemma owns — commit them before deploying:\n%s", strings.Join(ours, "\n"))
+		return 1
 	}
-	if out, err := git("rev-parse", "--abbrev-ref", "@{u}"); err != nil {
-		return fmt.Errorf("cannot find the upstream of the current branch in %s (no upstream configured?): %v\n%s", repoRoot, err, out)
-	}
-	_, err = syncWithOrigin(git, syncLocal, true, beforePush, func(format string, a ...any) { fmt.Fprintf(env.Out, format+"\n", a...) })
-	return err
+	fmt.Fprintln(env.Out, "Nothing uncommitted that hemma owns.")
+	return 0
+}
+
+// Preflight routes `hemma preflight` (see cmdPreflight).
+func Preflight(env *Env, repoRoot string, args []string) int {
+	return cmdPreflight(env, repoRoot, args)
 }
 
 // isRebaseAbort recognises the one git command that puts a repo back after a failed rebase. It must run even when the
@@ -497,6 +537,11 @@ func headArgv(t deployTarget, localRepo string) []string {
 // never depends on a hemma binary being installed.
 const inProcessApply = "<in-process hemma>"
 
+// preflightArgv is the remote host's own dirty-tree check (cmdPreflight): it runs there, with that host's manifest,
+// so the rule is the deploy host's by construction. The host's hemma must know the command: an older one fails it,
+// and with it the deploy — every host needs a hemma with `preflight` before a deploy can touch it.
+func preflightArgv() []string { return []string{"hemma", "preflight"} }
+
 func applyArgv(t deployTarget, localRepo string) []string {
 	if t.Local {
 		return []string{inProcessApply, "-C", localRepo, "apply"}
@@ -611,6 +656,18 @@ func runDeploy(env *Env, r deployRunner, targets []deployTarget, localRepo strin
 	for _, t := range targets {
 		if t.Local {
 			continue
+		}
+		// The deploy host's own rule, on the remote: uncommitted hemma files there would be applied in phase 3 as they
+		// are — a state origin has never seen — so the deploy stops here instead, naming them.
+		if out, err := r.run(t, preflightArgv()); err != nil {
+			fmt.Fprintf(env.Out, "\n%s== %s ==%s\n", boldOn, t.Name, boldOff)
+			printIndented(env, out)
+			fmt.Fprintln(env.Out)
+			errf(env, "%q is not ready to deploy — deploy aborted, phase 3 (apply) never started.", t.Name)
+			hint(env, "Commit (or discard) hemma's files on that host, then deploy again. If it says the command is")
+			hint(env, "unknown, that host's hemma is too old for this deploy: upgrade it first.")
+			hint(env, "No runtime state was changed anywhere.")
+			return 1
 		}
 		pushed, err := reconcileRemote(env, r, t)
 		if err != nil {

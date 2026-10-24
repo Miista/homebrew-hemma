@@ -30,7 +30,7 @@ _hemma() {
         cword=$COMP_CWORD
     }
 
-    local verbs="add update remove create enable disable defaults list verify apply deploy doctor measure version help completion"
+    local verbs="add update remove create enable disable defaults list verify apply deploy preflight doctor measure version help completion"
     local nouns="service host domain"
     local set_keys="__SET_KEYS__"
     local flags="--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --auth-policy-local --auth-policy-public --tunnel --public --ip --ssh --trusted-proxies --all -a --policy --fix --chdir -C --help -h"
@@ -82,7 +82,7 @@ const zshCompletionTemplate = `#compdef hemma splitdns
 
 _hemma() {
     local -a verbs nouns set_keys flags
-    verbs=(add update remove create enable disable defaults list verify apply deploy doctor measure version help completion)
+    verbs=(add update remove create enable disable defaults list verify apply deploy preflight doctor measure version help completion)
     nouns=(service host domain)
     set_keys=(__SET_KEYS__)
     flags=(--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --auth-policy-local --auth-policy-public --tunnel --public --ip --ssh --trusted-proxies --all -a --policy --fix --chdir -C --help -h)
