@@ -130,6 +130,11 @@ func TestCheckState(t *testing.T) {
 		{"add service", map[string]any{"name": "n", "fqdn": "n.example.com", "host": "edge", "backend": "n:1"}, ""},
 		{"add service", map[string]any{"name": "n", "fqdn": "n.example.com", "host": "ghost", "backend": "n:1"}, "no host"},
 		{"add service", map[string]any{"name": "n", "fqdn": "n.other.org", "host": "edge", "backend": "n:1"}, "not under a defined domain"},
+		// the planner's shape rule, checked before the file is touched: these would be persisted and then skipped
+		{"add service", map[string]any{"name": "n", "fqdn": "foo bar.example.com", "host": "edge", "backend": "n:1"}, "not a valid address"},
+		{"add service", map[string]any{"name": "n", "fqdn": "-x.example.com", "host": "edge", "backend": "n:1"}, "not a valid address"},
+		{"add service", map[string]any{"name": "n", "fqdn": "x..example.com", "host": "edge", "backend": "n:1"}, "not a valid address"},
+		{"update service", map[string]any{"name": "web", "fqdn": "under_score.example.com"}, "not a valid address"},
 		{"remove service", map[string]any{"name": "web"}, ""},
 		{"remove service", map[string]any{"name": "ghost"}, "no service"},
 		{"remove domain", map[string]any{"name": "nope.com"}, "no domain"},

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"hemma/internal/config"
+	"hemma/internal/plan"
 )
 
 // Typed fields. A field with a Ref is not "a string": it is a host, a service, a
@@ -141,6 +142,11 @@ func (s *server) checkState(c *command, vals map[string]any) error {
 				return fmt.Errorf("%s: there is no domain %q", f.Label, v)
 			}
 		case "fqdn":
+			// The planner's own shape rule, first: an address it would skip is refused here instead of being
+			// persisted and reported as "saved, with problems".
+			if !plan.ValidFQDN(v) {
+				return fmt.Errorf("%s: %q is not a valid address (letters, digits and hyphens, dot-separated, ending in a domain)", f.Label, v)
+			}
 			if _, ok := cfg.MatchDomain(v); !ok {
 				return fmt.Errorf("%s: %q is not under a defined domain", f.Label, v)
 			}
