@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"time"
 
 	"golang.org/x/term"
 )
@@ -44,6 +45,18 @@ func (e *Env) command(name string, args ...string) *exec.Cmd {
 		ctx = context.Background()
 	}
 	return exec.CommandContext(ctx, name, args...)
+}
+
+// cleanupCommand builds an external command that puts things back (a `git rebase --abort`) and so must run even
+// when the Env's context is already done — which is exactly when the command it cleans up after was killed.
+// It keeps the context's values but not its cancellation, under its own short deadline.
+func (e *Env) cleanupCommand(name string, args ...string) (*exec.Cmd, context.CancelFunc) {
+	ctx := e.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+	return exec.CommandContext(ctx, name, args...), cancel
 }
 
 // interactive reports whether a command may prompt on the process's terminal.

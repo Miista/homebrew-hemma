@@ -1,7 +1,9 @@
 package kernel
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -389,7 +391,7 @@ func TestDeployPreflight(t *testing.T) {
 	}
 
 	// Clean and pushed → allowed.
-	if err := deployPreflight(stdEnv(), clone); err != nil {
+	if err := deployPreflight(stdEnv(), clone, nil); err != nil {
 		t.Errorf("clean pushed repo should pass preflight: %v", err)
 	}
 
@@ -411,7 +413,7 @@ func TestDeployPreflight(t *testing.T) {
 
 	// Somebody else's file edited (not hemma's: not services.yaml, not in the manifest) → left alone, deploy goes on.
 	write("f", "2")
-	if err := deployPreflight(stdEnv(), clone); err != nil {
+	if err := deployPreflight(stdEnv(), clone, nil); err != nil {
 		t.Errorf("an edit to a file hemma does not own must not block the deploy: %v", err)
 	}
 	if out := gitOut(t, clone, "status", "--porcelain"); !strings.Contains(out, " f") {
@@ -422,7 +424,7 @@ func TestDeployPreflight(t *testing.T) {
 	for _, name := range []string{"services.yaml", "gen/x.conf", "hemma-manifest.yaml"} {
 		old, _ := os.ReadFile(filepath.Join(clone, name))
 		write(name, string(old)+"# edit\n")
-		err := deployPreflight(stdEnv(), clone)
+		err := deployPreflight(stdEnv(), clone, nil)
 		if err == nil || !strings.Contains(err.Error(), "dirty") || !strings.Contains(err.Error(), name) {
 			t.Errorf("uncommitted %s should be refused, got %v", name, err)
 		} else if strings.Contains(err.Error(), " f\n") || strings.HasSuffix(err.Error(), " f") {
@@ -437,7 +439,7 @@ func TestDeployPreflight(t *testing.T) {
 	}
 	write("newdir/y.conf", "1\n")
 	write("hemma-manifest.yaml", "svc:\n  - gen/x.conf\n  - newdir/y.conf\n")
-	if err := deployPreflight(stdEnv(), clone); err == nil || !strings.Contains(err.Error(), "newdir/y.conf") {
+	if err := deployPreflight(stdEnv(), clone, nil); err == nil || !strings.Contains(err.Error(), "newdir/y.conf") {
 		t.Errorf("an untracked file the manifest lists should be refused, got %v", err)
 	}
 	git("checkout", "--", "hemma-manifest.yaml")
@@ -447,7 +449,7 @@ func TestDeployPreflight(t *testing.T) {
 	write("services.yaml", "{a: 1}\n")
 	git("add", "services.yaml")
 	git("commit", "-m", "local only")
-	if err := deployPreflight(stdEnv(), clone); err != nil {
+	if err := deployPreflight(stdEnv(), clone, nil); err != nil {
 		t.Errorf("an unpushed commit should be pushed by the preflight, got %v", err)
 	}
 	if out := gitOut(t, clone, "rev-list", "@{u}..HEAD"); out != "" {
@@ -455,7 +457,7 @@ func TestDeployPreflight(t *testing.T) {
 	}
 
 	// Not a git repo at all → refused.
-	if err := deployPreflight(stdEnv(), t.TempDir()); err == nil {
+	if err := deployPreflight(stdEnv(), t.TempDir(), nil); err == nil {
 		t.Error("a non-repo should be refused")
 	}
 }
@@ -529,7 +531,7 @@ func TestDeployPreflight_SyncsWithOrigin(t *testing.T) {
 		commitFile(t, other, "g", "from elsewhere", "elsewhere")
 		gitOut(t, other, "push")
 		var out strings.Builder
-		if err := deployPreflight(&Env{Out: &out, Err: &out, NoTerminal: true}, clone); err != nil {
+		if err := deployPreflight(&Env{Out: &out, Err: &out, NoTerminal: true}, clone, nil); err != nil {
 			t.Fatalf("behind origin should be pulled, got %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(clone, "g")); err != nil {
@@ -546,7 +548,7 @@ func TestDeployPreflight_SyncsWithOrigin(t *testing.T) {
 		gitOut(t, other, "push")
 		commitFile(t, clone, "h", "mine", "mine") // a different file: no conflict
 		var out strings.Builder
-		if err := deployPreflight(&Env{Out: &out, Err: &out, NoTerminal: true}, clone); err != nil {
+		if err := deployPreflight(&Env{Out: &out, Err: &out, NoTerminal: true}, clone, nil); err != nil {
 			t.Fatalf("diverged without overlap should be rebased and pushed, got %v", err)
 		}
 		if log := gitOut(t, clone, "log", "--format=%s", "-3"); log != "mine\nelsewhere\ninit" {
@@ -566,7 +568,7 @@ func TestDeployPreflight_SyncsWithOrigin(t *testing.T) {
 		gitOut(t, other, "push")
 		commitFile(t, clone, "f", "mine", "mine")
 		before := gitOut(t, clone, "rev-parse", "HEAD")
-		err := deployPreflight(stdEnv(), clone)
+		err := deployPreflight(stdEnv(), clone, nil)
 		if err == nil || !strings.Contains(err.Error(), "nothing was changed") {
 			t.Fatalf("a conflict should be refused with a plain message, got %v", err)
 		}
@@ -587,7 +589,7 @@ func TestDeployPreflight_SyncsWithOrigin(t *testing.T) {
 		dir := t.TempDir()
 		gitOut(t, dir, "init", "-b", "main")
 		commitFile(t, dir, "f", "1", "init")
-		if err := deployPreflight(stdEnv(), dir); err == nil || !strings.Contains(err.Error(), "upstream") {
+		if err := deployPreflight(stdEnv(), dir, nil); err == nil || !strings.Contains(err.Error(), "upstream") {
 			t.Errorf("no upstream should be refused, got %v", err)
 		}
 	})
@@ -736,7 +738,7 @@ func TestSyncWithOrigin_DirtyRemote(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(clone, "f"), []byte("my edit"), 0o644); err != nil { // f: tracked, origin did not touch it
 			t.Fatal(err)
 		}
-		if _, err := syncWithOrigin(run(clone), who, true, say); err != nil {
+		if _, err := syncWithOrigin(run(clone), who, true, nil, say); err != nil {
 			t.Fatalf("disjoint edits should be carried across: %v", err)
 		}
 		if b, _ := os.ReadFile(filepath.Join(clone, "f")); string(b) != "my edit" {
@@ -765,7 +767,7 @@ func TestSyncWithOrigin_DirtyRemote(t *testing.T) {
 			t.Fatal(err)
 		}
 		before := gitOut(t, clone, "rev-parse", "HEAD")
-		_, err := syncWithOrigin(run(clone), who, true, say)
+		_, err := syncWithOrigin(run(clone), who, true, nil, say)
 		if err == nil || !strings.Contains(err.Error(), "uncommitted edits to f") || !strings.Contains(err.Error(), "nothing was touched") {
 			t.Fatalf("an edit to a file origin also changed must be refused by name, got %v", err)
 		}
@@ -785,7 +787,7 @@ func TestSyncWithOrigin_DirtyRemote(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(clone, "f"), []byte("my edit"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		pushed, err := syncWithOrigin(run(clone), who, true, say)
+		pushed, err := syncWithOrigin(run(clone), who, true, nil, say)
 		if err != nil || !pushed {
 			t.Fatalf("an unpushed commit should be pushed regardless of the dirty tree: pushed=%v err=%v", pushed, err)
 		}
@@ -810,5 +812,86 @@ func TestExecRunner_SSHDestinationAfterDoubleDash(t *testing.T) {
 	}
 	if want := "-o\nBatchMode=yes\n--\n-oProxyCommand=true\nhemma apply\n"; out != want {
 		t.Errorf("ssh argv:\n%q\nwant\n%q", out, want)
+	}
+}
+
+// A failed pull is reported for what it is: only a conflict between the two sides' commits is "could not be
+// combined"; anything else is a failed pull with git's own words, never "overlap with your 0 unpushed commits".
+func TestSyncWithOrigin_PullFailureWording(t *testing.T) {
+	fake := func(ahead, behind int, pullOut string) gitFunc {
+		return func(args ...string) (string, error) {
+			switch args[0] {
+			case "fetch":
+				return "", nil
+			case "rev-list":
+				return fmt.Sprintf("%d\t%d", ahead, behind), nil
+			case "status", "diff":
+				return "", nil
+			case "pull":
+				return pullOut, fmt.Errorf("exit status 1")
+			case "rebase":
+				return "", nil
+			}
+			t.Fatalf("unexpected git %v", args)
+			return "", nil
+		}
+	}
+	say := func(string, ...any) {}
+	_, err := syncWithOrigin(fake(0, 1, "fatal: unable to access 'origin': Could not resolve host"), syncLocal, true, nil, say)
+	if err == nil || strings.Contains(err.Error(), "overlap") || !strings.Contains(err.Error(), "pulling 1 new commit from origin failed") || !strings.Contains(err.Error(), "Could not resolve host") {
+		t.Errorf("a pull that fails without a conflict must say so, with git's words: %v", err)
+	}
+	_, err = syncWithOrigin(fake(2, 1, "Committer identity unknown"), syncLocal, true, nil, say)
+	if err == nil || strings.Contains(err.Error(), "overlap") || !strings.Contains(err.Error(), "Committer identity unknown") {
+		t.Errorf("a rebase that fails for another reason is not a conflict: %v", err)
+	}
+	_, err = syncWithOrigin(fake(2, 1, "CONFLICT (content): Merge conflict in f\nerror: could not apply abc... mine"), syncLocal, true, nil, say)
+	if err == nil || !strings.Contains(err.Error(), "1 new commit that overlap with your 2 unpushed commits") {
+		t.Errorf("a real conflict keeps the conflict wording: %v", err)
+	}
+}
+
+// beforePush runs after origin's commits are in and before ours go out: an error there (deploy checks for drift)
+// leaves the commits unpushed, so a commit every host would refuse never reaches origin.
+func TestDeployPreflight_BeforePushStopsThePush(t *testing.T) {
+	clone := gitRepo(t)
+	commitFile(t, clone, "h", "mine", "mine")
+	calls := 0
+	err := deployPreflight(stdEnv(), clone, func() error { calls++; return fmt.Errorf("the repo has drifted") })
+	if err == nil || !strings.Contains(err.Error(), "the repo has drifted") || !strings.Contains(err.Error(), "stay unpushed") {
+		t.Fatalf("a failing beforePush must stop the sync and say the commits were not pushed, got %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("beforePush should run once, ran %d times", calls)
+	}
+	if gitOut(t, clone, "rev-list", "@{u}..HEAD") == "" {
+		t.Error("nothing may have been pushed")
+	}
+	// Level with origin: nothing to push, so the check is not even consulted.
+	gitOut(t, clone, "push")
+	calls = 0
+	if err := deployPreflight(stdEnv(), clone, func() error { calls++; return fmt.Errorf("no") }); err != nil || calls != 0 {
+		t.Errorf("with nothing to push beforePush must not run: err=%v calls=%d", err, calls)
+	}
+}
+
+// The command that puts a repo back after a failed rebase runs even when the context that killed the rebase is done;
+// every other command honours the context.
+func TestExecRunner_RebaseAbortRunsOnADoneContext(t *testing.T) {
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\necho ran \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := execRunner{env: &Env{Out: io.Discard, Err: io.Discard, Ctx: ctx, NoTerminal: true}}
+	local := deployTarget{Name: "self", Local: true}
+	if out, err := r.run(local, []string{"git", "-C", "/repo", "status"}); err == nil {
+		t.Errorf("an ordinary command must honour the done context, got %q", out)
+	}
+	out, err := r.run(local, []string{"git", "-C", "/repo", "rebase", "--abort"})
+	if err != nil || !strings.Contains(out, "ran -C /repo rebase --abort") {
+		t.Errorf("rebase --abort must still run: err=%v out=%q", err, out)
 	}
 }

@@ -51,6 +51,7 @@ Error: The repo has drifted (43 generated files out of sync with services.yaml) 
 Run 'hemma doctor --fix', commit and push the result, then deploy again.
 --- external commands ---
 git -C <repo> status --porcelain --untracked-files=all
+git -C <repo> show HEAD:.gitignore
 git -C <repo> show HEAD:hemma-manifest.yaml
 git -C <repo> show HEAD:splitdns-manifest.yaml
 git -C <repo> show HEAD:sd-manifest.yaml

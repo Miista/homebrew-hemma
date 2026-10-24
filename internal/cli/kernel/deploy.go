@@ -104,8 +104,19 @@ func cmdDeploy(env *Env, repoRoot, cfgPath string, args []string) int {
 	// Sync with origin. This machine is the deploy host, and other hosts commit to the same repository too (an
 	// updater on one of them, say), so origin having work this checkout lacks is ordinary, not an error for a person
 	// to resolve. The sync can change services.yaml, and with it the hosts to deploy to, so the config is read again
-	// afterwards.
-	if err := deployPreflight(env, repoRoot); err != nil {
+	// afterwards. Before any of this checkout's commits are pushed, the generated files are checked against
+	// services.yaml: a drifted commit on origin would make every host's apply refuse, so it is caught here, unpushed.
+	driftBeforePush := func() error {
+		c, _ := loadExisting(env, cfgPath, "deploy")
+		if c == nil {
+			return fmt.Errorf("services.yaml cannot be read")
+		}
+		if driftRefusal(env, repoRoot, c) {
+			return fmt.Errorf("the repo has drifted")
+		}
+		return nil
+	}
+	if err := deployPreflight(env, repoRoot, driftBeforePush); err != nil {
 		errf(env, "%v", err)
 		hint(env, "Deploy means \"make the fleet match origin\" — origin must carry the change.")
 		return 1
@@ -128,7 +139,7 @@ func cmdDeploy(env *Env, repoRoot, cfgPath string, args []string) int {
 	// If a remote host turns out to hold commits origin lacks, they reach origin during phase 1 and this host must take
 	// them in too: the same sync and drift check again.
 	resync := func() error {
-		if err := deployPreflight(env, repoRoot); err != nil {
+		if err := deployPreflight(env, repoRoot, driftBeforePush); err != nil {
 			return err
 		}
 		c, _ := loadExisting(env, cfgPath, "deploy")
@@ -180,6 +191,7 @@ func (r execRunner) run(t deployTarget, argv []string) (string, error) {
 	if t.Local && argv[0] == inProcessApply {
 		return r.applyLocal(argv[2])
 	}
+	cleanup := argv[0] == "git" && len(argv) > 3 && isRebaseAbort(argv[3:]) // git -C <repo> rebase --abort: see Env.cleanupCommand
 	if !t.Local {
 		// The command is passed as a single string for the remote shell to
 		// parse — that is what lets the literal ~/docker expand remotely.
@@ -188,7 +200,13 @@ func (r execRunner) run(t deployTarget, argv []string) (string, error) {
 		// (-oProxyCommand=… runs locally, before any key is checked). After `--` it can only be a host name.
 		argv = []string{"ssh", "-o", "BatchMode=yes", "--", t.Dest, strings.Join(argv, " ")}
 	}
-	out, err := r.env.command(argv[0], argv[1:]...).CombinedOutput()
+	cmd := r.env.command(argv[0], argv[1:]...)
+	if cleanup {
+		var cancel func()
+		cmd, cancel = r.env.cleanupCommand(argv[0], argv[1:]...)
+		defer cancel()
+	}
+	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
 
@@ -255,9 +273,19 @@ var syncLocal = syncWho{"your", "here"}
 
 // deployPreflight makes THIS checkout carry exactly what origin should: refuses a dirty tree (a local-only edit would
 // deploy a state that does not match what this machine shows), then brings it level with origin (syncWithOrigin).
-func deployPreflight(env *Env, repoRoot string) error {
+//
+// beforePush, when given, runs after origin's commits have been taken in and before this checkout's unpushed commits
+// go out (cmdDeploy checks the generated files for drift there): an error stops the sync with nothing pushed, so a
+// commit that every host's apply would refuse never reaches origin.
+func deployPreflight(env *Env, repoRoot string, beforePush func() error) error {
 	git := func(args ...string) (string, error) {
-		out, err := env.command("git", append([]string{"-C", repoRoot}, args...)...).CombinedOutput()
+		cmd := env.command("git", append([]string{"-C", repoRoot}, args...)...)
+		if isRebaseAbort(args) {
+			var cancel func()
+			cmd, cancel = env.cleanupCommand("git", append([]string{"-C", repoRoot}, args...)...)
+			defer cancel()
+		}
+		out, err := cmd.CombinedOutput()
 		return strings.TrimSpace(string(out)), err
 	}
 	out, err := git("status", "--porcelain", "--untracked-files=all")
@@ -282,8 +310,14 @@ func deployPreflight(env *Env, repoRoot string) error {
 	if out, err := git("rev-parse", "--abbrev-ref", "@{u}"); err != nil {
 		return fmt.Errorf("cannot find the upstream of the current branch in %s (no upstream configured?): %v\n%s", repoRoot, err, out)
 	}
-	_, err = syncWithOrigin(git, syncLocal, true, func(format string, a ...any) { fmt.Fprintf(env.Out, format+"\n", a...) })
+	_, err = syncWithOrigin(git, syncLocal, true, beforePush, func(format string, a ...any) { fmt.Fprintf(env.Out, format+"\n", a...) })
 	return err
+}
+
+// isRebaseAbort recognises the one git command that puts a repo back after a failed rebase. It must run even when the
+// context that killed the rebase is done, or the repo is left mid-rebase: see Env.cleanupCommand.
+func isRebaseAbort(args []string) bool {
+	return len(args) >= 2 && args[0] == "rebase" && args[1] == "--abort"
 }
 
 // syncWithOrigin brings one checkout level with origin: `git pull --rebase` when origin has commits it lacks,
@@ -297,7 +331,7 @@ func deployPreflight(env *Env, repoRoot string) error {
 // only stashed around the rebase when none of them is also changed by origin's new commits — then re-applying them
 // cannot conflict. If one is, nothing is touched and the error names the files. Returns whether anything was pushed
 // (so the caller knows origin gained commits).
-func syncWithOrigin(git gitFunc, who syncWho, allowDirty bool, say func(format string, a ...any)) (pushed bool, err error) {
+func syncWithOrigin(git gitFunc, who syncWho, allowDirty bool, beforePush func() error, say func(format string, a ...any)) (pushed bool, err error) {
 	// A few rounds: after a push, someone else's push can land in between and refuse it once more.
 	for round := 0; round < 3; round++ {
 		if out, err := git("fetch"); err != nil {
@@ -322,9 +356,16 @@ func syncWithOrigin(git gitFunc, who syncWho, allowDirty bool, say func(format s
 			}
 			if out, err := git(pullArgs...); err != nil {
 				git("rebase", "--abort") // a no-op unless the rebase stopped on a conflict
-				return pushed, fmt.Errorf("origin has %d new %s that overlap with %s %d unpushed %s, so they could not be combined — nothing was changed %s.\n%s\n"+
-					"Resolve it in the repo (git pull --rebase, fix the conflict), then deploy again.",
-					behind, plural(behind, "commit"), who.owner, ahead, plural(ahead, "commit"), who.where, out)
+				// Only a conflict between the two sides' commits is "could not be combined"; anything else (origin
+				// unreachable, an untracked file origin now tracks, no committer identity) is just a failed pull, and
+				// git's own words say what.
+				if ahead > 0 && isRebaseConflict(out) {
+					return pushed, fmt.Errorf("origin has %d new %s that overlap with %s %d unpushed %s, so they could not be combined — nothing was changed %s.\n%s\n"+
+						"Resolve it in the repo (git pull --rebase, fix the conflict), then deploy again.",
+						behind, plural(behind, "commit"), who.owner, ahead, plural(ahead, "commit"), who.where, out)
+				}
+				return pushed, fmt.Errorf("pulling %d new %s from origin failed — nothing was changed %s:\n%s",
+					behind, plural(behind, "commit"), who.where, out)
 			}
 			if ahead > 0 {
 				say("Rebased %s %d unpushed %s onto %d new from origin.", who.owner, ahead, plural(ahead, "commit"), behind)
@@ -334,6 +375,11 @@ func syncWithOrigin(git gitFunc, who syncWho, allowDirty bool, say func(format s
 		}
 		if ahead == 0 {
 			return pushed, nil
+		}
+		if beforePush != nil {
+			if err := beforePush(); err != nil {
+				return pushed, fmt.Errorf("%v — %s %d unpushed %s stay unpushed.", err, who.owner, ahead, plural(ahead, "commit"))
+			}
 		}
 		out, err := git("push")
 		if err == nil {
@@ -348,6 +394,12 @@ func syncWithOrigin(git gitFunc, who syncWho, allowDirty bool, say func(format s
 	return pushed, fmt.Errorf("origin kept changing while pushing — try again")
 }
 
+// isRebaseConflict reports whether a failed `git pull --rebase` stopped on a conflict between the two sides' commits
+// (as opposed to failing for any other reason).
+func isRebaseConflict(out string) bool {
+	return strings.Contains(out, "CONFLICT") || strings.Contains(out, "could not apply")
+}
+
 // reconcileRemote brings one REMOTE host's checkout level with origin before the fleet pulls (see syncWithOrigin): its
 // own unpushed commits (the updater's, say) reach origin, and origin's new ones reach it. Uncommitted edits there are
 // respected: see syncWithOrigin.
@@ -356,7 +408,7 @@ func reconcileRemote(env *Env, r deployRunner, t deployTarget) (pushed bool, err
 		out, err := r.run(t, append([]string{"git", "-C", remoteRepoPath}, args...))
 		return strings.TrimSpace(out), err
 	}
-	return syncWithOrigin(git, syncWho{owner: t.Name + "'s", where: "on " + t.Name}, true,
+	return syncWithOrigin(git, syncWho{owner: t.Name + "'s", where: "on " + t.Name}, true, nil,
 		func(format string, a ...any) { fmt.Fprintf(env.Out, "  "+format+"\n", a...) })
 }
 
