@@ -1,0 +1,7 @@
+$ hemma create widget x
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Unknown noun "widget" for create — expected app or user.
+Usage: hemma create app oidc <app_name> [callback_path]  |  hemma create user <username>
+--- files ---

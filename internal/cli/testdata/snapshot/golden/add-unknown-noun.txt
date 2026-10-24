@@ -1,0 +1,7 @@
+$ hemma add widget x
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Unknown noun "widget" — expected service, host, or domain.
+Usage: hemma add service|host|domain ...
+--- files ---

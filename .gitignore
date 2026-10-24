@@ -4,6 +4,9 @@
 /splitdns
 /hemma
 
+# The cross-compiled hemma-ui that Dockerfile.ui copies in (make ui-binary).
+/dist/
+
 # Never commit built binaries — use goreleaser / deploy.sh / apt.
 *-linux-amd64
 *-linux-arm64
@@ -26,10 +29,9 @@ id_*
 # macOS cruft.
 .DS_Store
 .claude/
-mikrotik_backup
-optiplex_deploy
 
 # Editor swap/backup files.
 *.swp
 *.swo
 *~
+/hemma-ui

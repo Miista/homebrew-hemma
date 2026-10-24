@@ -93,6 +93,11 @@ var (
 	fqdnRe = regexp.MustCompile(`^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$`)
 )
 
+// ValidFQDN reports whether s has the shape planService accepts as a service address (dot-separated labels of
+// letters, digits and inner hyphens, ending in a TLD of two or more letters), so a front end can refuse what the
+// planner would skip before persisting it. Same rule, exported for that purpose only.
+func ValidFQDN(s string) bool { return fqdnRe.MatchString(s) }
+
 // Build validates every service and returns the desired plan.
 func Build(c *config.Config) *Plan {
 	p := &Plan{

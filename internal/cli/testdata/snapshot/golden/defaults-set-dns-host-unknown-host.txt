@@ -1,0 +1,6 @@
+$ hemma defaults set dns-host nowhere
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Host "nowhere" does not exist — add it first with: hemma add host nowhere <ip>
+--- files ---

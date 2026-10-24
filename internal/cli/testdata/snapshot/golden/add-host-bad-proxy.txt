@@ -1,0 +1,6 @@
+$ hemma add host lab 192.0.2.30 --trusted-proxies nonsense
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: "nonsense" is not a valid IP address or CIDR.
+--- files ---

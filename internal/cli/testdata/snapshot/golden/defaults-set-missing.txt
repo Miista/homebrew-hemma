@@ -1,0 +1,7 @@
+$ hemma defaults set
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing what to set — expected dns-host, deploy-host, auth-snippet, auth-service, tunnel-dir, or local-networks.
+Usage: hemma defaults set dns-host <name>  |  hemma defaults set deploy-host <name>   (use '-' to clear)  |  hemma defaults set auth-snippet <path>   (use '-' to clear)  |  hemma defaults set auth-service <name>   (use '-' to clear)  |  hemma defaults set tunnel-dir <dir>   (use '-' to clear)  |  hemma defaults set local-networks <cidr,...>   (use '-' to clear)
+--- files ---

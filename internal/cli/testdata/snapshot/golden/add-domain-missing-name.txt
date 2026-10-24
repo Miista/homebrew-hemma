@@ -1,0 +1,7 @@
+$ hemma add domain
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the <name>.
+Usage: hemma add domain <name>
+--- files ---

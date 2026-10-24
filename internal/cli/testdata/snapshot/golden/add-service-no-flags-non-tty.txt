@@ -1,0 +1,6 @@
+$ hemma add service newsvc
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: no flags given and stdin is not a terminal — pass flags (see hemma help add)
+--- files ---

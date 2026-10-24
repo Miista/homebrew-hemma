@@ -1,0 +1,6 @@
+$ hemma remove host nowhere
+exit: 0
+--- stdout ---
+Host "nowhere" does not exist; nothing to remove.
+--- stderr ---
+--- files ---

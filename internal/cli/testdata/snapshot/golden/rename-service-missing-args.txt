@@ -1,0 +1,7 @@
+$ hemma rename service dash
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing <old> and/or <new> service name.
+Usage: hemma rename service <old> <new>
+--- files ---

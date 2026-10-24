@@ -1,0 +1,7 @@
+$ hemma rename
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the noun for "rename" — expected service, host, or domain.
+Usage: hemma rename service|host|domain ...
+--- files ---

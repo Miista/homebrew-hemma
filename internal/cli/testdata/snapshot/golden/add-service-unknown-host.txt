@@ -1,0 +1,6 @@
+$ hemma add service newsvc --fqdn newsvc.home.example --host nowhere --backend newsvc:8080
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Unknown host "nowhere" — defined hosts: core, edge.
+--- files ---

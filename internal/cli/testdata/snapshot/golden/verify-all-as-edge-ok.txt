@@ -1,0 +1,130 @@
+$ hemma verify --all
+# setup: doctor --fix
+# machine: host="edge" tools="ok"
+exit: 1
+--- stdout ---
+Running on host "edge".
+
+== chat · chat.home.example ==
+  ✗ chat.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use chat:9000 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== dash · dash.home.example ==
+  ✗ dash.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use dash:3000 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== downloads · downloads.home.example ==
+  ✗ downloads.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use vpn:8090 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== home · ha.home.example ==
+  · this host is neither the resolver (core) nor the service host (core) for home — nothing to check here
+
+== homepage · start.home.example ==
+  · this host is neither the resolver (core) nor the service host (core) for homepage — nothing to check here
+
+== indexer · indexer.home.example ==
+  ✗ indexer.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use indexer:6767 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== media · watch.home.example ==
+  ✗ watch.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use media:8096 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== music · music.home.example ==
+  ✗ music.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use music:4533 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== panel · panel.home.example ==
+  · this host is neither the resolver (core) nor the service host (core) for panel — nothing to check here
+
+== registry · registry.home.example ==
+  · this host is neither the resolver (core) nor the service host (core) for registry — nothing to check here
+
+== robot · robot.home.example ==
+  ✗ robot.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use robot:8765 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== speed · speed.home.example ==
+  ✗ speed.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use speed-tracker:80 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== sso · auth.home.example ==
+  · this host is neither the resolver (core) nor the service host (core) for sso — nothing to check here
+
+== status · status.home.example ==
+  · this host is neither the resolver (core) nor the service host (core) for status — nothing to check here
+
+== wiki · wiki.home.example ==
+  ✗ wiki.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use wiki:3000 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+== wikijs · docs.home.example ==
+  ✗ docs.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
+  ✓ caddy validate passes
+  ✗ reverse_proxy does not use docs:8000 (declared backend)
+  ✗ no HTTPS response from local Caddy ((none))
+
+--- stderr ---
+Error: 30 checks failed.
+--- external commands ---
+git -C <repo> check-ignore --stdin
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve chat.home.example:443:127.0.0.1 https://chat.home.example/ 2>/dev/null
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve dash.home.example:443:127.0.0.1 https://dash.home.example/ 2>/dev/null
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve downloads.home.example:443:127.0.0.1 https://downloads.home.example/ 2>/dev/null
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve indexer.home.example:443:127.0.0.1 https://indexer.home.example/ 2>/dev/null
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve watch.home.example:443:127.0.0.1 https://watch.home.example/ 2>/dev/null
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve music.home.example:443:127.0.0.1 https://music.home.example/ 2>/dev/null
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve robot.home.example:443:127.0.0.1 https://robot.home.example/ 2>/dev/null
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve speed.home.example:443:127.0.0.1 https://speed.home.example/ 2>/dev/null
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve wiki.home.example:443:127.0.0.1 https://wiki.home.example/ 2>/dev/null
+docker exec caddy sh -c caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null
+docker exec caddy sh -c caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy sh -c cat /etc/caddy/sites/*.caddy 2>/dev/null
+docker exec caddy sh -c curl -sk -o /dev/null -w '%{http_code}' --resolve docs.home.example:443:127.0.0.1 https://docs.home.example/ 2>/dev/null
+--- files ---

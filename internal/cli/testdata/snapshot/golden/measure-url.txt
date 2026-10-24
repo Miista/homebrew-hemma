@@ -1,0 +1,6 @@
+$ hemma measure https://example.com/
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: measure script failed for https://example.com/: exec: "bash": executable file not found in $PATH
+--- files ---

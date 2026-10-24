@@ -1,0 +1,9 @@
+$ hemma measure dash
+# setup: doctor --fix
+# machine: host="core" tools="ok"
+exit: 0
+--- stdout ---
+--- stderr ---
+--- external commands ---
+bash -s https://dash.home.example/  5 3
+--- files ---

@@ -1,0 +1,1667 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>hemma</title>
+<!-- the brand tile as the tab icon: the SVG where it is supported, the .ico elsewhere (both are served behind the sign-in, like the page) -->
+<link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg">
+<link rel="icon" sizes="any" href="/static/icons/favicon.ico">
+<link rel="stylesheet" href="/static/style.css">
+<!-- authy announces itself (sets html[data-authy]); the Sign out link only shows when the gate is on -->
+<script src="/auth/client.js"></script>
+<style>html:not([data-authy]) .only-with-gate { display: none !important }</style>
+</head>
+<body>
+<aside id="side">
+  <div class="brand"><span class="brand-tile" aria-hidden="true">h</span><span class="brand-name">hemma</span></div>
+  <nav id="tabs" aria-label="Pages"></nav>
+  <div id="sidefoot"></div>
+</aside>
+
+<div id="app">
+  <!-- a phone's top bar: the brand, and where the changes stand -->
+  <header id="top">
+    <div class="brand"><span class="brand-tile" aria-hidden="true">h</span><span class="brand-name">hemma</span></div>
+    <span id="hint"><span class="dot"></span><span id="hinttext"></span></span>
+    <button type="button" id="burger" aria-label="Menu" aria-haspopup="menu" aria-expanded="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div id="bmenu" role="menu" hidden></div>
+  </header>
+  <main id="main"><div id="page"><section id="view"></section></div></main>
+  <div id="deploybar" class="bar" aria-live="polite"></div>
+  <div id="savebar" class="bar" aria-live="polite"></div>
+  <nav id="mtabs" aria-label="Pages"></nav>
+  <div id="toast" class="toast" role="status" hidden></div>
+</div>
+
+<!-- One in-app confirmation for every "are you sure?": nothing uses the browser's own confirm() box. -->
+<dialog id="kdlg" tabindex="-1" autofocus aria-labelledby="ktitle" aria-describedby="kmsg">
+  <form method="dialog" id="kform">
+    <div class="dhd"><div class="tt"><h2 id="ktitle"></h2></div></div>
+    <div class="dbd"><p id="kmsg"></p></div>
+    <div class="dft"><div class="grp"><button type="button" id="kcancel">Cancel</button><button type="button" id="kgo" class="primary">OK</button></div></div>
+  </form>
+</dialog>
+
+<!-- The recovery editor: services.yaml as text, for when the file cannot be loaded and no typed form can run. -->
+<dialog id="edlg" tabindex="-1" autofocus aria-labelledby="etitle">
+  <form method="dialog" id="eform">
+    <div class="dhd"><div class="tt"><h2 id="etitle">Edit services.yaml</h2><p class="meta" id="ehelp"></p></div><button type="button" class="x" id="ex" aria-label="Close">×</button></div>
+    <div class="dbd">
+      <textarea id="etext" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="services.yaml"></textarea>
+      <p class="err" id="eerr"></p>
+    </div>
+    <div class="dft"><div class="grp"><button type="button" id="ecancel">Cancel</button><button class="primary" id="ego">Save</button></div></div>
+  </form>
+</dialog>
+
+<dialog id="rdlg" tabindex="-1" autofocus>
+  <div class="dhd"><div class="tt"><h2 id="rtitle"></h2></div><button type="button" class="x" id="rx" aria-label="Close">×</button></div>
+  <div class="dbd"><div id="rview" hidden></div><pre id="rout"></pre></div>
+  <div class="dft"><div class="grp"><button type="button" id="rclose">Close</button></div></div>
+</dialog>
+
+<!-- Deploy as a checklist: each step as it happens (syncing hosts, restarting services, …), then the outcome. -->
+<dialog id="pdlg" tabindex="-1" autofocus aria-labelledby="ptitle">
+  <div class="dhd"><div class="tt"><h2 id="ptitle">Deploying…</h2></div></div>
+  <div class="dbd"><ul id="psteps" class="steps" aria-live="polite"></ul><p class="meta" id="pnote">You can close this: the deploy carries on.</p></div>
+  <div class="dft"><div class="grp"><button type="button" id="pdetails" hidden>Details</button><button type="button" id="pclose" class="primary">Hide</button></div></div>
+</dialog>
+
+<!-- Tools: checks and recovery, rarely needed, so not a page of their own. Picking one closes this first, so dialogs never stack. -->
+<dialog id="tdlg" tabindex="-1" autofocus aria-labelledby="ttitle">
+  <div class="dhd"><div class="tt"><h2 id="ttitle">Tools</h2><p class="meta">Run checks against what is live right now.</p></div><button type="button" class="x" id="tx" aria-label="Close">×</button></div>
+  <div class="dbd" id="tbody"></div>
+  <div class="dft"><div class="grp"><button type="button" id="tclose">Close</button></div></div>
+</dialog>
+
+<dialog id="dlg" tabindex="-1" autofocus aria-labelledby="dtitle">
+  <form method="dialog" id="form">
+    <div class="dhd"><div class="tt"><h2 id="dtitle"></h2><p class="meta" id="dhelp"></p></div><button type="button" class="x" id="dx" aria-label="Close">×</button></div>
+    <div class="dbd"><div id="fields" style="display:contents"></div><p class="err" id="derr"></p></div>
+    <div class="dft" id="dft">
+      <div class="dfloat" id="dfloat" role="group" aria-label="Unsaved changes"><button type="button" id="dfcancel">Cancel</button><button type="button" id="dfgo" class="primary">Save</button></div>
+      <div class="left" id="dleft"></div>
+      <div class="grp">
+        <button type="button" id="cancel">Cancel</button>
+        <button type="button" id="dclear" hidden>Clear</button>
+        <button class="primary" id="go">Run</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="cdlg" tabindex="-1" autofocus aria-labelledby="ctitle">
+  <form method="dialog" id="cform">
+    <div class="dhd"><div class="tt"><h2 id="ctitle">Save changes</h2><p class="meta">Saving records these changes with your message.</p></div><button type="button" class="x" id="cx" aria-label="Close">×</button></div>
+    <div class="dbd">
+      <label><span>Change message</span><span class="hint" id="cprefix" hidden></span><textarea id="cmsg" rows="3" required maxlength="2000" placeholder="e.g. Add docsapp and move grafana to nas"></textarea></label>
+      <div id="cdiff" class="chgs"></div>
+      <div id="cadv" class="adv" hidden></div>
+      <p class="err" id="cerr"></p>
+    </div>
+    <div class="dft">
+      <label class="switchrow dswitch" id="cdeploy"><span class="switch"><input type="checkbox" id="cdep"><span class="track"></span></span><span class="txt"><b style="font-weight:600">Deploy right after saving</b><span class="hint" id="cdephelp"></span></span></label>
+      <div class="grp"><button type="button" id="ccancel">Cancel</button><button class="primary" id="cgo">Save</button></div>
+    </div>
+  </form>
+</dialog>
+
+<script>
+// A session that has ended answers API calls with 401: go back through sign-in instead of showing a broken page.
+{ const f = window.fetch; window.fetch = async (...a) => { const r = await f(...a); if (r.status === 401) location.reload(); return r; }; }
+const $ = s => document.querySelector(s);
+let changes = { git: false, files: [] };
+let state = { services: [], hosts: [], domains: [], settings: [] };
+let cmds = {};
+const TABS = ["Services", "Infrastructure", "History", "Issues"];   // Infrastructure = hosts, domains and the repo-wide settings. Tools is a dialog, opened from the menu.
+// The page you are on lives in the URL (#/issues), so reload, back/forward and a pasted link all land on the same page.
+const tabFromHash = () => location.hash.startsWith("#/history") ? "History" : location.hash === "#/settings" ? "Infrastructure" : TABS.find(t => "#/" + t.toLowerCase() === location.hash) || "Services";   // Settings used to be a page of its own: an old link lands on Infrastructure
+let tab = tabFromHash();
+// History is a tab: every Save, newest first. #/history is all of it, #/history/<service> is filtered to one service (the History
+// button in a service's dialog opens that). `hist` holds what is loaded for it.
+const histHash = () => { const m = location.hash.match(/^#\/history\/(.+)$/); return m ? decodeURIComponent(m[1]) : null; };
+let hist = null, pendingHist = tab === "History";
+window.addEventListener("popstate", () => {
+  if (broken) return;
+  const t = tabFromHash();
+  if (t === "History") { openHistory(histHash(), false); return; }
+  if (t === tab) return;
+  tab = t; render(); if (t === "Issues") checkIssues();
+});
+const isPhone = () => matchMedia("(max-width: 719px)").matches;
+// Back to the top of the page. On a phone the page itself scrolls (so that tapping the iOS status bar scrolls it to the top, which iOS does only
+// for the page, not for a scrolling box inside it); on a wide screen the content area scrolls beside the sidebar.
+const scrollToTop = () => { if (isPhone()) window.scrollTo(0, 0); else $("#main").scrollTop = 0; };
+// Tab icons (shown above the label on a phone; the wide screen's sidebar is text only).
+const ICON = (inner) => `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+const ICONS = {
+  Services: ICON('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>'),
+  Infrastructure: ICON('<rect x="3" y="4" width="18" height="6.5" rx="1.8"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.8"/><path d="M7 7.25h.01M7 16.75h.01"/>'),
+  History: ICON('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/>'),
+  Issues: ICON('<path d="M12 3.5L2.5 20h19L12 3.5z"/><path d="M12 10v4M12 17h.01"/>'),
+};
+const TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v5M14 11v5"/></svg>';
+// A badge says where the unsaved changes are: services on Services, hosts and domains on Infrastructure, defaults on Settings.
+function tabBadge(t) {
+  const es = pending ? pending.entities : [];
+  if (t === "Services") return es.filter(e => e.kind === "Service").length;
+  if (t === "Infrastructure") return es.filter(e => e.kind === "Host" || e.kind === "Domain" || e.kind === "Setting").length;
+  if (t === "Issues") return issues.count;
+  return 0;
+}
+
+async function post(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const text = await r.text();
+  try { return { ...JSON.parse(text), status: r.status }; } catch { return { ok: false, status: r.status, output: `HTTP ${r.status}: ${text}` }; }
+}
+/* ---------- feedback ----------
+   No shared output panel. A change is confirmed with a short message; the bars at the bottom are what the page then
+   points you at (save, then deploy). Raw command output appears only where it IS the result (list, verify, doctor, …)
+   or behind "Details" when something needs a closer look. */
+let toastTimer;
+// A toast only REPORTS (with Details for the long version). It never asks a question: choices live in dialogs.
+function toast(msg, kind, details) {
+  const t = $("#toast"); t.className = "toast " + (kind || "") + (barsUp() ? " up" : "");
+  t.replaceChildren(el("span", msg));
+  if (details) t.append(btn("Details", () => { t.hidden = true; showResult(details.title, details.text); }));
+  if (kind === "err") t.append(btn("Dismiss", () => { t.hidden = true; }));
+  t.hidden = false; clearTimeout(toastTimer);
+  if (kind !== "err") toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
+}
+// Browsers focus the first field of a modal dialog by default (and a phone then pops its keyboard).
+// Focus the dialog itself instead: nothing is pre-selected, Tab and Escape still work.
+function openModal(d) { if (!d.open) d.showModal(); d.focus({ preventScroll: true }); }
+// Leaving a dialog that holds unsaved work asks first (×, a click on the backdrop, Esc, and a phone's Close); with nothing
+// to lose it just closes. Cancel is the explicit "throw it away" and does not ask.
+function leave(d, dirty) {
+  if (!dirty()) return d.close();
+  ask("Discard your changes?", "This dialog has unsaved changes. Closing it throws them away.", { ok: "Discard", danger: true }).then(yes => { if (yes) d.close(); });
+}
+// A click on the backdrop leaves the dialog the same way. The press must START on the backdrop too, or selecting text and
+// releasing outside the box would count.
+function closeOnBackdrop(d, dirty) {
+  let down = false;
+  d.addEventListener("mousedown", e => { down = e.target === d; });
+  d.addEventListener("click", e => { if (down && e.target === d) leave(d, dirty); down = false; });
+}
+let formDirty = () => false;   // the open form's (#dlg) own answer, set by whoever opens it
+let formChanged = () => {};    // called when something in the open form changes without a DOM event (a list entry added or removed)
+// setFloaty: on a phone, a form you edit has a footer of just Close (and the chevron menu), and a floating Cancel / Save bar that slides
+// up above it once something has changed. cfg: {label, save, reset}; null for every other dialog (their footer is unchanged).
+// Cancel resets the form to how it opened; Close leaves it.
+function setFloaty(cfg) {
+  const d = $("#dlg"), f = $("#dfloat");
+  d.classList.toggle("floaty", !!cfg); d.classList.remove("dirty"); f.classList.remove("show");
+  $("#cancel").textContent = cfg ? "Close" : "Cancel";
+  if (!cfg) return;
+  $("#dfgo").textContent = cfg.label; $("#dfgo").onclick = cfg.save; $("#dfcancel").onclick = cfg.reset;
+}
+const showFloaty = dirty => { if (!$("#dlg").classList.contains("floaty")) return; $("#dfloat").classList.toggle("show", dirty); $("#dlg").classList.toggle("dirty", dirty); };
+// actionsMenu: a chevron button that opens a small menu of actions (upwards, since it sits in a dialog's footer). items: [label, fn, class].
+function actionsMenu(items) {
+  const wrap = el("div", null, { className: "acts" });
+  const toggle = el("button", null, { type: "button", className: "morebtn" }); toggle.append(el("span", null, { className: "cv" }));   // a chevron: up while shut (the menu opens upward), down while open
+  toggle.setAttribute("aria-label", "More actions"); toggle.setAttribute("aria-haspopup", "menu"); toggle.setAttribute("aria-expanded", "false");
+  const menu = el("div", null, { className: "amenu", hidden: true }); menu.setAttribute("role", "menu");
+  const away = e => { if (!wrap.contains(e.target)) close(); };
+  const close = () => { const had = !menu.hidden; menu.hidden = true; toggle.setAttribute("aria-expanded", "false"); document.removeEventListener("click", away, true); if (had && menu.contains(document.activeElement)) toggle.focus(); };
+  items.forEach(([label, fn, cls]) => { const b = btn(label, () => { close(); fn(); }, cls); b.setAttribute("role", "menuitem"); menu.append(b); });
+  toggle.onclick = () => {
+    if (!menu.hidden) return close();
+    menu.hidden = false; toggle.setAttribute("aria-expanded", "true"); document.addEventListener("click", away, true);
+    menu.querySelector("button").focus();   // focus goes into the menu (Safari does not focus a button on click), so Esc and the arrow keys reach it
+  };
+  wrap.addEventListener("keydown", e => { if (e.key === "Escape" && !menu.hidden) { e.preventDefault(); e.stopPropagation(); close(); } });   // Esc closes the menu, not the dialog
+  wrap.append(toggle, menu);
+  return wrap;
+}
+let rawDirty = () => false;
+closeOnBackdrop($("#dlg"), () => formDirty());
+closeOnBackdrop($("#cdlg"), () => false);   // the Save dialog keeps what you typed instead of asking (see saveDraft)
+closeOnBackdrop($("#edlg"), () => rawDirty());
+closeOnBackdrop($("#rdlg"), () => false);
+closeOnBackdrop($("#pdlg"), () => false);   // Hide: the deploy carries on either way
+// ⌘↩ (Mac) / Ctrl+↩ (everywhere else) submits a form dialog from anywhere inside it — including the message box,
+// where a plain Enter has to stay a newline. Only the dialogs that SAVE something: never the confirmations, so a
+// destructive question can't be answered by a stray shortcut. A disabled button (nothing to save yet) is respected.
+const SUBMIT_KEY = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘↩" : "Ctrl+↩";
+for (const [dialog, go] of [["#cdlg", "#cgo"], ["#dlg", "#go"], ["#edlg", "#ego"]]) {
+  $(go).title = `Submit (${SUBMIT_KEY})`;
+  $(dialog).addEventListener("keydown", e => {
+    if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey) || e.isComposing || $(go).disabled) return;
+    e.preventDefault(); $(go).click();
+  });
+}
+// the × in a dialog's header closes it
+for (const [x, dialog, dirty] of [["#dx", "#dlg", () => formDirty()], ["#cx", "#cdlg", () => false], ["#ex", "#edlg", () => rawDirty()], ["#rx", "#rdlg", () => false]]) $(x).onclick = () => leave($(dialog), dirty);
+
+// ask: the app's own confirmation dialog. Resolves true on the action button, false on Cancel / Esc / the backdrop.
+function ask(title, message, { ok = "OK", danger = false, single = false } = {}) {
+  return new Promise(resolve => {
+    const d = $("#kdlg"); let yes = false;
+    $("#ktitle").textContent = title; $("#kmsg").textContent = message;
+    $("#kcancel").hidden = single;   // a notice with nothing to decide has only an OK
+    const go = $("#kgo"); go.textContent = ok; go.className = danger ? "danger" : "primary";
+    go.onclick = () => { yes = true; d.close(); };
+    $("#kcancel").onclick = () => d.close();
+    d.onclick = e => { if (e.target === d) d.close(); };   // a tap outside the box cancels
+    d.onclose = () => resolve(yes);
+    openModal(d);
+  });
+}
+// confirmCmd asks before an allowlisted command: titled with the command, its first word on the button; removals are red.
+const confirmCmd = (key, message) => ask(cmds[key].title, message, { ok: cmds[key].title.split(" ")[0], danger: key.startsWith("remove") });
+// showResult: the raw text in a box, or — when `view` is given — that drawn view (the raw text stays one click away).
+function showResult(title, text, view) {
+  $("#rtitle").textContent = title; $("#rout").textContent = text;
+  $("#rview").replaceChildren(...(view ? [view] : [])); $("#rview").hidden = !view; $("#rout").hidden = !!view;
+  openModal($("#rdlg"));
+}
+// measureView draws `hemma measure`'s output: per measured path (one, or A and B with --compare) a card with a bar per timing — the
+// mean, with the spread and range beneath — and the individual runs folded away. The timings are cumulative (connect includes dns,
+// tls includes connect, …), so the bars read as one request's timeline. Only the shape of measure.sh's lines is read; output with no
+// timing rows is not drawn (null: the caller shows the raw text).
+function measureView(text) {
+  const root = el("div", null, { className: "measure" });
+  const sections = [];
+  let cur = null, m;
+  const open = title => (cur = { title, notes: [], runs: [], stats: [], after: [] }, sections.push(cur));
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    if ((m = line.match(/^==\s*(.+?)\s*==$/))) open(m[1]);
+    else if ((m = line.match(/^Measuring (\S+)/))) { if (!cur || cur.stats.length) open(null); if (!cur.title) cur.title = m[1]; }
+    else if ((m = line.match(/^(\w+)\s+mean=\s*(\d+)ms\s+sd=\s*(\d+)ms\s+min=\s*(\d+)ms\s+max=\s*(\d+)ms$/))) { if (!cur) open(null); cur.stats.push({ label: m[1], mean: +m[2], sd: +m[3], min: +m[4], max: +m[5] }); }
+    else if ((m = line.match(/^run (\d+): (.*)$/))) { if (!cur) open(null); cur.runs.push(line); }
+    else if (/^Warming up/.test(line)) continue;
+    else { if (!cur) open(null); (cur.stats.length ? cur.after : cur.notes).push(line); }   // before the timings: about this path; after: the closing remark
+  }
+  const drawn = sections.filter(s => s.stats.length);
+  if (!drawn.length) return null;
+  const scale = Math.max(1, ...drawn.flatMap(s => s.stats.map(x => x.mean)));
+  for (const s of drawn) {
+    const card = el("div", null, { className: "vgroup mcard" });
+    if (s.title) { const h = el("div", null, { className: "vhead" }); h.append(el("b", s.title)); card.append(h); }
+    const body = el("div", null, { className: "mbody" });
+    s.notes.forEach(n => body.append(el("p", n, { className: "meta vnote" })));
+    for (const x of s.stats) {
+      const row = el("div", null, { className: "mrow" + (x.label === "total" ? " total" : "") });
+      const track = el("span", null, { className: "mtrack" }), fill = el("span", null, { className: "mfill" });
+      fill.style.width = Math.max(1, x.mean / scale * 100) + "%"; track.append(fill);
+      row.append(el("span", x.label, { className: "mlabel" }), track, el("span", `${x.mean} ms`, { className: "mval" }),
+        el("span", x.min === x.max ? `steady at ${x.min} ms` : `${x.min}–${x.max} ms · ±${x.sd}`, { className: "mdet" }));
+      body.append(row);
+    }
+    card.append(body);
+    if (s.runs.length) { const d = el("details", null, { className: "vraw mruns" }); d.append(el("summary", plural(s.runs.length, "run")), el("pre", s.runs.join("\n"))); card.append(d); }
+    root.append(card);
+  }
+  for (const n of sections.flatMap(s => s.after)) root.append(el("p", n, { className: "meta vnote" }));
+  const raw = el("details", null, { className: "vraw" });
+  raw.append(el("summary", "Raw output"), el("pre", text));
+  root.append(raw);
+  return root;
+}
+// verifyView draws `hemma verify`'s output like the deploy checklist: one card per service, a ✓/✗ row per check, then the outcome.
+// Only the shape of the lines is read (== name · fqdn ==, ✓/✗/· rows, the closing summary); anything else is shown as a note, and
+// output that has no service at all is not drawn (null: the caller shows the raw text).
+function verifyView(text) {
+  const root = el("div", null, { className: "verify" });
+  let group = null, services = 0, summary = null;
+  const icon = st => { const i = el("span", st === "done" ? "✓" : st === "failed" ? "✗" : "·", { className: "sicon " + st }); i.setAttribute("aria-hidden", "true"); return i; };
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    let m;
+    if ((m = line.match(/^==\s*(.+?)\s*·\s*(.+?)\s*==$/))) {
+      services++;
+      group = el("div", null, { className: "vgroup" });
+      group.append(el("div", null, { className: "vhead" }));
+      group.firstChild.append(el("b", m[1]), el("span", m[2], { className: "vfqdn" }));
+      root.append(group);
+    } else if ((m = line.match(/^([✓✗·])\s+(.*)$/)) && group) {
+      const st = m[1] === "✓" ? "done" : m[1] === "✗" ? "failed" : "note";
+      const row = el("div", null, { className: "vrow " + st });
+      row.append(icon(st), el("span", m[2], { className: "vtext" }), el("span", st === "done" ? "passed" : st === "failed" ? "failed" : "", { className: "sr-only" }));
+      group.append(row);
+    } else if (/^All checks passed/.test(line) || /^\d+ checks? failed\.?$/.test(line)) {
+      summary = el("div", line, { className: "vsum " + (/^All/.test(line) ? "ok" : "bad") });
+    } else {
+      root.append(el("p", line, { className: "meta vnote" }));
+      group = null;   // a note ends the card above it
+    }
+  }
+  if (!services) return null;
+  if (summary) root.append(summary);
+  const raw = el("details", null, { className: "vraw" });
+  raw.append(el("summary", "Raw output"), el("pre", text));
+  root.append(raw);
+  return root;
+}
+$("#rclose").onclick = () => $("#rdlg").close();
+// toastResult: one line for a finished action; warnings and failures keep the output behind Details.
+function toastResult(title, res, done) {
+  const text = res.output || res.error || "";
+  if (!res.ok) return toast(`${title} failed`, "err", { title, text });
+  // A successful change is just confirmed. The warnings a sync prints (repo-wide advisories such as "could not verify
+  // OIDC client …") are not about THIS change: they live on the Issues page, which lists what `hemma doctor` says.
+  toast(done || title, "ok");
+}
+// Commands whose output IS the result open it in a dialog; everything else just confirms.
+function notify(key, res) {
+  const c = cmds[key];
+  if (key === "verify" || key === "measure") { const out = res.output || res.error || "", view = (key === "verify" ? verifyView : measureView)(out); if (view) return showResult(c.title, out, view); }
+  if (c && (c.readonly || key === "doctor")) return showResult(c.title, (res.ok ? "" : "Finished with problems:\n\n") + (res.output || res.error || ""));
+  toastResult(c ? c.title : key, res, c ? `${c.title}: done` : "Done");
+}
+function el(tag, text, props) { const e = document.createElement(tag); if (text != null) e.textContent = text; return Object.assign(e, props || {}); }
+function btn(label, fn, cls) { const b = el("button", label, { onclick: fn }); if (cls) b.className = cls; return b; }
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many || one + "s"}`;
+
+// run executes an allowlisted command directly (no form), then refreshes.
+async function run(key, values, confirmMsg) {
+  if (confirmMsg && !await confirmCmd(key, confirmMsg)) return;
+  const res = await post("/api/run", { command: key, values });
+  if (!cmds[key].readonly) await load();
+  notify(key, res);
+}
+
+/* ---------- typed values ----------
+   A field is never "a string": it is a host, a service, a CIDR list… Known sets are pickers (a few options are a
+   segmented choice), lists are row-per-entry editors with an add box, free text is checked against its shape. The server
+   re-checks everything. */
+const RX = {
+  name: /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+  backend: /^[A-Za-z0-9._-]+:[0-9]+$/,
+  dnsname: /^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/,
+  path: /^\/[^\s,]*$/,
+  relpath: /^[A-Za-z0-9._][A-Za-z0-9._\/-]*$/,
+  ssh: /^([A-Za-z0-9_][A-Za-z0-9._-]*@)?[A-Za-z0-9][A-Za-z0-9.:_-]*$/,
+};
+const ipv4 = s => { const p = s.split("."); return p.length === 4 && p.every(x => /^\d{1,3}$/.test(x) && +x <= 255); };
+const isIP = s => ipv4(s) || (s.includes(":") && /^[0-9a-fA-F:.]+$/.test(s));
+const isCIDR = s => { const [a, n, ...r] = s.split("/"); return !r.length && n !== undefined && /^\d{1,3}$/.test(n) && isIP(a) && +n <= (ipv4(a) ? 32 : 128); };
+const CHECK = {  // each returns true or an error message
+  svcname: v => RX.name.test(v) || "use letters, digits, '.', '_' and '-' only",
+  name: v => RX.name.test(v) || "use letters, digits, '.', '_' and '-' only",
+  backend: v => (RX.backend.test(v) && +v.split(":").pop() >= 1 && +v.split(":").pop() <= 65535) || "use name:port, e.g. web:8080",
+  dnsname: v => RX.dnsname.test(v) || "not a valid domain name",
+  ip: v => isIP(v) || "not an IP address",
+  cidr: v => isCIDR(v) || "not a CIDR range, e.g. 192.168.1.0/24",
+  ipcidr: v => isIP(v) || isCIDR(v) || "not an IP address or CIDR range",
+  path: v => RX.path.test(v) || "must start with '/'",
+  relpath: v => (RX.relpath.test(v) && !v.includes("..")) || "must be a path inside the repo",
+  ssh: v => RX.ssh.test(v) || "use host or user@host",
+};
+const HINT = { ip: "192.168.1.10", backend: "name:port", dnsname: "example.com", cidr: "192.168.1.0/24", ipcidr: "IP or CIDR", path: "/path", name: "name", relpath: "folder/file", ssh: "user@10.0.0.2 (blank: the host name)" };
+const names = list => list.map(x => x.name);
+
+// A picker over a known set. `blank` adds a leading empty choice (optional fields).
+function picker(options, current, blank) {
+  // A required choice with nothing chosen yet: with one option it is simply that one; with several,
+  // make the user pick rather than leaving the control looking empty.
+  if (!blank && !current && options.length > 1 && !options.includes("")) blank = "Choose…";
+  const sel = el("select");
+  if (!options.length && !blank) sel.append(new Option("(none defined yet)", ""));
+  if (blank) sel.append(new Option(blank, ""));
+  options.forEach(o => sel.append(typeof o === "string" ? new Option(o === "" ? "(none)" : o, o) : new Option(o[1], o[0])));
+  sel.value = current ?? "";
+  if (sel.selectedIndex < 0 || (current && sel.value !== current) || (!current && !blank && sel.value === "" && options.length)) sel.selectedIndex = 0;
+  return sel;
+}
+// A segmented choice: every option visible, a highlight slides to the chosen one. `options` is [[value, label], …].
+// It fires a bubbling "change" on its node, like a select would.
+function segmented(options, current) {
+  const node = el("div", null, { className: "seg" }); node.setAttribute("role", "radiogroup");
+  const ind = el("span", null, { className: "ind" });
+  let value = options.some(o => o[0] === current) ? current : options[0][0];
+  const n = options.length, w = `((100% - 6px - ${(n - 1) * 3}px) / ${n})`;
+  const buttons = options.map(([v, label]) => { const b = el("button", label, { type: "button", onclick: () => set(v) }); b.setAttribute("role", "radio"); return b; });
+  function paint() {
+    const i = options.findIndex(o => o[0] === value);
+    ind.style.width = `calc${w}`; ind.style.left = `calc(3px + ${i} * (${w} + 3px))`;
+    buttons.forEach((b, j) => { b.classList.toggle("on", j === i); b.setAttribute("aria-checked", String(j === i)); });
+  }
+  function set(v) { if (v === value) return; value = v; paint(); node.dispatchEvent(new Event("change", { bubbles: true })); }
+  node.append(ind, ...buttons); paint();
+  return { node, get: () => value };
+}
+
+// A list of validated values: an add box, then one entry per row with a trash button.
+// IP addresses and ranges read in numeric order: 10.0.0.0/8 before 192.168.1.0/24.
+const ipKey = v => { const [ip, pre] = v.split("/"); return [ip.split(".").reduce((a, o) => a * 256 + (+o || 0), 0), pre == null ? 32 : +pre]; };
+const ipOrder = (a, b) => { const x = ipKey(a), y = ipKey(b); return x[0] - y[0] || x[1] - y[1]; };
+function listEditor(initial, check, placeholder, onchange, sortIP) {
+  let items = (initial || []).filter(Boolean);
+  if (sortIP) items.sort(ipOrder);
+  const wrap = el("div", null, { style: "display:flex;flex-direction:column;gap:8px" }), rows = el("ul", null, { className: "items" }), adder = el("div", null, { className: "adder" });
+  const inp = el("input", null, { type: "text", className: "mono", placeholder: placeholder || "", autocomplete: "off", autocapitalize: "off" });
+  const msg = el("div", null, { className: "err small" });
+  const draw = () => rows.replaceChildren(...(items.length ? items.map((v, i) => {
+    const li = el("li", null, { className: "item" });
+    const del = el("button", null, { type: "button", className: "icon", title: `Remove ${v}`, onclick: () => { items.splice(i, 1); draw(); onchange && onchange(); } });
+    del.setAttribute("aria-label", `Remove ${v}`);
+    del.innerHTML = TRASH;   // static markup, no user text
+    li.append(el("span", v), del);
+    return li;
+  }) : [el("li", "None yet.", { className: "none" })]));
+  const commit = () => {   // returns false if the box holds an invalid value
+    const v = inp.value.trim(); if (!v) return true;
+    const r = check(v);
+    if (r !== true) { msg.textContent = `"${v}": ${r}`; return false; }
+    if (!items.includes(v)) items.push(v);
+    if (sortIP) items.sort(ipOrder);
+    inp.value = ""; msg.textContent = ""; draw(); onchange && onchange(); return true;
+  };
+  inp.onkeydown = e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commit(); } };
+  adder.append(inp, el("button", "Add", { type: "button", className: "primary", onclick: commit }));
+  draw(); wrap.append(adder, msg, rows);   // the add box first: it stays put while the list grows beneath it
+  return { node: wrap, flush: commit, get: () => items.join(",") };
+}
+
+// The repo, as mounted into the container, as an expandable tree. Folders load when opened and
+// open themselves along the path of the current selection; click a file to choose it.
+// Hemma's own generated files are shown but can't be chosen.
+function fileTree(selected, onpick) {
+  let sel = selected || "";
+  const node = el("div", null, { style: "display:flex;flex-direction:column;gap:10px" }), picked = el("div", null, { className: "picked" }), tree = el("div", null, { className: "tree" });
+  const showPicked = () => { picked.replaceChildren(el("span", "Selected", { className: "meta", style: "font-family:var(--font);font-weight:400" }), el("span", sel || "None selected")); };
+  async function fill(ul, dir) {
+    const r = await fetch("/api/browse?path=" + encodeURIComponent(dir));
+    const data = await r.json();
+    if (data.error) { ul.replaceChildren(el("li", data.error, { className: "note err" })); return; }
+    if (!data.entries.length) { ul.replaceChildren(el("li", "Empty", { className: "note muted" })); return; }
+    ul.replaceChildren();
+    for (const e of data.entries) {
+      const li = el("li");
+      if (e.dir) {
+        const sub = el("ul"); sub.hidden = true;
+        const b = el("button", "▸ " + e.name + "/", { type: "button", className: "dir" });
+        let loaded = false;
+        const toggle = async () => {
+          sub.hidden = !sub.hidden; b.textContent = (sub.hidden ? "▸ " : "▾ ") + e.name + "/";
+          if (!sub.hidden && !loaded) { loaded = true; await fill(sub, e.path); }
+        };
+        b.onclick = toggle; li.append(b, sub);
+        if (sel.startsWith(e.path + "/")) await toggle();   // open along the current selection
+      } else {
+        const b = el("button", e.name + (e.generated ? "  (generated by hemma)" : ""), { type: "button" });
+        if (e.generated) { b.className = "gen"; b.disabled = true; }
+        if (e.path === sel) b.classList.add("sel");
+        b.onclick = () => { sel = e.path; tree.querySelectorAll("button.sel").forEach(x => x.classList.remove("sel")); b.classList.add("sel"); showPicked(); onpick && onpick(sel); };
+        li.append(b);
+      }
+      ul.append(li);
+    }
+  }
+  const root = el("ul"); tree.append(root); showPicked(); node.append(picked, tree); fill(root, "");
+  return { node, get: () => sel };
+}
+
+// formError: what to say in a form when a command refused. The CLI's report starts "Error: …" and may carry
+// follow-up lines (usage, hints) — the form needs the reason, not the report.
+const formError = out => (out || "").trim().split(/\n\s*\n|\n(?=Usage:|Run |Hint)/)[0].replace(/^Error:\s*/, "");
+
+// slug turns a service name into a DNS label: "Paper Less_1" → "paper-less-1".
+const slug = s => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+// A service address is "<name>.<domain>": pick the domain, type the name.
+function fqdnControl(current, required) {
+  const doms = state.domains;
+  const dom = doms.filter(d => current === d || current?.endsWith("." + d)).sort((a, b) => b.length - a.length)[0] || doms[0] || "";
+  const sub = current && dom && current !== dom ? current.slice(0, -(dom.length + 1)) : "";
+  const row = el("div", null, { className: "fqdn" });
+  const inp = el("input", null, { type: "text", className: "mono", value: sub, placeholder: "name", autocomplete: "off", autocapitalize: "off" });
+  const sel = picker(doms, dom);
+  row.append(inp, el("span", ".", { className: "dot" }), sel);
+  const wrap = el("div", null, { style: "display:flex;flex-direction:column;gap:6px" }); wrap.append(row, el("span", "Must end in one of your domains.", { className: "hint" }));
+  // The service's name may suggest the address as it is typed — until the person types their own address
+  // (typing in the box sets `own`; clearing it hands the box back to the suggestion).
+  let own = false;
+  inp.addEventListener("input", () => { own = inp.value !== ""; });
+  return { node: wrap, suggest: s => { if (!own) inp.value = s; }, get: () => { const s = inp.value.trim(); return s ? `${s}.${sel.value}` : sel.value; },
+           check: () => (required && !sel.value) ? "define a domain first (Infrastructure → Domains)" : (inp.value && !RX.dnsname.test(`${inp.value.trim()}.${sel.value || "x.io"}`) ? "the name has characters that are not allowed" : "") };
+}
+
+const MODE_HINT = { none: "Anyone who can reach the address can use it.", external: "The service handles sign-in itself. hemma adds no gate.", forward: "", oidc: "" };
+// One control for one field; returns {node, get(), check()} where check() is "" or an error.
+function control(fd, prefill, locked) {
+  const v = prefill[fd.name];
+  const need = r => (fd.required && !r) ? `${fd.label} is required` : "";
+  // An on/off field is a switch. The checkbox stays underneath (a real, focusable control); the track and knob are CSS.
+  if (fd.kind === "bool") {
+    const i = el("input", null, { type: "checkbox", checked: !!v });
+    const sw = el("span", null, { className: "switch" }); sw.append(i, el("span", null, { className: "track" }));
+    return { inline: true, node: sw, get: () => i.checked, check: () => "" };
+  }
+  if (fd.kind === "int") { const i = el("input", null, { type: "number", min: 0, max: 1000, value: v ?? "" });
+    return { node: i, get: () => i.value === "" ? "" : Number(i.value), check: () => "" }; }
+  if (fd.kind === "list") {
+    const cl = listEditor(String(v || "").split(",").filter(Boolean), CHECK[fd.ref] || (() => true), HINT[fd.ref], () => formChanged(), fd.ref === "ipcidr" || fd.ref === "cidr");
+    return { node: cl.node, get: () => cl.get(), check: () => cl.flush() ? "" : "fix or clear the value in the box" };
+  }
+  if (fd.ref === "fqdn") { const c = fqdnControl(v, fd.required); return { node: c.node, suggest: c.suggest, get: c.get, check: c.check }; }
+  // The four auth modes are a segmented choice, with a line of what the chosen one means.
+  if (fd.name === "auth-mode") {
+    const s = segmented([["none", "None"], ["forward", "Forward"], ["oidc", "OIDC"], ["external", "External"]], v || fd.default);
+    const hint = el("div", MODE_HINT[s.get()], { className: "hint" });
+    s.node.addEventListener("change", () => { hint.textContent = MODE_HINT[s.get()]; hint.hidden = !hint.textContent; });
+    hint.hidden = !hint.textContent;
+    const wrap = el("div", null, { style: "display:flex;flex-direction:column;gap:6px" }); wrap.append(s.node, hint);
+    s.node.addEventListener("change", () => wrap.dispatchEvent(new Event("change", { bubbles: true })));
+    return { node: wrap, get: s.get, check: () => "" };
+  }
+  // A locked name (a host being edited) is just shown: a disabled dropdown would read as a choice.
+  if (locked && (fd.ref === "host" || fd.ref === "service")) {
+    const i = el("input", null, { type: "text", className: "mono", value: v ?? "", readOnly: true });
+    return { node: i, get: () => v ?? "", check: () => "" };
+  }
+  const pickSet = { host: () => names(state.hosts), service: () => names(state.services), domain: () => state.domains,
+                    "service-fqdn": () => state.services.map(s => s.fqdn) }[fd.ref];
+  // A few hosts are a segmented choice too (an unchosen one is the first).
+  if (fd.ref === "host" && names(state.hosts).length >= 2 && names(state.hosts).length <= 3 && !locked) {
+    const s = segmented(names(state.hosts).map(n => [n, n]), v);
+    return { node: s.node, get: s.get, check: () => "" };
+  }
+  if (fd.options || pickSet) {
+    // An optional choice that already has a value must not offer "(none)": a service can't lose its host.
+    const blank = (fd.required || v || fd.default) ? null : (fd.ref === "service-fqdn" ? "(all services)" : "(none)");
+    const sel = picker(fd.options || pickSet(), v || fd.default, fd.options?.includes("") ? null : blank);   // a field with a default has no blank entry
+    if (locked) sel.disabled = true;
+    return { node: sel, get: () => sel.value, check: () => need(sel.value) };
+  }
+  const inp = el("input", null, { type: "text", className: "mono", value: v ?? "", autocomplete: "off", autocapitalize: "off", placeholder: HINT[fd.ref] || "" });
+  if (locked) inp.readOnly = true;
+  return { node: inp, get: () => inp.value.trim(),
+           check: () => { const s = inp.value.trim(); if (!s) return need(s); const r = (CHECK[fd.ref] || (() => true))(s); return r === true ? "" : `${fd.label}: ${r}`; } };
+}
+
+function dialogLabel(c) { return c.key.startsWith("add ") ? "Add " + c.key.slice(4) : c.key.startsWith("update ") ? "Save" : c.key.startsWith("rename ") ? "Rename" : "Run"; }
+// A form's title: an edited service is titled by its name; an edited host just says so.
+const formTitle = (c, prefill) => c.key === "update service" ? prefill.name : c.key === "update host" ? "Edit host" : c.title;
+
+// switchRow: a labelled on/off row with a line of explanation under the label, the switch on the right.
+function switchRow(label, hint, checked) {
+  const i = el("input", null, { type: "checkbox", checked });
+  const sw = el("span", null, { className: "switch" }); sw.append(i, el("span", null, { className: "track" }));
+  const txt = el("span", null, { className: "txt" }); txt.append(el("b", label, { style: "font-weight:600" }), el("span", hint, { className: "hint" }));
+  const lab = el("label", null, { className: "switchrow" }); lab.append(txt, sw);
+  return { node: lab, get: () => i.checked };
+}
+
+// openCmd renders a form from the command's schema; prefill pre-populates it.
+function openCmd(key, prefill = {}) {
+  const c = cmds[key];
+  $("#dtitle").textContent = formTitle(c, prefill); $("#dhelp").textContent = c.help || ""; $("#dhelp").hidden = !c.help; $("#derr").textContent = "";
+  // The Defaults editor leaves Save disabled until something changes: reset the shared buttons.
+  $("#dclear").hidden = true; $("#go").hidden = false; $("#cancel").textContent = "Cancel"; $("#go").textContent = dialogLabel(c); $("#go").disabled = false;
+  const left = $("#dleft"); left.replaceChildren();
+  const box = $("#fields"); box.replaceChildren();
+  const ctl = [];
+  let card = box;
+  const hideName = key === "update service" && prefill.__lock === "name";   // the title already is the name
+  for (const fd of c.fields) {
+    const k = control(fd, prefill, prefill.__lock === fd.name);
+    if (fd.name === "name" && k.node.tagName === "INPUT" && !k.node.readOnly) k.node.placeholder = key === "add host" ? "e.g. nas" : "e.g. docsapp";
+    const title = fd.label;
+    // A list holds buttons, so it must not live inside a <label> (tapping the title would press one).
+    const stack = fd.kind === "list" || fd.name === "auth-mode" || fd.name === "host" && k.node.classList?.contains("seg");
+    const lab = stack ? el("div", null, { className: "fld" }) : el("label", k.inline ? "" : title);
+    if (stack) lab.append(el("div", title, { className: "fl" }), k.node);
+    else if (k.inline) { lab.className = "switchrow"; const txt = el("span", null, { className: "txt" }); txt.append(el("b", fd.label, { style: "font-weight:600" })); if (fd.help) txt.append(el("span", fd.help, { className: "hint" })); lab.append(txt, k.node); }   // label on the left, the switch on the right
+    else lab.append(k.node);
+    if (fd.section) { card = el("section", null, { className: "card" }); card.append(el("h3", fd.section, { className: "sect" })); box.append(card); }   // a card per group of fields
+    if (!(hideName && fd.name === "name")) card.append(lab);
+    ctl.push({ fd, k, lab });
+  }
+  // A service can be switched off without being removed. This is not a field of the add/update command (it is the
+  // enable/disable command), so it lives here and runs after the form's own command.
+  let enabled = null;
+  if (key === "add service" || key === "update service") {
+    enabled = switchRow("Enabled", "Turn off to keep the config without serving it.", !prefill.disabled);
+    (box.querySelector(".card") || box).append(enabled.node);
+  }
+  // Fields that only mean something for some value of another field (auth groups, bypass paths and policy
+  // depend on the auth mode) are offered only then — the form cannot build a combination hemma would skip.
+  const byName = Object.fromEntries(ctl.map(x => [x.fd.name, x]));
+  const offered = x => { if (!x.fd.shows) return true; const [dep, vals] = x.fd.shows.split("="); return vals.split("|").includes(byName[dep]?.k.get() ?? ""); };
+  const syncShown = () => ctl.forEach(x => { if (x.fd.shows) x.lab.hidden = !offered(x); });
+  for (const dep of new Set(ctl.filter(x => x.fd.shows).map(x => x.fd.shows.split("=")[0]))) byName[dep]?.k.node.addEventListener("change", () => {
+    syncShown();
+    // choosing a mode that brings more fields: make sure the new ones are in view
+    requestAnimationFrame(() => requestAnimationFrame(() => byName[dep].lab.closest(".card")?.scrollIntoView({ block: "nearest", behavior: "smooth" })));
+  });
+  syncShown();
+  // Editing a service: Rename and Remove sit at the left of the footer, out of the way of Save (Remove asks to confirm).
+  if (key === "update service") {
+    const actions = [["History", () => { $("#dlg").close(); openHistory(prefill.name); }],
+                     ["Rename", () => { $("#dlg").close(); openCmd("rename service", { old: prefill.name, __lock: "old" }); }],
+                     ["Remove service", () => { $("#dlg").close(); run("remove service", { name: prefill.name }, cmds["remove service"].confirm); }, "dangerline"]];
+    // on a phone the three sit behind one chevron button, so Cancel and Save keep the row
+    if (isPhone()) left.append(actionsMenu(actions)); else left.append(...actions.map(([l, f, c]) => btn(l, f, c)));
+  }
+  if (key === "update host") left.append(btn("Remove host", () => { $("#dlg").close(); run("remove host", { name: prefill.name }, cmds["remove host"].confirm); }, "dangerline"));
+  // A new service: the name is usually the address too ("docsapp" → docsapp.example.com), so offer it as a courtesy.
+  if (key === "add service") {
+    const name = ctl.find(x => x.fd.name === "name"), addr = ctl.find(x => x.k.suggest);
+    if (name && addr) name.k.node.addEventListener("input", () => addr.k.suggest(slug(name.k.node.value)));
+  }
+  $("#go").onclick = async e => {
+    e.preventDefault();
+    const errs = ctl.filter(offered).map(({ k }) => k.check()).filter(Boolean);
+    if (errs.length) { $("#derr").textContent = errs[0]; return; }
+    const values = {};
+    for (const x of ctl) {
+      const { fd, k } = x;
+      // A field that is not offered is not sent — except on update, where it is sent EMPTY so that
+      // switching the mode away from one that used it also clears what it left behind.
+      if (!offered(x)) { if (c.update) values[fd.name] = ""; continue; }
+      const v = k.get();
+      if (fd.kind === "bool" || fd.kind === "int" && v !== "") values[fd.name] = v;
+      else if (fd.kind !== "int" && (v !== "" || c.update)) values[fd.name] = v;
+    }
+    if (c.confirm && !await confirmCmd(key, c.confirm)) return;
+    $("#go").disabled = true;
+    try {
+      const res = await post("/api/run", { command: key, values });
+      // A rejected request (HTTP 400) is a problem with what was entered: say so in the form. But a
+      // diagnostic that ran and found problems (verify, doctor) has produced its RESULT: show that.
+      const diagnostic = c.readonly || key === "doctor";
+      if (!res.ok && res.changed) {
+        // hemma SAVED the change and then reported a problem (typically: the entry was skipped, so nothing was
+        // generated for it). That is not "the form failed": close it, refresh, and put the report behind Details.
+        await load(); $("#dlg").close();
+        toast(`${c.title}: saved, but hemma skipped it`, "warn", { title: c.title, text: res.output });
+        return;
+      }
+      if (!res.ok && !(diagnostic && res.status === 200)) { $("#derr").textContent = formError(res.output); return; }
+      // the Enabled switch, when it changed (the form's own command went through)
+      let flipFailed = false;
+      if (enabled && enabled.get() !== !prefill.disabled) {
+        const r2 = await post("/api/run", { command: enabled.get() ? "enable service" : "disable service", values: { name: values.name || prefill.name } });
+        flipFailed = !r2.ok;
+      }
+      if (!c.readonly) await load();   // refresh behind the dialog first, so no stale value flashes
+      $("#dlg").close(); notify(key, res);
+      if (flipFailed) toast("Saved, but the service could not be switched " + (enabled.get() ? "on" : "off"), "warn");
+    } finally { $("#go").disabled = false; }
+  };
+  const snap = () => JSON.stringify([ctl.map(x => x.k.get()), enabled && enabled.get()]);
+  const init = snap();
+  formDirty = () => snap() !== init;
+  $("#dlg").oncancel = e => { if (formDirty()) { e.preventDefault(); leave($("#dlg"), formDirty); } };   // Esc on a form with typed work asks first
+  // On a phone a form you can change gets the floating Cancel / Save bar (see setFloaty); other forms (Verify, …) keep their footer.
+  setFloaty(isPhone() && /^(add|update|rename) /.test(key) ? { label: dialogLabel(c), save: () => { if (!$("#go").disabled) $("#go").click(); }, reset: () => openCmd(key, prefill) } : null);
+  formChanged = () => showFloaty(formDirty());
+  $("#dlg").oninput = $("#dlg").onchange = () => formChanged();
+  formChanged();
+  openModal($("#dlg"));
+}
+$("#cancel").onclick = () => { if ($("#dlg").classList.contains("floaty")) leave($("#dlg"), formDirty); else $("#dlg").close(); };   // a phone's Close asks; Cancel is the explicit discard
+
+// openSetting edits ONE repo-wide default with an editor that matches what it is.
+async function openSetting(s) {
+  $("#dtitle").textContent = s.label; $("#dhelp").textContent = s.help; $("#dhelp").hidden = !s.help; $("#derr").textContent = "";
+  $("#dleft").replaceChildren();
+  const box = $("#fields"); box.replaceChildren();
+  const save = $("#go"); save.hidden = false; $("#cancel").textContent = "Cancel"; save.textContent = "Save"; save.disabled = true;
+  const changed = () => { save.disabled = ctl.get() === (s.value || ""); showFloaty(!save.disabled); };
+  let ctl;
+  if (s.kind === "cidrs") {
+    const cl = listEditor((s.value || "").split(",").filter(Boolean), CHECK.cidr, HINT.cidr, changed, true);
+    ctl = { node: cl.node, get: () => cl.get(), check: () => cl.flush() ? "" : "fix or clear the value in the box" };
+  } else if (s.kind === "host" || s.kind === "service") {
+    // Unset shows a placeholder, not the first item — which would read as if it were the current value.
+    const sel = picker(s.kind === "host" ? names(state.hosts) : names(state.services), s.value, s.value ? null : `Choose a ${s.kind}…`);
+    sel.onchange = changed; ctl = { node: sel, get: () => sel.value, check: () => sel.value ? "" : `Choose a ${s.kind}` };
+  } else if (s.kind === "file") {
+    // Browse the repo as mounted into the container and click the file — no typing a path.
+    const ft = fileTree(s.value, changed);
+    ctl = { node: ft.node, get: () => ft.get(), check: () => ft.get() ? "" : "Choose a file" };
+  } else {
+    const i = el("input", null, { type: "text", className: "mono", value: s.value || "", placeholder: s.key === "tunnel-dir" ? "cloudflared" : HINT.relpath, autocomplete: "off", autocapitalize: "off" });
+    i.oninput = changed;
+    const field = el("div", null, { className: "prefixed" }); field.append(el("span", "<host>/"), i);   // the folder sits inside each host's directory
+    ctl = { node: field, get: () => i.value.trim(), check: () => { const r = CHECK.relpath(i.value.trim()); return r === true ? "" : r; } };
+  }
+  const heading = s.kind === "cidrs" ? "Ranges" : s.kind === "file" ? "Choose a file from the repo" : s.kind === "relpath" ? "Folder name (inside each host's directory)" : s.kind === "host" ? "Host" : s.kind === "service" ? "Service" : s.label;
+  // Lists and the file tree contain buttons: inside a <label>, tapping the heading would press the first one.
+  const multi = s.kind === "cidrs" || s.kind === "file";
+  const lab = el(multi ? "div" : "label", multi ? null : heading, multi ? { className: "fld" } : {});
+  if (multi) lab.append(el("div", heading, { className: "fl" }));
+  lab.append(ctl.node); box.append(lab);
+  const apply = async value => {
+    const res = await post("/api/run", { command: "defaults set", values: { key: s.key, value } });
+    if (!res.ok) { $("#derr").textContent = res.output; return; }
+    await load();
+    $("#dlg").close(); toastResult(s.label, res, `${s.label} updated`);
+  };
+  save.onclick = e => { e.preventDefault(); const err = ctl.check(); if (err) { $("#derr").textContent = err; return; } apply(ctl.get()); };
+  const clear = $("#dclear");
+  clear.hidden = !(s.clearable && s.value);
+  clear.onclick = async () => { if (await ask(`Clear ${s.label}?`, "The setting goes back to unset.", { ok: "Clear", danger: true })) apply("-"); };
+  const init = ctl.get();
+  formDirty = () => ctl.get() !== init;
+  setFloaty(isPhone() ? { label: "Save", save: () => { if (!save.disabled) save.click(); }, reset: () => openSetting(s) } : null);
+  formChanged = changed; $("#dlg").oninput = $("#dlg").onchange = null; changed();
+  $("#dlg").oncancel = e => { if (formDirty()) { e.preventDefault(); leave($("#dlg"), formDirty); } };
+  openModal($("#dlg"));
+}
+
+// openDomain: a domain's dialog. hemma can add and remove a domain but not rename one, so there is nothing to save here:
+// it shows the domain and how many services use it, and offers Remove (refused by hemma while a service still uses it).
+function openDomain(name, uses) {
+  $("#dtitle").textContent = "Domain"; $("#dhelp").textContent = ""; $("#dhelp").hidden = true; $("#derr").textContent = "";
+  const left = $("#dleft"); left.replaceChildren(btn("Remove domain", () => { $("#dlg").close(); run("remove domain", { name }, cmds["remove domain"].confirm); }, "dangerline"));
+  const box = $("#fields"); box.replaceChildren();
+  const lab = el("label", "Domain"); lab.append(el("input", null, { type: "text", className: "mono", value: name, readOnly: true }));
+  box.append(lab, el("p", uses ? `${plural(uses, "service")} use${uses === 1 ? "s" : ""} this domain, so it can't be removed until they move.` : "No service uses this domain.", { className: "meta" }));
+  $("#go").hidden = true; $("#cancel").textContent = "Close"; $("#dclear").hidden = true;
+  setFloaty(null); formDirty = () => false; formChanged = () => {}; $("#dlg").oninput = $("#dlg").onchange = null; $("#dlg").oncancel = null;
+  openModal($("#dlg"));
+}
+
+// Two steps, kept apart:
+//   1. SAVE   — the warn bar (only while there are unsaved changes): Discard / Review & save, with a message.
+//   2. DEPLOY — makes what is SAVED live: the accent bar after a save that was not deployed, and "Redeploy everything"
+//               under Tools (always there, so it also works on a freshly set-up machine with nothing to save).
+// Deploy pulls from origin, then applies (with no origin there is nothing to pull: it just applies). It can only ever send
+// what is saved: hemma applies the files in the repo and refuses a repo with unsaved changes, so while changes are
+// waiting Deploy is off.
+let deploying = false;
+let pending = null;   // /api/diff summary of the unsaved changes (null when there are none)
+const dirty = () => changes.git && changes.files.length > 0;
+// "Saved, not live yet": a save that was not deployed (remembered across reloads), or unpushed commits that change a file hemma owns. A commit to anything else (a compose file) is ahead of origin too, but hemma has nothing to make live for it.
+const undeployed = () => !deploying && !dirty() && (localStorage.getItem("hemma.undeployed") === "1" || (changes.has_remote && changes.ahead_hemma));
+const barsUp = () => dirty() || deploying || undeployed();
+// Without a deploy host nothing can go live: this page deploys from that host and does not guess which one it runs on (the server
+// refuses too, host.go). /api/state's apply.host is the host it resolved, empty when there is none. An unloadable file shows the
+// recovery screen instead, so it is not asked about here.
+const needsDeployHost = () => !broken && !(state.apply && state.apply.host);
+const NO_DEPLOY_HOST = "Set the deploy host first (Infrastructure → Settings).";
+const openDeployHostSetting = () => { const s = state.settings.find(x => x.key === "deploy-host"); if (s) openSetting(s); };
+function renderHint() {
+  const [text, cls] = deploying ? ["Deploying…", "busy"] : dirty() ? ["Save changes to deploy", "warn"] : undeployed() ? ["Saved, not live yet", "busy"] : ["No unsaved changes", ""];
+  $("#hinttext").textContent = text; $("#hint .dot").className = "dot " + cls;
+}
+// The Deploy question is one short sentence, the same everywhere: what happens (your saved changes go live) and the one
+// thing worth knowing (services restart briefly). Which services, on which host, is for the Details after a failure.
+// With a shared copy (an origin) Deploy reaches every server; without one it is just this one. Saved changes origin
+// does not have yet are sent as part of Deploy, so there is no separate "push first?" question.
+const deployMany = () => state.hosts.length > 1 && changes.has_remote;
+const deployMessage = () => `Your saved changes go live on ${deployMany() ? "all servers" : "this server"}. Some services restart briefly.`;
+async function deploy() {
+  if (deploying) return;
+  if (dirty()) return toast("Save or discard your unsaved changes before deploying", "warn");
+  if (needsDeployHost()) return openDeployHostSetting();
+  const key = changes.has_remote ? "deploy" : "apply";
+  if (!await ask("Deploy?", deployMessage(), { ok: "Deploy" })) return;
+  await deployNow(key, "Deployed", undefined);
+}
+// Which servers a failed deploy names in its output (a failed pull or apply, an unreachable host), for "Deploy failed on …".
+function deployFailedHosts(out) {
+  const hosts = new Set(); let m;
+  for (const re of [/(?:Pull|rev-parse) failed on "([^"]+)"/g, /✗\s+([^\s:]+): (?:unreachable|failed-apply)/g]) while ((m = re.exec(out || ""))) hosts.add(m[1]);
+  return [...hosts];
+}
+// deployNow runs the deploy/apply itself (no questions: the caller has the person's consent). Failures stay on
+// screen with Details; `failed` names a failure when the deploy was part of something larger (Save & deploy).
+// Sending the saved commits to origin is Deploy's own first step (hemma rebases onto origin and pushes, on this host),
+// so there is nothing to push from here.
+async function deployNow(key, done, failed) {
+  if (needsDeployHost()) return toast(NO_DEPLOY_HOST, "warn");   // the callers check first; this is the backstop
+  deploying = true; render();
+  const dlg = $("#pdlg");
+  renderSteps([]); $("#ptitle").textContent = "Deploying…"; $("#pdetails").hidden = true; $("#pnote").hidden = false;
+  $("#pclose").textContent = "Hide"; $("#pclose").onclick = () => dlg.close();
+  openModal(dlg);
+  try {
+    const res = await streamDeploy(key, renderSteps);
+    const text = res.output || res.error || "";
+    const on = res.ok ? [] : deployFailedHosts(text);
+    const title = res.ok ? done : (failed || "Deploy failed") + (on.length ? ` on ${on.join(", ")}` : "");
+    if (res.ok) localStorage.removeItem("hemma.undeployed");
+    $("#ptitle").textContent = title; $("#pnote").hidden = true; $("#pclose").textContent = "Close";
+    if (text) { $("#pdetails").hidden = false; $("#pdetails").onclick = () => { dlg.close(); showResult("Deploy", text); }; }
+    if (!dlg.open) toast(title, res.ok ? "ok" : "err", res.ok || !text ? undefined : { title: "Deploy", text });   // closed meanwhile: say how it ended
+  } finally { deploying = false; await load(); }
+}
+// renderSteps draws the checklist: a step is waiting (an empty ring), under way (a spinner), done (✓) or failed (✗); the servers of
+// a step are listed beneath it.
+function renderSteps(steps) {
+  const ul = $("#psteps"); ul.replaceChildren();
+  const icon = st => { const i = el("span", st === "done" ? "✓" : st === "failed" ? "✗" : "", { className: "sicon " + st }); i.setAttribute("aria-hidden", "true"); return i; };
+  const label = st => ({ pending: "waiting", running: "in progress", done: "done", failed: "failed" })[st];
+  for (const s of steps) {
+    const li = el("li", null, { className: "step " + s.status });
+    const row = el("div", null, { className: "srow" });
+    row.append(icon(s.status), el("span", s.title, { className: "stitle" }), el("span", label(s.status), { className: "sr-only" }));
+    li.append(row);
+    if (s.sub && s.sub.length) {
+      const sub = el("ul", null, { className: "substeps" });
+      s.sub.forEach(x => { const sl = el("li", null, { className: "step " + x.status }), sr = el("div", null, { className: "srow" }); sr.append(icon(x.status), el("span", x.title, { className: "stitle" }), el("span", label(x.status), { className: "sr-only" })); sl.append(sr); sub.append(sl); });
+      li.append(sub);
+    }
+    ul.append(li);
+  }
+}
+// streamDeploy runs deploy (or apply) and follows it: the server answers with events, one each time a step changes and a
+// last one with the outcome. Resolves with {ok, output}.
+async function streamDeploy(command, onSteps) {
+  const r = await fetch("/api/deploy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command }) });
+  if (r.status === 409 || !r.ok || !r.body) {
+    const j = await r.json().catch(() => ({}));
+    return { ok: false, output: j.output || `Deploy could not start (${r.status}).` };
+  }
+  const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "", final = null;
+  for (;;) {
+    const { value, done } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+      const line = chunk.split("\n").find(l => l.startsWith("data: ")); if (!line) continue;
+      const ev = JSON.parse(line.slice(6));
+      if (ev.steps) onSteps(ev.steps);
+      if (ev.type === "done") final = ev;
+    }
+  }
+  return final || { ok: false, output: "The connection ended before the deploy reported back — check the servers." };
+}
+
+// discard puts hemma's own output back to the last save; files hemma doesn't manage are left alone.
+async function discardNow() {
+  const res = await post("/api/discard", {});
+  if (res.ok) localStorage.removeItem(SAVE_DRAFT);   // the message was about changes that are gone
+  // Files hemma only writes a part of (.gitignore, a Caddyfile) are never discarded whole: the server names the ones it left.
+  if (res.ok && res.kept?.length) toast("Left as they are: " + res.kept.join(", "), "warn", { title: "Discard", text: res.output });
+  else toastResult("Discard", res, "Changes discarded");
+  await load();
+}
+async function discard() {
+  if (!await ask("Discard your changes?", "Everything you changed since the last save will be undone.", { ok: "Discard", danger: true })) return;
+  await discardNow();
+}
+
+// renderDiff: what changed in what hemma manages, entity by entity — current against after-save, one fold each.
+// Hemma's generated files are only counted. Files that are not hemma's are not part of any change here.
+let openEnt = new Set();
+function renderDiff(d) {
+  const root = el("div", null, { style: "display:contents" });
+  if (!d.entities.length) { root.append(el("p", d.reformatted ? "services.yaml was rewritten by hemma, but no value in it changed — only its formatting. You can commit it or discard it." : "No changes.", { className: "meta" })); return root; }
+  const key = e => e.kind + ":" + e.name;
+  if (d.entities.length === 1) openEnt = new Set([key(d.entities[0])]);
+  const heads = [];   // [head button, table, entity]: toggled in place, so the chevrons turn
+  const list = el("div", null, { className: "list" });
+  d.entities.forEach(e => {
+    const open = openEnt.has(key(e));
+    const ent = el("div", null, { className: "ent" });
+    const head = el("button", null, { type: "button", className: "eh" }); head.setAttribute("aria-expanded", String(open));
+    head.append(el("span", null, { className: "chev" }), el("span", e.status[0].toUpperCase() + e.status.slice(1), { className: "chip " + e.status }), el("span", e.kind, { className: "ek" }), el("span", e.name, { className: "en" }));
+    const tab = el("div", null, { className: "etab", hidden: !open });
+    const rows = e.fields.filter(f => e.status === "changed" || e.status === "renamed" || (e.status === "added" ? f.after !== "—" : f.before !== "—"));
+    const hdr = el("div", null, { className: "ehdr" }); ["Field", "Current", "After save"].forEach(h => hdr.append(el("div", h))); tab.append(hdr);
+    for (const f of rows) {
+      const diff = f.before !== f.after;
+      const r = el("div", null, { className: "erow" });
+      r.append(el("div", f.field), el("div", f.before, { className: "cur" + (diff && f.before !== "—" ? " diff" : "") }),
+               el("div", f.after, { className: "nxt" + (diff ? (e.status === "removed" ? " del" : " add") : "") }));
+      tab.append(r);
+    }
+    const set = o => { if (o) openEnt.add(key(e)); else openEnt.delete(key(e)); head.setAttribute("aria-expanded", String(o)); tab.hidden = !o; };
+    head.onclick = () => set(tab.hidden);
+    heads.push({ set, isOpen: () => !tab.hidden });
+    ent.append(head, tab); list.append(ent);
+  });
+  // "3 unsaved changes · 2 services · 1 host", and a fold-all switch on the right
+  const by = k => d.entities.filter(e => e.kind === k).length;
+  const parts = [[by("Service"), "service"], [by("Host"), "host"], [by("Domain"), "domain"], [by("Setting"), "setting"]].filter(x => x[0]).map(x => plural(x[0], x[1])).join(" · ");
+  const top = el("div", null, { className: "top" });
+  const all = btn("", () => { const everyOpen = heads.every(h => h.isOpen()); heads.forEach(h => h.set(!everyOpen)); sync(); });
+  const sync = () => { all.textContent = heads.every(h => h.isOpen()) ? "Collapse all" : "Expand all"; };
+  sync();
+  top.append(el("b", plural(d.entities.length, "unsaved change")), el("span", parts, { className: "bd" }), all);
+  root.append(top, list);
+  if (d.reformatted) root.append(el("p", "services.yaml was also rewritten without a value changing — only its formatting.", { className: "meta" }));
+  return root;
+}
+// The files behind a change are for people who want to see them, not for the person saving it: they sit in one
+// collapsed fold, in plain words. Saving records ALL of them with the message (the fold says so), so nothing is saved
+// that cannot be seen here. Nothing to show (only services.yaml changed) → no fold at all.
+function fillAdvanced(d) {
+  const adv = $("#cadv"), n = d ? d.generated.length : 0;
+  adv.hidden = n === 0; adv.replaceChildren();
+  if (!n) return;
+  const head = el("button", null, { type: "button", className: "ah" }); head.setAttribute("aria-expanded", "false");
+  head.append(el("span", null, { className: "chev" }), `Generated files (${n})`);
+  const note = el("p", "Saving records every file below together with this change.", { className: "meta", hidden: true, style: "margin-top:8px" });
+  const files = el("div", null, { className: "flist", hidden: true });
+  d.generated.forEach(p => files.append(el("div", p)));
+  head.onclick = () => { const o = files.hidden; files.hidden = !o; note.hidden = !o; head.setAttribute("aria-expanded", String(o)); };
+  adv.append(head, note, files);
+}
+
+const SAVE_DRAFT = "hemma.saveDraft";
+// Messages follow "<host>/<service>: <message>". When the unsaved changes concern one service only, that prefix is known, so the
+// dialog shows it above the box ("will be prefixed with …") and puts it in front of whatever is typed; the box holds just the message.
+function commitPrefix(d) {
+  if (!d || !d.entities || d.entities.length !== 1 || d.entities[0].kind !== "Service") return "";
+  const e = d.entities[0];
+  const name = e.status === "renamed" ? e.name.split(" → ").pop() : e.name;   // a rename reads "old → new": the service is now the new one
+  const svc = state.services.find(x => x.name === name);
+  const host = svc ? svc.host : fieldBefore(e, "Host");   // a removed service is no longer in the list: its host is in the diff
+  return host ? `${host}/${name}:` : "";
+}
+// openCommit (the Save panel): review what changed, write the change message, save. Saving only records
+// the changes; deploying them is the separate step.
+function openCommit() {
+  $("#cdiff").replaceChildren(el("p", "Loading changes…", { className: "meta" }));
+  fillAdvanced(null);
+  let prefix = "";
+  const showPrefix = () => {
+    const hint = $("#cprefix"), box = $("#cmsg");
+    hint.hidden = !prefix; hint.replaceChildren();
+    if (prefix) hint.append("Will be prefixed with ", el("code", prefix));
+    // the message after "host/service:" starts in lower case: the keyboard must not capitalise it for you
+    box.setAttribute("autocapitalize", prefix ? "none" : "sentences");
+    box.placeholder = prefix ? "what changed, e.g. point at the new port" : "e.g. Add docsapp and move grafana to nas";
+  };
+  showPrefix();
+  fetch("/api/diff").then(r => r.json()).then(d => { $("#cdiff").replaceChildren(d.error ? el("p", d.error, { className: "err" }) : renderDiff(d)); if (!d.error) { fillAdvanced(d); prefix = commitPrefix(d); showPrefix(); } })
+    .catch(() => $("#cdiff").replaceChildren(el("p", "Could not load the changes.", { className: "err" })));
+  // The message you were writing is kept when you close the dialog (and across a reload) and is back when you reopen it: it is
+  // cleared when the changes are saved or discarded.
+  $("#cmsg").value = localStorage.getItem(SAVE_DRAFT) || ""; $("#cerr").textContent = "";
+  $("#cmsg").oninput = () => { if ($("#cmsg").value) localStorage.setItem(SAVE_DRAFT, $("#cmsg").value); else localStorage.removeItem(SAVE_DRAFT); };
+  $("#cdlg").oncancel = null;
+  // Saving can deploy straight away. The choice is the person's to make once and is remembered; it is OFF until
+  // they turn it on, because deploying restarts things.
+  const dep = $("#cdep"), act = changes.has_remote ? "deploy" : "apply";
+  dep.checked = localStorage.getItem("hemma.deployAfterSave") === "1";
+  // With no deploy host the switch is off and cannot be turned on (the remembered choice is left as it was).
+  const noHost = needsDeployHost();
+  if (noHost) dep.checked = false;
+  dep.disabled = noHost;
+  const syncDeploy = () => {
+    $("#cgo").textContent = dep.checked ? "Save & deploy" : "Save";
+    $("#cgo").classList.toggle("deploy", dep.checked);   // a colour of its own: this is not a plain save
+    $("#cdephelp").textContent = noHost ? NO_DEPLOY_HOST : dep.checked ? "Your changes go live right after saving." : "Not live yet — use Deploy when you’re ready.";
+  };
+  dep.onchange = () => { localStorage.setItem("hemma.deployAfterSave", dep.checked ? "1" : "0"); syncDeploy(); };
+  syncDeploy();
+  $("#cgo").onclick = async e => {
+    e.preventDefault();
+    if (!$("#cform").reportValidity()) return;
+    $("#cgo").disabled = true;
+    try {
+      const wantDeploy = dep.checked && !noHost;
+      // Saving only commits. Sending the commit to origin is part of Deploy (hemma does it, rebasing onto origin first).
+      const text = $("#cmsg").value.trim();
+      const res = await post("/api/commit", { message: prefix ? `${prefix} ${text}` : text });
+      if (!res.ok) { $("#cerr").textContent = res.output; return; }   // nothing was saved: stay and fix it
+      localStorage.removeItem(SAVE_DRAFT);
+      if (!wantDeploy) localStorage.setItem("hemma.undeployed", "1");   // saved, and not live yet: the accent bar says so
+      await load(); $("#cdlg").close();
+      if (!wantDeploy) { toast("Saved", "ok"); return; }
+      await deployNow(act, "Saved and deployed", "Saved, but deploy failed");
+    } finally { $("#cgo").disabled = false; }
+  };
+  openModal($("#cdlg"));
+}
+$("#ccancel").onclick = () => $("#cdlg").close();
+
+// The bars: unsaved changes (Discard / Review & save), and — once saved — "not live yet" (Deploy). Each only while it applies.
+let confirmDiscard = false;
+function describePending() {
+  const p = pending, n = changes.files.length;
+  const files = k => `${k} ${k === 1 ? "file" : "files"} changed`;
+  if (!p) return plural(n, "unsaved change");
+  const e = p.entities.length;
+  if (e) return plural(e, "unsaved change");
+  if (p.reformatted) return "services.yaml was reformatted";
+  if (p.generated.length) { const k = p.generated.length; return `${k} generated ${k === 1 ? "file" : "files"} changed`; }
+  return files(n);   // never a "0 … changed"
+}
+// "2 services · 1 host": what the unsaved changes are made of
+function breakdown() {
+  const es = pending ? pending.entities : [], by = k => es.filter(e => e.kind === k).length;
+  return [[by("Service"), "service"], [by("Host"), "host"], [by("Domain"), "domain"], [by("Setting"), "setting"]].filter(x => x[0]).map(x => plural(x[0], x[1])).join(" · ");
+}
+function renderBars() {
+  const sb = $("#savebar"), db = $("#deploybar"), d = dirty();
+  sb.classList.toggle("show", d); sb.setAttribute("aria-hidden", String(!d));
+  if (d) {
+    const inner = el("div", null, { className: "in" }), m = el("div", null, { className: "msg" });
+    m.append(el("b", describePending())); const b = breakdown(); if (b) m.append(el("span", b));
+    inner.append(el("span", null, { className: "dot" }), m);
+    if (confirmDiscard) {
+      const n = pending ? pending.entities.length || changes.files.length : changes.files.length;
+      inner.append(btn("Keep", () => { confirmDiscard = false; renderBars(); }), btn(isPhone() ? "Discard all" : `Discard ${plural(n, "change")}`, () => { confirmDiscard = false; discardNow(); }, "danger"));
+    } else {
+      inner.append(btn("Discard", () => { confirmDiscard = true; renderBars(); }, "ghost"), btn("Review & save", openCommit, "primary"));
+    }
+    sb.replaceChildren(inner);
+  } else { confirmDiscard = false; sb.replaceChildren(); }
+  const ds = !d && (deploying || undeployed());
+  db.classList.toggle("show", ds); db.setAttribute("aria-hidden", String(!ds));
+  if (ds) {
+    const inner = el("div", null, { className: "in" }), m = el("div", null, { className: "msg" });
+    const noHost = !deploying && needsDeployHost();
+    m.append(el("b", deploying ? "Deploying…" : "Saved, not live yet"), el("span", deploying ? "Sending your saved changes to the servers" : noHost ? "Set the deploy host to make it live." : "Deploy to make it live."));
+    inner.append(el("span", null, { className: "dot" }), m);
+    const go = btn(deploying ? "Deploying…" : noHost ? "Set deploy host" : "Deploy", () => deploy(), "primary"); go.disabled = deploying; inner.append(go);   // deploy() opens the setting when there is none
+    db.replaceChildren(inner);
+  } else db.replaceChildren();
+  $("#toast").classList.toggle("up", barsUp());
+}
+
+// Undo for something removed but not saved yet: put it back with the values the diff recorded for it. Nothing here is
+// special — it is the same `add …` the forms run (plus `disable service` for one that was off).
+async function undoRemoved(e) {
+  const f = Object.fromEntries(e.fields.map(x => [x.field, x.before === "—" ? "" : x.before]));
+  const list = v => (v || "").split(",").map(x => x.trim()).filter(Boolean).join(",");
+  let key, values;
+  if (e.kind === "Service") {
+    key = "add service";
+    values = { name: e.name, fqdn: f["Address"], host: f["Host"], backend: f["Backend"], "auth-mode": f["Auth mode"] || "none", "auth-groups": list(f["Auth groups"]),
+               "bypass-paths": list(f["Bypass paths"]), "auth-policy-local": f["Policy: local"] || "", "auth-policy-public": f["Policy: public"] || "", tunnel: f["Reachable from the internet"] === "yes" };
+  } else if (e.kind === "Host") { key = "add host"; values = { name: e.name, ip: f["IP address"], ssh: (f["SSH destination"] || "").replace("—", ""), "trusted-proxies": list(f["Extra trusted proxies"]) };
+  } else if (e.kind === "Domain") { key = "add domain"; values = { name: e.name };
+  } else return;
+  const res = await post("/api/run", { command: key, values });
+  if (res.ok && e.kind === "Service" && f["Status"] === "disabled") await post("/api/run", { command: "disable service", values: { name: e.name } });
+  await load(); toastResult("Undo", res, `${e.name} is back`);
+}
+const removedOf = kind => (pending ? pending.entities : []).filter(e => e.kind === kind && e.status === "removed");
+
+// messageParagraphs: a commit message's body as paragraphs of lines. Git bodies are hard-wrapped (at ~72 columns), which on a narrow
+// screen wraps a second time and looks ragged: so lines of one paragraph are joined, and only a blank line, a list item ("- ", "* ",
+// "1.") or an indented line starts a new line.
+function messageParagraphs(body) {
+  return body.replace(/\r/g, "").split(/\n\s*\n/).map(par => {
+    const out = [];
+    for (const line of par.split("\n")) {
+      if (out.length && !/^\s/.test(line) && !/^([-*•]|\d+[.)])\s/.test(line)) out[out.length - 1] += " " + line.trim();
+      else out.push(line.trim());
+    }
+    return out;
+  }).filter(par => par.some(Boolean));
+}
+// spinner: a clock face with a sweeping hand and an orbiting spark, centred in the page while something loads (static markup, no user text).
+function spinner(label) {
+  const ticks = Array.from({ length: 12 }, (_, i) => `<line x1="32" y1="8.5" x2="32" y2="${i % 3 === 0 ? 12.5 : 11}" transform="rotate(${i * 30} 32 32)"/>`).join("");
+  const wrap = el("div", null, { className: "spinwrap" }); wrap.setAttribute("role", "status"); wrap.setAttribute("aria-label", label);
+  wrap.innerHTML = `<svg class="clk" viewBox="0 0 64 64" width="84" height="84" aria-hidden="true">
+    <circle class="face" cx="32" cy="32" r="27"/><g class="ticks">${ticks}</g>
+    <circle class="trail" cx="32" cy="32" r="22" pathLength="100"/>
+    <line class="hand h" x1="32" y1="32" x2="32" y2="22"/><line class="hand m" x1="32" y1="32" x2="32" y2="15"/>
+    <circle class="pin" cx="32" cy="32" r="2.6"/><circle class="spark" cx="32" cy="5" r="2.4"/></svg>
+    <div class="spintext" aria-hidden="true"></div>`;
+  wrap.querySelector(".spintext").textContent = label;
+  return wrap;
+}
+// hlText: text with every search term marked (a fragment of text nodes and <mark>s — never markup built from the text)
+function hlText(text, terms) {
+  const frag = document.createDocumentFragment();
+  if (!terms.length || !text) { frag.append(text || ""); return frag; }
+  const low = text.toLowerCase(), marks = [];
+  for (const t of terms) for (let i = low.indexOf(t); i >= 0; i = low.indexOf(t, i + t.length)) marks.push([i, i + t.length]);
+  marks.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const m of marks) { const last = merged[merged.length - 1]; if (last && m[0] <= last[1]) last[1] = Math.max(last[1], m[1]); else merged.push([...m]); }
+  let at = 0;
+  for (const [a, b] of merged) { frag.append(text.slice(at, a), el("mark", text.slice(a, b), { className: "hit" })); at = b; }
+  frag.append(text.slice(at));
+  return frag;
+}
+let histQ = "";   // the history page's search
+
+// openHistory loads the History tab: everything (name null) or one service. It is reachable and linkable as #/history[/<name>].
+// The history is read a page at a time (the server says where the next page starts); what you have opened is kept in `hist.ui`,
+// so loading older saves does not fold it all again.
+async function openHistory(name, push = true) {
+  if (!hist || hist.name !== name) histQ = "";
+  hist = { name, loading: true, entries: [], more: false, next: null, ui: { opened: new Set(), openChg: new Set(), init: false } };
+  tab = "History";
+  if (push) history.pushState(null, "", "#/history" + (name ? "/" + encodeURIComponent(name) : ""));
+  render(); scrollToTop();
+  await loadHistory(name, null);
+}
+async function loadHistory(name, next) {
+  const qs = new URLSearchParams(); if (name) qs.set("service", name);
+  if (next) { qs.set("skip", String(next.skip)); if (next.name) qs.set("name", next.name); }
+  let j;
+  try { j = await (await fetch("/api/history?" + qs)).json(); } catch (e) { j = { error: String(e) }; }
+  if (!hist || hist.name !== name || tab !== "History" || broken) return;   // you moved on while it loaded
+  // one shape for both: a commit with the things it changed. A service's own history has one change per commit.
+  const entries = (j.entries || []).map(e => e.changes ? e : { ...e, changes: [{ kind: "Service", name: e.from ? `${e.from} → ${e.name}` : e.name, svc: e.name, status: e.status, fields: e.fields }] });
+  hist.entries = next ? hist.entries.concat(entries) : entries;
+  hist.loading = false; hist.loadingMore = false; hist.error = j.error || ""; hist.more = !!j.more; hist.next = j.next || null;
+  render();
+}
+
+// ── Services: grouped by host, a row per service; a row opens its form ────────────────────────────────────────────
+let q = "";
+const collapsed = {};
+const entMap = () => { const m = {}; (pending ? pending.entities : []).forEach(e => { m[e.kind + ":" + e.name] = e; }); return m; };
+const fieldBefore = (e, name) => (e.fields.find(f => f.field === name) || {}).before || "";
+function svcRow(s, ent) {
+  const gone = !!s.ghost;
+  const r = el("div", null, { className: "svc" + (s.disabled && !gone ? " off" : "") + (gone ? " gone" : "") });
+  const info = el("div", null, { className: "info" }), top = el("div", null, { className: "top" });
+  top.append(el("span", s.name, { className: "nm" }));
+  if (ent) top.append(el("span", ent.status[0].toUpperCase() + ent.status.slice(1), { className: "chip " + ent.status }));
+  info.append(top, el("div", s.fqdn, { className: "fq" })); r.append(info);
+  const tags = [];
+  if (s.disabled && !gone) tags.push(el("span", "Disabled", { className: "tag" }));
+  if (tags.length) { const t = el("div", null, { className: "tags" }); t.append(...tags); r.append(t); }
+  if (gone) r.append(btn("Undo", () => undoRemoved(s.ent), "undobtn"));
+  if (!gone) {
+    r.tabIndex = 0; r.setAttribute("role", "button");
+    const open = () => openCmd("update service", { ...s, __lock: "name" });
+    r.onclick = open;
+    r.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
+  }
+  return r;
+}
+function drawGroups(box) {
+  const em = entMap(), needle = q.trim().toLowerCase();
+  const rows = state.services.map(s => ({ ...s }));
+  // services removed but not saved yet: shown struck through, so the page agrees with the bar ("1 unsaved change")
+  (pending ? pending.entities : []).filter(e => e.kind === "Service" && e.status === "removed").forEach(e =>
+    rows.push({ name: e.name, host: fieldBefore(e, "Host"), fqdn: fieldBefore(e, "Address"), ghost: true, ent: e }));
+  const hosts = [...new Set(rows.map(s => s.host).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const groups = hosts.map(h => {
+    const all = rows.filter(s => s.host === h);
+    const items = all.filter(s => !needle || s.name.toLowerCase().includes(needle) || (s.fqdn || "").toLowerCase().includes(needle)).sort((a, b) => a.name.localeCompare(b.name));
+    return { h, all, items };
+  }).filter(g => g.items.length);
+  box.replaceChildren();
+  groups.forEach(({ h, all, items }) => {
+    const open = !collapsed[h] || !!needle;
+    const g = el("div", null, { className: "group" });
+    const head = el("button", null, { type: "button", className: "ghead" }); head.setAttribute("aria-expanded", String(open));
+    head.append(el("span", null, { className: "chev" }), el("span", h, { className: "gname" }), el("span", needle ? `${items.length} of ${all.length}` : plural(all.length, "service"), { className: "gcount" }));
+    const list = el("div", null, { className: "list", hidden: !open }); items.forEach(s => list.append(svcRow(s, em["Service:" + s.name])));
+    // toggled in place (not redrawn), so the chevron turns instead of being replaced
+    head.onclick = () => { if (needle) return; collapsed[h] = !collapsed[h]; const o = !collapsed[h]; head.setAttribute("aria-expanded", String(o)); list.hidden = !o; };
+    g.append(head, list);
+    box.append(g);
+  });
+  if (needle && !groups.length) box.append(el("div", `No services match “${q}”.`, { className: "empty" }));
+}
+const pageHead = (title, sub, ...tools) => {
+  const h = el("div", null, { className: "phead" }), t = el("div", null, { className: "t" });
+  t.append(el("h1", title), el("div", sub, { className: "sub" })); h.append(t);
+  if (tools.length) { const x = el("div", null, { className: "tools" }); x.append(...tools); h.append(x); }
+  return h;
+};
+const sectionHead = (title, ...tools) => { const h = el("div", null, { className: "shead" }); h.append(el("h2", title), ...tools); return h; };
+
+const VIEWS = {
+  Services() {
+    const on = state.services.filter(s => !s.disabled).length;
+    const search = el("input", null, { type: "search", placeholder: isPhone() ? "Search name or address" : `Search name or address  ${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K"}`, value: q, id: "search", autocomplete: "off" });
+    search.setAttribute("aria-label", "Search services"); search.setAttribute("aria-keyshortcuts", "Meta+K Control+K");
+    const groups = el("div", null, { style: "display:flex;flex-direction:column;gap:22px" });
+    search.oninput = () => { q = search.value; drawGroups(groups); };
+    search.setAttribute("enterkeyhint", "search");
+    search.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); search.blur(); } else if (e.key === "Escape") { if (q) { q = ""; search.value = ""; drawGroups(groups); } else search.blur(); } };   // Enter is "done": it puts the phone's keyboard away
+    const add = btn("Add service", () => openCmd("add service"), "primary");
+    drawGroups(groups);
+    return [pageHead("Services", `${plural(state.services.length, "service")} on ${plural(state.hosts.length, "host")} · ${on} enabled`, search, add), groups];
+  },
+  Infrastructure() {
+    const em = entMap();
+    const chip = e => e ? el("span", e.status[0].toUpperCase() + e.status.slice(1), { className: "chip " + e.status }) : "";
+    // a row that opens on a click (or Enter / Space), like a service's
+    const clickable = (r, open) => { r.classList.add("click"); r.tabIndex = 0; r.setAttribute("role", "button"); r.onclick = open; r.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }; };
+    const hosts = el("div", null, { className: "list" });
+    const hostRows = state.hosts.map(h => ({ name: h.name, ip: h.ip, px: h["trusted-proxies"] || "", h }))
+      .concat(removedOf("Host").map(e => ({ name: e.name, ip: fieldBefore(e, "IP address"), px: fieldBefore(e, "Extra trusted proxies").replace("—", ""), ghost: true, ent: e })));
+    hostRows.sort((a, b) => a.name.localeCompare(b.name)).forEach(h => {
+      const n = h.ghost ? 0 : state.services.filter(s => s.host === h.name).length;
+      const r = el("div", null, { className: "hrow" + (h.ghost ? " gone" : "") });
+      const nm = el("div", null, { className: "a-name" }), line = el("div", null, { style: "display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px" });
+      line.append(el("span", h.name, { className: "nm" }), chip(h.ghost ? h.ent : em["Host:" + h.name])); nm.append(line, el("div", plural(n, "service"), { className: "n" }));
+      const ip = el("div", null, { className: "a-ip" }); ip.append(el("div", "IP", { className: "k" }), el("div", h.ip, { className: "v" }));
+      const px = el("div", null, { className: "a-px" }); px.append(el("div", "Extra trusted proxies", { className: "k" }), el("div", h.px.split(",").filter(Boolean).join(", ") || "—", { className: "v" }));
+      const act = el("div", null, { className: "act" });
+      if (h.ghost) act.append(btn("Undo", () => undoRemoved(h.ent), "undo"));
+      else { act.append(el("span", "Edit", { className: "etext" })); clickable(r, () => openCmd("update host", { ...h.h, name: h.name, __lock: "name" })); }
+      r.append(nm, ip, px, act); hosts.append(r);
+    });
+    const domains = el("div", null, { className: "list" });
+    const domRows = state.domains.map(d => ({ name: d })).concat(removedOf("Domain").map(e => ({ name: e.name, ghost: true, ent: e })));
+    domRows.sort((a, b) => a.name.localeCompare(b.name)).forEach(d => {
+      const n = d.ghost ? 0 : state.services.filter(s => s.fqdn === d.name || (s.fqdn || "").endsWith("." + d.name)).length;
+      const r = el("div", null, { className: "drow" + (d.ghost ? " gone" : "") });
+      r.append(el("span", d.name, { className: "nm" }), chip(d.ghost ? d.ent : em["Domain:" + d.name]), el("span", plural(n, "service"), { className: "n" }));
+      if (d.ghost) r.append(btn("Undo", () => undoRemoved(d.ent), "undo"));
+      else { r.append(el("span", "Edit", { className: "etext" })); clickable(r, () => openDomain(d.name, n)); }
+      domains.append(r);
+    });
+    const sec = (title, add, list) => { const s = el("section", null, { className: "section" }); s.append(sectionHead(title, ...(add ? [add] : [])), list); return s; };
+    // the repo-wide defaults, under the hosts and domains they refer to
+    const settings = el("div", null, { className: "list" });
+    state.settings.forEach(s => {
+      const r = el("button", null, { type: "button", className: "setrow", onclick: () => openSetting(s) });
+      const lb = el("div"); const l1 = el("div", null, { className: "lb" }); l1.append(el("span", s.label)); if (em["Setting:" + s.label]) l1.append(el("span", "Changed", { className: "chip changed" }));
+      lb.append(l1, el("div", s.help, { className: "ds" }));
+      const val = s.value ? s.value.split(",").join(", ") : "Not set";
+      r.append(lb, el("div", val, { className: "vl" + (s.value ? "" : " unset") }), el("span", "Edit", { className: "ed" }));
+      settings.append(r);
+    });
+    const setSec = sec("Settings", null, settings); setSec.insertBefore(el("p", "Apply to every service and host.", { className: "meta", style: "margin:-4px 0 0" }), settings);
+    return [pageHead("Infrastructure", "Hosts run your services. Every service address must end in one of your domains."),
+            sec("Hosts", btn("Add host", () => openCmd("add host")), hosts), sec("Domains", btn("Add domain", () => openCmd("add domain")), domains), setSec];
+  },
+  // History: every Save, newest first, read from git (GET /api/history) — or, filtered, one service's own changes. An entry is a commit:
+  // its message, who and when, and everything it changed. Entries start folded (a single one starts open); a search narrows the list and marks what
+  // matched, without opening anything.
+  History() {
+    const h = hist || { name: null, loading: true, entries: [], ui: { opened: new Set(), openChg: new Set(), init: false } };
+    const search = el("input", null, { type: "search", id: "search", placeholder: "Search changes, old and new values", value: histQ, autocomplete: "off" });
+    search.setAttribute("aria-label", "Search the history");
+    const body = el("div", null, { className: "hist", style: "display:flex;flex-direction:column;gap:12px" });
+    const note = el("div", null, { className: "sub", hidden: true, style: "margin-top:6px;color:var(--muted)" });   // only while searching: "2 of 4 changes match"
+    const whenAbs = iso => { const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); };
+    // Recent saves read "Today, 22:31", "Yesterday, 18:16", then the weekday for the rest of the week; a week or more ago is a date. All in the browser's language.
+    const when = iso => {
+      const d = new Date(iso); if (isNaN(d)) return iso;
+      const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()), ago = Math.round((day(new Date()) - day(d)) / 86400000);
+      const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+      if (ago < 0 || ago >= 7) return whenAbs(iso);
+      const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+      const label = ago < 2 ? new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(-ago, "day") : d.toLocaleDateString(undefined, { weekday: "long" });
+      return `${cap(label)}, ${time}`;
+    };
+    const terms = () => histQ.toLowerCase().split(/\s+/).filter(Boolean);
+    // every search term must appear somewhere in the entry: the message, who, when, what changed, the field names, and BOTH the old and the new values
+    const hay = e => [e.subject, e.body, e.author, e.short, when(e.when), whenAbs(e.when), ...e.changes.flatMap(c => [c.kind, c.name, c.status, ...c.fields.flatMap(f => [f.field, f.before, f.after])])].join("\n").toLowerCase();
+    const statusLabel = c => c[0].toUpperCase() + c.slice(1);
+    // "edge/jellyfin: change fqdn" on jellyfin's own history reads "change fqdn": the prefix says what the filter already says
+    const subjectOf = e => {
+      let t = e.subject || "";
+      if (h.name && e.changes.length === 1 && e.changes[0].svc) { const re = new RegExp("^[^\\s/]+/" + e.changes[0].svc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ":\\s*"); t = t.replace(re, "") || t; }
+      return t || "(no message)";
+    };
+    const { opened, openChg } = h.ui;   // entries and, inside a save of several, the changes you have opened (kept when older saves load)
+    const draw = () => {
+      body.replaceChildren();
+      if (h.loading) { body.append(spinner("Reading the history…")); return; }
+      if (h.error) { body.append(el("p", h.error, { className: "err" })); return; }
+      if (!h.entries.length) { body.append(el("div", h.name ? `No saved changes to ${h.name} yet. Unsaved changes are not in the history until you save them.` : "No saved changes yet. Unsaved changes are not in the history until you save them.", { className: "empty" })); return; }
+      const t = terms();
+      const shown = h.entries.filter(e => !t.length || t.every(x => hay(e).includes(x)));
+      note.textContent = t.length ? `${shown.length} of ${h.entries.length} saves match${h.more ? " (of those loaded so far)" : ""}` : ""; note.hidden = !t.length;
+      if (!shown.length) { body.append(el("div", `Nothing in the history matches “${histQ.trim()}”.`, { className: "empty" })); return; }
+      const list = el("div", null, { className: "list" });
+      shown.forEach(e => {
+        const open = opened.has(e.commit);
+        const ent = el("div", null, { className: "ent" });
+        const head = el("button", null, { type: "button", className: "eh" }); head.setAttribute("aria-expanded", String(open));
+        const main = el("span", null, { className: "main" }), sub = el("span", null, { className: "sub", title: e.subject || "" }), hm = el("span", null, { className: "hm", title: whenAbs(e.when) });   // the exact time is the tooltip
+        sub.append(hlText(subjectOf(e), t));
+        hm.append(hlText(`${e.author} · ${when(e.when)} · `, t), el("code", e.short));
+        main.append(sub, hm);
+        if (!h.name && e.changes.length) {   // on the whole feed, say what the save was about
+          const what = el("span", null, { className: "hm" }), names = e.changes.slice(0, 3).map(c => c.name).join(", ") + (e.changes.length > 3 ? `, +${e.changes.length - 3} more` : "");
+          what.append(hlText(names, t)); main.append(what);
+        }
+        const one = e.changes.length === 1;
+        head.append(el("span", null, { className: "chev" }), one ? el("span", statusLabel(e.changes[0].status), { className: "chip " + e.changes[0].status }) : el("span", `${e.changes.length} changes`, { className: "chip" }), main);
+        const tab2 = el("div", null, { className: "etab", hidden: !open });
+        if (e.body) { const bd = el("div", null, { className: "hbody" }); messageParagraphs(e.body).forEach(par => { const p = el("p"); par.forEach((line, i) => { if (i) p.append(document.createElement("br")); p.append(hlText(line, t)); }); bd.append(p); }); tab2.append(bd); }
+        // With several changes in one save each is folded on its own (a save can touch dozens of services); a lone change is already
+        // named by the entry's header and just shows its table.
+        const togglers = [];
+        e.changes.forEach((c, i) => {
+          const blk = el("div", null, { className: "cblk" }), key = e.commit + ":" + i;
+          const rows = c.fields.filter(f => c.status === "changed" || c.status === "renamed" || (c.status === "added" ? f.after !== "—" : f.before !== "—"));
+          const fold = !one && rows.length > 0;
+          const detail = el("div", null, { hidden: fold && !openChg.has(key) });
+          if (rows.length) {
+            const hdr = el("div", null, { className: "ehdr" }); ["Field", "Before", "After"].forEach(x => hdr.append(el("div", x))); detail.append(hdr);
+            for (const f of rows) {
+              const diff = f.before !== f.after, r = el("div", null, { className: "erow" });
+              const c1 = el("div"), c2 = el("div", null, { className: "cur" + (diff && f.before !== "—" ? " diff" : "") }), c3 = el("div", null, { className: "nxt" + (diff ? (c.status === "removed" ? " del" : " add") : "") });
+              c1.append(hlText(f.field, t)); c2.append(hlText(f.before, t)); c3.append(hlText(f.after, t));
+              r.append(c1, c2, c3); detail.append(r);
+            }
+          }
+          if (!one || !c.fields.length) {
+            const ch = fold ? el("button", null, { type: "button", className: "chgh" }) : el("div", null, { className: "chgh" }), nm = el("span", null, { className: "en" });
+            nm.append(hlText(c.name, t));
+            if (fold) ch.append(el("span", null, { className: "chev" }));
+            ch.append(el("span", statusLabel(c.status), { className: "chip " + c.status }), el("span", c.kind, { className: "ek" }), nm);
+            if (fold) {
+              ch.setAttribute("aria-expanded", String(!detail.hidden));
+              const set = o => { detail.hidden = !o; ch.setAttribute("aria-expanded", String(o)); if (o) openChg.add(key); else openChg.delete(key); };   // in place, so the chevron turns
+              ch.onclick = () => { set(detail.hidden); syncAll(); };
+              togglers.push({ set, isOpen: () => !detail.hidden });
+            }
+            blk.append(ch);
+          }
+          blk.append(detail); tab2.append(blk);
+        });
+        let syncAll = () => {};
+        if (togglers.length > 1) {   // many changes: fold or unfold them all at once
+          const all = btn("", () => { const every = togglers.every(x => x.isOpen()); togglers.forEach(x => x.set(!every)); syncAll(); });
+          syncAll = () => { all.textContent = togglers.every(x => x.isOpen()) ? "Collapse all" : "Expand all"; };
+          syncAll();
+          const bar = el("div", null, { className: "cbar" }); bar.append(all);
+          tab2.insertBefore(bar, tab2.querySelector(".cblk"));
+        }
+        head.onclick = () => { const o = tab2.hidden; tab2.hidden = !o; head.setAttribute("aria-expanded", String(o)); if (o) opened.add(e.commit); else opened.delete(e.commit); };   // in place, so the chevron turns
+        ent.append(head, tab2); list.append(ent);
+      });
+      body.append(list);
+    };
+    const drawMore = () => {   // older saves are read on request: a page is enough to start with
+      if (h.loading || h.error || !h.more) return;
+      const row = el("div", null, { style: "display:flex;justify-content:center;padding:4px 0" });
+      const more = btn(h.loadingMore ? "Loading…" : "Load older", () => { hist.loadingMore = true; render(); loadHistory(h.name, h.next); }); more.disabled = !!h.loadingMore;
+      row.append(more); body.append(row);
+    };
+    // everything starts folded unless there is a single entry; searching only narrows the list and marks the matches — it does not open
+    // them, and what you have opened stays open
+    if (!h.ui.init && !h.loading && h.entries.length === 1) opened.add(h.entries[0].commit);
+    if (!h.loading) h.ui.init = true;
+    const redraw = () => { draw(); drawMore(); };
+    redraw();
+    search.oninput = () => { histQ = search.value; redraw(); };
+    search.setAttribute("enterkeyhint", "search");
+    search.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); search.blur(); } else if (e.key === "Escape") { if (histQ) { histQ = ""; search.value = ""; redraw(); } else search.blur(); } };   // Enter is "done": it puts the phone's keyboard away
+    const tools = [search];
+    if (h.name) tools.push(btn("All history", () => openHistory(null)));   // filtered to one service: the way back to everything
+    const head = pageHead(h.name ? `History for ${h.name}` : "History", "", ...tools);
+    head.querySelector(".sub").replaceWith(note);
+    return [head, body];
+  },
+  Issues() {
+    // Only what is wrong. A check that passed is never shown.
+    const failing = issues.items.filter(it => it.status === "warn" || it.status === "err");
+    const summary = !issues.loaded ? "Checking…" : issues.error ? "Could not run the checks" : failing.length === 0 ? "No issues found" : `${plural(failing.length, "problem")} to fix before deploying`;
+    // while a check runs: a spinner to the left of the button, and the button itself is off (its label does not change)
+    const re = btn("Re-check", () => checkIssues()); re.disabled = issues.busy || issues.fixing;
+    const tools = [];
+    if (issues.busy) { const sp = el("span", null, { className: "sicon running" }); sp.setAttribute("role", "status"); sp.setAttribute("aria-label", "Checking"); tools.push(sp); }
+    tools.push(re);
+    if (issues.fixable) { const fx = btn(issues.fixing ? "Fixing…" : "Fix automatically", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing; tools.push(fx); }
+    const body = el("div", null, { style: "display:flex;flex-direction:column;gap:10px" });
+    if (issues.error) body.append(el("p", issues.error, { className: "err" }));
+    failing.forEach(it => body.append(issueRow(it, failing.length === 1)));
+    return [pageHead("Issues", summary, ...tools), body];
+  },
+};
+// openTools: the Tools dialog (Verify, Measure, and Recovery → Redeploy everything). Choosing one closes the dialog first and then
+// does it, so no dialog sits on top of another. Redeploy asks for its confirmation inside the dialog.
+function openTools() {
+  const body = $("#tbody"); body.replaceChildren();
+  const tools = [["verify", "Verify live DNS/Caddy", "Checks that each enabled service resolves and that Caddy answers on its address."],
+                 ["measure", "Measure request timing", "Times a request to each service through DNS, TLS and auth."]];
+  const list = el("div", null, { className: "list" });
+  tools.forEach(([key, title, desc]) => {
+    const r = el("div", null, { className: "trow" }), tx = el("div", null, { className: "tx" });
+    tx.append(el("div", title, { className: "tt" }), el("div", desc, { className: "td" }));
+    r.append(tx, btn("Run", () => { $("#tdlg").close(); if (cmds[key].fields.length) openCmd(key); else run(key, {}, cmds[key].confirm); }));
+    list.append(r);
+  });
+  // Recovery: push everything to every host, whether or not anything changed (after a failed deploy, a rebuilt host…). It is
+  // the always-there Deploy; with unsaved changes it is off, like Deploy everywhere.
+  const rec = el("section", null, { className: "section" }), row = el("div", null, { className: "card-row" });
+  let confirming = false;
+  const draw = () => {
+    row.replaceChildren();
+    const d = dirty(), noHost = needsDeployHost(), tx = el("div", null, { className: "tx" });
+    tx.append(el("div", "Redeploy everything", { className: "tt" }), el("div", noHost ? NO_DEPLOY_HOST : d ? "Save or discard your changes first." : deploying ? "Deploying…" : "Pushes every generated file to every host, even when nothing has changed. Use it after a failed deploy or a rebuilt host.", { className: "td" }));
+    row.append(tx);
+    if (confirming && !d && !deploying && !noHost) {
+      const hosts = deployMany() ? `all ${state.hosts.length} hosts` : "this host";
+      row.append(btn("Cancel", () => { confirming = false; draw(); }), btn(`Redeploy to ${hosts}`, () => { $("#tdlg").close(); deployNow(changes.has_remote ? "deploy" : "apply", "Deployed"); }, "primary"));
+    } else { const b = btn("Redeploy…", () => { confirming = true; draw(); }); b.disabled = d || deploying || broken || noHost; if (d) b.title = "Save or discard your changes first"; if (noHost) b.title = NO_DEPLOY_HOST; row.append(b); }
+  };
+  draw();
+  rec.append(sectionHead("Recovery"), row);
+  body.append(list, rec);
+  openModal($("#tdlg"));
+}
+$("#tx").onclick = $("#tclose").onclick = () => $("#tdlg").close();
+closeOnBackdrop($("#tdlg"), () => false);
+
+// ── Issues: a checklist of what `hemma doctor` checks ─────────────────────────────────────────────────────────
+// The server runs doctor (read-only) and reads its output into items (issueitems.go): one per check, with a status,
+// a title, and — for a failing one — why, the files it is about, how to fix it by hand, and whether
+// `hemma doctor --fix` resolves it. A failing item is a card that expands; where --fix helps it has a Fix button,
+// and where it does not, the how-to is the item. A check that passed is never shown: this page lists issues only.
+// All text goes in as text nodes (never as markup).
+let issues = { loaded: false, busy: false, again: false, fixing: false, fixable: false, items: [], count: 0, error: "", open: new Set() };
+// 'quoted commands' become code chips; a quote that opens a word only, so the apostrophe in "hemma's" is left alone.
+function withCode(text) {
+  const frag = document.createDocumentFragment();
+  const re = /(^|[\s(])'([^']+)'(?=[\s.,;:)]|$)/g;   // a quote that opens a word, so the apostrophe in "hemma's" is left alone
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    frag.append(text.slice(last, m.index + m[1].length), el("code", m[2]));
+    last = m.index + m[0].length;
+  }
+  frag.append(text.slice(last));
+  return frag;
+}
+const withText = (tag, cls, text) => { const e = el(tag, null, { className: cls }); e.append(withCode(text)); return e; };
+// A failing check: its title is the card's header; what is behind it shows when it is expanded. Which cards are open
+// survives a re-check (kept by title), so running the checks again does not fold away what you were reading.
+function issueRow(it, only) {
+  const open = issues.open.has(it.title) || (only && !issues.open.has("-" + it.title));
+  const card = el("div", null, { className: "issue" });
+  const head = el("button", null, { type: "button", className: "ihead" }); head.setAttribute("aria-expanded", String(open));
+  const ttl = el("div", null, { className: "ttl" }), line = el("div", null, { className: "line" });
+  line.append(el("span", it.status === "err" ? "Error" : "Warning", { className: "sev" + (it.status === "err" ? " err" : "") }), el("span", it.title, { className: "it" }));
+  if (it.fixable) line.append(el("span", "Can be fixed automatically", { className: "fixchip" }));
+  ttl.append(line); head.append(ttl, el("span", null, { className: "chev" }));
+  const body = el("div", null, { className: "ibody", hidden: !open });
+  head.onclick = () => {   // toggled in place, so the chevron turns instead of being replaced
+    const o = body.hidden;
+    if (o) { issues.open.add(it.title); issues.open.delete("-" + it.title); } else { issues.open.delete(it.title); if (only) issues.open.add("-" + it.title); }
+    body.hidden = !o; head.setAttribute("aria-expanded", String(o));
+  };
+  card.append(head);
+  if (it.list && it.list.length) { const f = el("div", null, { className: "files" }); it.list.forEach(x => { const r = el("div"); r.append(withCode(x)); f.append(r); }); body.append(f); }
+  if (it.summary) body.append(withText("p", "", it.summary));
+  (it.notes || []).forEach(n => body.append(withText("p", "", n)));
+  if (it.steps && it.steps.length) {
+    const fix = el("div", null, { className: "fix" });
+    fix.append(el("div", it.steps.length === 1 ? "How to fix" : "How to fix, in order", { className: "lbl" }));
+    it.steps.forEach(s => {
+      const row = el("div", null, { className: "step" });
+      if (/^(then|run)$/.test(s.label)) {   // a command to run: in a box of its own, with a Copy button
+        const cmd = el("div", null, { className: "cmdbox" }), copy = btn("Copy", async () => { try { await navigator.clipboard.writeText(s.text); copy.textContent = "Copied"; setTimeout(() => { copy.textContent = "Copy"; }, 1600); } catch { copy.textContent = "Press ⌘C"; } });
+        cmd.append(el("span", "$", { className: "ps" }), el("code", s.text), copy);
+        row.append(el("span", s.label, { className: "sl" }), cmd);
+      } else row.append(el("span", s.label, { className: "sl" }), withText("span", "st", s.text));
+      fix.append(row);
+    });
+    body.append(fix);
+  }
+  if (it.fixable) {
+    const fx = btn(issues.fixing ? "Fixing…" : "Fix automatically", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing;
+    const row = el("div", null, { className: "fixrow" }); row.append(fx, el("span", "Fixes everything on this page that can be fixed automatically.", { className: "hint" }));
+    body.append(row);
+  }
+  if (!body.children.length) body.append(el("p", "Nothing more to show for this one."));
+  card.append(body);
+  return card;
+}
+async function checkIssues() {
+  if (issues.busy) { issues.again = true; return; }   // one check at a time; if something changed meanwhile, check again after
+  issues.busy = true; if (tab === "Issues") render();
+  try {
+    const r = await fetch("/api/issues"); const j = await r.json();
+    const items = j.items || [];
+    issues = { ...issues, loaded: true, error: j.error || "", fixable: !!j.fixable, items, count: items.filter(g => g.status === "warn" || g.status === "err").length };
+  } catch (e) { issues = { ...issues, loaded: true, error: String(e) }; }
+  issues.busy = false;
+  if (tab === "Issues") render(); else renderTabs();   // off the Issues page only the badge changes: don't redraw (and disturb) the page you are on
+  if (issues.again) { issues.again = false; checkIssues(); }
+}
+async function fixIssues() {
+  issues.fixing = true; render();
+  const res = await post("/api/run", { command: "doctor", values: { fix: true } });
+  issues.fixing = false;
+  await load();   // what --fix changed shows up as unsaved changes
+  await checkIssues();
+  toast(res.ok ? "Fixed" : "Fixed what can be fixed automatically — the rest needs a manual step, see the list", res.ok ? "ok" : "warn");
+}
+
+// The tabs are built once and updated in place, with a highlight that slides to the chosen one (a pill down the sidebar,
+// a bar along the top of the phone's tab bar) instead of the selection jumping.
+function placeTabIndicator(nav) {
+  const on = nav.querySelector("button.on"), ind = nav.querySelector(".tabind");
+  if (!on || !ind || !on.offsetWidth) return;   // the other layout's bar is not shown: nothing to place
+  if (nav.id === "mtabs") { ind.style.left = on.offsetLeft + on.offsetWidth * 0.28 + "px"; ind.style.width = on.offsetWidth * 0.44 + "px"; }
+  else { ind.style.top = on.offsetTop + "px"; ind.style.height = on.offsetHeight + "px"; }
+  if (!ind.classList.contains("ready")) requestAnimationFrame(() => requestAnimationFrame(() => ind.classList.add("ready")));   // the first placing does not animate
+}
+const placeTabIndicators = () => [$("#tabs"), $("#mtabs")].forEach(placeTabIndicator);
+window.addEventListener("resize", placeTabIndicators);
+document.fonts.ready.then(placeTabIndicators);
+function renderTabs() {
+  for (const nav of [$("#tabs"), $("#mtabs")]) {
+    if (!nav.querySelector(".tabind")) nav.append(el("span", null, { className: "tabind" }));
+    TABS.forEach(t => {
+      let b = nav.querySelector(`button[data-tab="${t}"]`);
+      if (!b) {
+        b = el("button", null, { type: "button", onclick: () => {
+          if (t === "History") {   // History loads fresh each time you open it, and keeps the service it was filtered to ("All history" clears that)
+            const name = hist ? hist.name : null;
+            openHistory(name, location.hash !== "#/history" + (name ? "/" + encodeURIComponent(name) : ""));
+            return;
+          }
+          if (t !== tab || histHash()) history.pushState(null, "", "#/" + t.toLowerCase());
+          tab = t; render(); scrollToTop(); if (t === "Issues") checkIssues();   // opening Issues re-runs the checks
+        } });
+        b.dataset.tab = t;
+        const ic = el("span", null, { className: "ic" }); ic.innerHTML = ICONS[t];   // static markup defined above
+        b.append(ic, el("span", t === "Infrastructure" && nav.id === "mtabs" ? "Infra" : t, { className: "label" }));
+        nav.append(b);
+      }
+      b.classList.toggle("on", t === tab);
+      if (t === tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+      b.querySelector(".count")?.remove();
+      const n = tabBadge(t);
+      if (n) { const c = el("span", String(n), { className: "count" + (t === "Issues" ? " err" : "") }); c.setAttribute("aria-label", t === "Issues" ? plural(n, "issue") : `${n} unsaved`); b.append(c); }
+    });
+    placeTabIndicator(nav);
+  }
+}
+// The menus that carry Tools and Sign out: the sidebar's foot on a wide screen, the burger in the phone's top bar.
+const signOut = () => Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" });
+function renderMenus() {
+  const tools = btn("Tools", () => openTools(), "sidetools");
+  $("#sidefoot").replaceChildren(tools, el("div", null, { className: "ver" }));
+  $("#sidefoot .ver").append(state.version || "", " · ", signOut());
+  const menu = $("#bmenu"); menu.replaceChildren();
+  const item = el("button", "Tools", { type: "button", onclick: () => { closeBurger(); openTools(); } }); item.setAttribute("role", "menuitem");
+  const ver = el("div", null, { className: "mver" }); ver.append(state.version || "");
+  const out = signOut(); out.setAttribute("role", "menuitem"); out.className = "only-with-gate mout";
+  menu.append(item, el("hr"), ver, out);
+}
+function closeBurger() { const m = $("#bmenu"); if (m.hidden) return; m.hidden = true; $("#burger").setAttribute("aria-expanded", "false"); document.removeEventListener("click", burgerAway, true); }
+const burgerAway = e => { if (!$("#bmenu").contains(e.target) && !$("#burger").contains(e.target)) closeBurger(); };
+$("#burger").onclick = () => {
+  const m = $("#bmenu");
+  if (!m.hidden) return closeBurger();
+  m.hidden = false; $("#burger").setAttribute("aria-expanded", "true"); document.addEventListener("click", burgerAway, true);   // burgerAway ignores clicks on the button and the menu itself
+  m.querySelector("button").focus();   // focus goes into the menu (Safari does not focus a button on click), so Esc reaches it
+};
+$("#top").addEventListener("keydown", e => { if (e.key === "Escape" && !$("#bmenu").hidden) { e.preventDefault(); closeBurger(); $("#burger").focus(); } });
+function render() {
+  renderTabs();
+  $("#view").replaceChildren(...VIEWS[tab]());
+  renderMenus();
+  renderHint();
+  renderBars();
+}
+// ⌘K / Ctrl+K: straight to the search box on the Services page
+window.addEventListener("keydown", e => {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "k" || broken) return;
+  if (document.querySelector("dialog[open]")) return;
+  e.preventDefault();
+  const focus = () => { const s = $("#search"); if (s) { s.focus(); s.select(); } };
+  if (tab !== "Services" && tab !== "History") { tab = "Services"; history.pushState(null, "", "#/services"); render(); requestAnimationFrame(focus); } else focus();
+});
+// ── Recovery: services.yaml cannot be loaded ──────────────────────────────────────────────────────────────────
+// Every typed form needs a loadable file, so none of them can fix this. Offer what can: put back the last saved
+// version (the usual cause is an unsaved change), or edit the file as text.
+let broken = false;
+const parseReason = e => (e || "").replace(/^parse \S+: /, "");
+async function showRecovery(error, version) {
+  broken = true;
+  state = { services: [], hosts: [], domains: [], settings: [], version };
+  changes = await (await fetch("/api/changes")).json().catch(() => ({ git: false, files: [] }));
+  $("#tabs").replaceChildren(); $("#mtabs").replaceChildren(); $("#savebar").classList.remove("show"); $("#deploybar").classList.remove("show");
+  const card = el("div", null, { className: "recover" });
+  card.append(el("h2", "services.yaml can't be read"),
+    el("p", "hemma can't load the file, so it can't show or change anything until the file is fixed.", { className: "meta" }),
+    el("pre", parseReason(error), { className: "reason" }));
+  const row = el("div", null, { className: "row" });
+  if (changes.git && changes.files.length) row.append(btn("Discard unsaved changes", async () => { await discard(); }));
+  row.append(btn("Edit services.yaml", () => openRaw(), "primary"));
+  card.append(row);
+  if (changes.git && changes.files.length) card.append(el("p", "Discard puts services.yaml back to how it was when you last saved. The unsaved change is what broke it, if you made one.", { className: "meta" }));
+  $("#view").replaceChildren(card);
+  renderMenus();
+  $("#hinttext").textContent = "services.yaml can't be read"; $("#hint .dot").className = "dot warn";
+}
+async function openRaw() {
+  const r = await fetch("/api/config/raw"); const raw = await r.json();
+  $("#etext").value = raw.text || ""; $("#eerr").textContent = "";
+  const rawInit = $("#etext").value;
+  rawDirty = () => $("#etext").value !== rawInit;
+  $("#edlg").oncancel = e => { if (rawDirty()) { e.preventDefault(); leave($("#edlg"), rawDirty); } };
+  $("#ehelp").textContent = raw.error ? `It does not load yet: ${parseReason(raw.error)}` : "Saving checks that the file loads; text that does not is not saved.";
+  $("#ego").disabled = false;
+  $("#ecancel").onclick = () => $("#edlg").close();
+  $("#ego").onclick = async e => {
+    e.preventDefault(); $("#ego").disabled = true;
+    try {
+      const res = await post("/api/config/raw", { text: $("#etext").value });
+      if (!res.ok && !res.changed) { $("#eerr").textContent = formError(res.output); return; }   // refused: nothing saved, keep editing
+      await load(); $("#edlg").close();
+      if (res.ok) toast("services.yaml saved", "ok");
+      else toast("services.yaml saved, but hemma skipped something", "warn", { title: "services.yaml", text: res.output });
+    } finally { $("#ego").disabled = false; }
+  };
+  openModal($("#edlg"));
+}
+
+// The command list, the state, the unsaved changes and their diff are independent reads: all four are asked for at
+// once (the server shares one `git status` between changes and diff), not one after another.
+const cmdsReady = fetch("/api/commands").then(r => r.json()).then(list => list.forEach(c => cmds[c.key] = c));
+let loaded = false;
+async function load() {
+  const chP = fetch("/api/changes").then(r => r.json());
+  const dP = fetch("/api/diff").then(r => r.json()).catch(() => null);
+  chP.catch(() => {}); dP.catch(() => {});   // if state fails below these are never awaited: no unhandled rejection
+  const r = await fetch("/api/state"); const s = await r.json();
+  await cmdsReady;
+  if (s.error) { await showRecovery(s.error, s.version); return; }
+  broken = false;
+  state = s;
+  if (!loaded) render();   // first paint as soon as the lists are here; the bars and badges follow. Later loads wait, so a stale bar never flashes after a save.
+  changes = await chP;
+  const d = await dP;
+  pending = changes.files.length && d && !d.error ? d : null;
+  loaded = true;
+  render();
+  if (pendingHist) { pendingHist = false; openHistory(histHash(), false); }   // a link straight to History (or one service's)
+  checkIssues();   // not awaited: keeps the Issues badge current after every change without making anything wait for doctor
+}
+cmdsReady.then(() => { if (!loaded) render(); });
+load();
+</script>
+</body>
+</html>

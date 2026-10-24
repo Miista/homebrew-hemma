@@ -1,0 +1,7 @@
+$ hemma defaults set dns-host
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the <name>.
+Usage: hemma defaults set dns-host <name>
+--- files ---

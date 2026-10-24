@@ -1,0 +1,58 @@
+$ hemma deploy
+# setup: defaults set deploy-host - ; doctor --fix
+# machine: host="" tools="ok"
+exit: 0
+--- stdout ---
+Deploying to 2 hosts: core, edge.
+
+== Phase 0: probe ==
+  ✓ core: reachable
+  ✓ edge: reachable
+
+== Phase 1: pull ==
+  ✓ core: pulled
+  ✓ edge: pulled
+  all hosts at 
+
+== Phase 2: validate configuration ==
+  ✓ sso config validates on core
+
+== Phase 3: apply ==
+
+== core ==
+
+== edge ==
+
+== Summary ==
+  ✓ core: applied
+  ✓ edge: applied
+
+Deployed.
+--- stderr ---
+--- external commands ---
+git -C <repo> status --porcelain --untracked-files=all
+git -C <repo> show HEAD:.gitignore
+git -C <repo> show HEAD:core/caddy/data/Caddyfile
+git -C <repo> show HEAD:edge/caddy/data/Caddyfile
+git -C <repo> show HEAD:hemma-manifest.yaml
+git -C <repo> show HEAD:splitdns-manifest.yaml
+git -C <repo> show HEAD:sd-manifest.yaml
+git -C <repo> rev-parse --abbrev-ref @{u}
+git -C <repo> fetch
+git -C <repo> rev-list --left-right --count HEAD...@{u}
+ssh -o BatchMode=yes -- core true
+ssh -o BatchMode=yes -- ops@192.0.2.20 true
+ssh -o BatchMode=yes -- core hemma preflight
+ssh -o BatchMode=yes -- core git -C ~/docker fetch
+ssh -o BatchMode=yes -- core git -C ~/docker rev-list --left-right --count HEAD...@{u}
+ssh -o BatchMode=yes -- ops@192.0.2.20 hemma preflight
+ssh -o BatchMode=yes -- ops@192.0.2.20 git -C ~/docker fetch
+ssh -o BatchMode=yes -- ops@192.0.2.20 git -C ~/docker rev-list --left-right --count HEAD...@{u}
+ssh -o BatchMode=yes -- core git -C ~/docker pull --ff-only
+ssh -o BatchMode=yes -- ops@192.0.2.20 git -C ~/docker pull --ff-only
+ssh -o BatchMode=yes -- core git -C ~/docker rev-parse HEAD
+ssh -o BatchMode=yes -- ops@192.0.2.20 git -C ~/docker rev-parse HEAD
+ssh -o BatchMode=yes -- core docker exec sso authelia config validate
+ssh -o BatchMode=yes -- core hemma apply
+ssh -o BatchMode=yes -- ops@192.0.2.20 hemma apply
+--- files ---

@@ -1,0 +1,30 @@
+# This image never compiles anything. The binary is cross-compiled with Go on the host and only copied in:
+#   make ui-binary      (CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o dist/hemma-ui ./cmd/hemma-ui)
+# A build stage here would redownload and recompile every dependency on each build, and the build cache that leaves behind
+# filled a whole Docker disk. `make ui-image` and `make fixture-redeploy` run ui-binary first.
+FROM alpine:3.21
+# docker-cli: `hemma apply` shells out to `docker exec/restart` against the host daemon.
+# git: hemma reads repo state. Both are needed at runtime.
+# bash/curl/gawk: `hemma measure`. openssh-client: `deploy` ssh's to every other host in the
+# fleet, and a git remote may be reached over ssh too.
+RUN apk add --no-cache docker-cli git bash curl gawk openssh-client
+# The container runs as uid 1000 (compose sets `user:`). That needs two things the image must
+# provide, because nothing else can:
+#  - a passwd entry: openssh refuses to run for a uid with none, and it resolves ~ from passwd
+#    (not $HOME), so the entry's home must be /data, where the key and known_hosts are mounted.
+#    A different uid needs its own entry (e.g. a bind-mounted passwd file).
+#  - /data/auth owned by that uid: a NEW named volume copies its owner from the image's directory
+#    (and is created root-owned when the directory is absent), so without this authy cannot
+#    write its session key and refuses to start.
+RUN adduser -D -H -h /data -u 1000 hemma \
+ && mkdir -p /data/auth /data/.ssh \
+ && chmod 700 /data/.ssh \
+ && chown -R 1000:1000 /data
+COPY --chmod=755 dist/hemma-ui /usr/local/bin/hemma-ui
+# The bind-mounted repo is owned by the host user, not root: without this git refuses
+# it ("dubious ownership"), which breaks hemma's own git calls (deploy preflight/pull).
+RUN git config --system --add safe.directory '*'
+ENV HEMMA_REPO=/repo HEMMA_UI_ADDR=:8080
+# Needs host networking so `apply` can match this machine's IP to a host in
+# services.yaml; see docker-compose.ui.yml.
+ENTRYPOINT ["hemma-ui"]

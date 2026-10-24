@@ -1,0 +1,7 @@
+$ hemma disable
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the noun for "disable" — expected service, host, or domain.
+Usage: hemma disable service|host|domain ...
+--- files ---

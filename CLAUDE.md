@@ -10,8 +10,9 @@ git repo. It is **reconcile-and-report** (Terraform/`make` style): every sync re
 the YAML. Sync and the mutation commands only write files into the local repo checkout; making them live
 is the separate `hemma apply` command, run per host, which restarts/reloads that host's local daemons
 (pihole / caddy / the auth provider). The only command that SSHes is `hemma deploy` — the deliberate
-exception to the no-SSH non-goal (design §6.8/§12) — which fans out `git pull --ff-only` then
-`hemma apply` across the fleet (remotes first, self last); everything else never SSHes.
+exception to the no-SSH non-goal (design §6.8/§12) — which fans out `hemma preflight` (no uncommitted
+hemma-owned files there), a sync with origin, `git pull --ff-only` and then `hemma apply` across the fleet
+(remotes first, self last); everything else never SSHes. Every host needs a `hemma` that knows `preflight`.
 `design.md` is the authoritative design document; read it before non-trivial changes.
 Section references in code comments (`design §6`, etc.) point at it.
 
@@ -22,6 +23,10 @@ generated filenames, Caddyfile import line, .gitignore markers) are auto-migrate
 `legacyManifestNames`, `legacyImportLines`, and `legacyGiBlockStarts` in `internal/cli`.
 
 ## Build / test / release
+
+Everyday commands are in the `Makefile` — `make help` lists them (`make check` = gofmt + vet + all tests;
+`make test-fast` skips the ~40s CLI snapshot tests; `make snapshots-update` regenerates the goldens;
+`make fixture-redeploy` recreates the UI test container). Underneath they are plain `go` commands:
 
 ```sh
 go build ./...                       # build
@@ -35,6 +40,12 @@ Deployment to the hosts is via the apt package (Cloudsmith) published by the tag
 release workflow; there is no deploy script in this repo.
 
 Per the user's global convention: build and live-verify on the Mac before committing/pushing in this repo.
+
+**Never build Go inside a Docker image.** The `hemma-ui` image (`Dockerfile.ui`) only COPIES `dist/hemma-ui` in; cross-compile it with Go on
+the Mac first — `make ui-binary` (`CGO_ENABLED=0 GOOS=linux GOARCH=$(UI_ARCH) go build`, `UI_ARCH` defaults to arm64: the edge host and Colima on
+Apple silicon). `make ui-image` and `make fixture-redeploy` do that for you, and `.dockerignore` sends Docker nothing but the binary. A build
+stage in the image recompiles every dependency each time and its cache once filled a whole Docker disk. To put the UI on the edge host: `make
+ui-binary`, build the image from it, `docker save | ssh edge docker load`, `docker compose up -d hemma` in `~/docker/edge`.
 
 ## Architecture — the sync pipeline
 
@@ -67,8 +78,19 @@ services.yaml → config → plan → render        (desired state)
   **authority for safe deletion**: only manifest-tracked files are ever deleted. Unparseable → rebuilt from
   config. (`splitdns-manifest.yaml` and `sd-manifest.yaml` are the pre-rename names, auto-migrated
   on first load.)
-- **`internal/cli`** — command parsing and wiring; a thin `main.go` just calls `cli.Run`. add/update/remove
-  mutate the YAML then call the shared sync engine — they contain **no file-writing logic of their own**.
+- **`internal/cli`** — the front end: `Run`, the global `-C` flag, help, version, completion and `UsageText`;
+  everything else is routed to the kernel via `kernel.Route`. A thin `main.go` just calls `cli.Run`.
+- **`internal/cli/kernel`** — the implementation of every command (flags, work, printing, exit codes), shared by
+  the CLI and `hemma-ui`. Commands still print, but into the `kernel.Env` they are given (`Out`/`Err` writers,
+  `Ctx` bounding every external command, `NoTerminal`, `Self`) — never straight to `os.Stdout`/`os.Stderr`, and
+  external tools start via `env.command` so they honour `Ctx`. add/update/remove mutate the YAML then
+  call the shared sync engine — they contain **no file-writing logic of their own**.
+
+**Snapshot tests** (`internal/cli/snapshot_test.go`, goldens in `internal/cli/testdata/snapshot/golden/`) run every
+command in-process against an anonymized fixture and pin exit code, stdout, stderr, changed files (hashed) and the
+sequence of external commands (fake docker/caddy/dig/ssh/git on `PATH`). After an intended behaviour change,
+regenerate with `go test ./internal/cli/ -run TestSnapshots -update` and review the diff. The fixture is synthetic
+(RFC 5737 addresses, `home.example`) — never copy a real `services.yaml` into `testdata`.
 
 ### Invariants to preserve when editing
 
@@ -116,7 +138,7 @@ name, name the mechanism; if new prose needs to talk about reach, say local/publ
 
 ## Host-split commands (`apply`, `verify`)
 
-`apply` and `verify` are **host-split**: they identify which host they run on via a local-IP match and
+`apply` and `verify` are **host-split** (the CLI; `hemma-ui` supplies its host from `deploy_host` instead, see below): they identify which host they run on via a local-IP match and
 perform only the part they own. The DNS half (restart pihole / dig against it) runs only on the resolver;
 the Caddy half (validate + reload) only on a host running Caddy; `apply` additionally has an auth half
 (provider `ApplyCommands`: validate then restart the auth container) that runs only on the host running
@@ -126,6 +148,137 @@ instead of failing mid-reload; it refuses if the repo has drift, and also if thi
 does not import `hemma.trusted_proxies.generated.caddy` (design §4.7 — hemma authors that trust
 boundary, so it refuses to reload a Caddy that would silently ignore it; `doctor` only advises
 there, since the global options block it belongs in is hand-maintained).
+
+## `hemma-ui` — web UI (`cmd/hemma-ui`)
+
+A deliberately small web UI (image: `Dockerfile.ui`; compose + synthetic test fixture:
+`docker-compose.ui.yml`, `hack/ui-fixture/`). **It runs on the deploy host**, and Deploy is the kernel's
+fleet `deploy` — the same code as the CLI, so it ssh's to the other hosts (ssh key + `known_hosts`
+mounted read-only under `/data/.ssh`, see the compose file) and applies on this host last. There is no
+hub/agent: that design (the unmerged `web-ui` branch) was dropped in favour of the shared kernel.
+The container runs as uid 1000 (the image's `hemma` user: passwd entry for ssh, owned `/data/auth` for
+authy). It is NOT a second implementation of hemma:
+
+- **Every change goes through the kernel** (`commands.go` is an allowlist of typed commands, built as an argv,
+  never a shell, and run in-process via `kernel.Route` with a capturing `kernel.Env`), so validation and the
+  single-writer invariant are exactly the CLI's — it is literally the same code. The UI never writes
+  `services.yaml` or generated files itself. `Env.NoTerminal` keeps the interactive editors from ever prompting,
+  and the request's deadline is `Env.Ctx`, which kills hung external commands. The image contains only
+  `hemma-ui`: there is no `hemma` binary here (`deploy`'s apply of this host runs in-process; the OTHER hosts
+  run their installed `hemma apply` over ssh, as on the CLI).
+- **The UI's host is `defaults.deploy_host`** (`host.go`; `main` hands `deployHostSelf` to `kernel.SetLocalHost`), not a guess from its
+  network interfaces — it is required to run on the deploy host, so it takes that host's name from the file. This is the UI process
+  only: the kernel and the CLI keep matching their own interfaces and still refuse `deploy` from any host but the deploy host. The
+  kernel does NOT refuse when `deploy_host` is unset (it then runs anywhere), so the UI checks for itself: `deploy` and `apply`
+  (`/api/deploy`, `/api/run`) answer 409 `noDeployHost` until it is set (`needDeployHost`), and the page switches Deploy, "Deploy right
+  after saving" and Redeploy off with a pointer to Infrastructure → Settings → Deploy host (`needsDeployHost`). Editing,
+  Verify and the rest stay available, so the setting can be fixed from the page. A deploy host that is not a declared host counts as unset.
+- **Typed fields** (`Ref` in `commands.go`, validators in `refs.go`): a host is picked from hosts, a CIDR list is
+  validated as CIDRs, a file is picked from the repo tree, a host's **SSH destination** is the `ssh` type (`[user@]host`, never
+  starting with `-`: deploy runs `ssh <dest>`, so free text would be an option-injection hole). Every `defaults:` key is on the
+  Infrastructure page's Settings, `deploy-host` included. The browser offers only valid choices *and* the
+  server re-checks every value — the browser is a convenience, not the control.
+- **Git is the change tracker.** Edits land in the repo immediately; the working tree is the "unsaved changes"
+  list, `/api/diff` renders it as things (services, hosts, defaults — current vs changed), hemma's generated
+  files are only counted, and other files are listed by name, never interpreted. `apply`/`deploy` are refused
+  server-side while the tree is dirty, so everything that goes live carries a commit message.
+- **Two phases, deliberately separate:** *saving* (the warn bar at the bottom while there are unsaved changes: Discard —
+  which asks inline, Keep / Discard N changes — and Review & save, which commits with a message) and *deploying*: an
+  accent bar ("Saved, not live yet" + Deploy) after a save that was not deployed — remembered in `localStorage`, plus
+  unpushed commits that change a file hemma owns (`ahead_hemma`; a commit to a compose file is ahead of origin too, but
+  hemma has nothing to make live for it) — and **Tools → Recovery → Redeploy everything** (the Tools dialog), which is always there, so deploy still works
+  on a freshly set-up machine with nothing to save (nothing about what is LIVE is ever inferred from the page). Deploy is the kernel's `deploy`, which first brings this
+  checkout level with origin itself (`git pull --rebase`, aborted cleanly on a real conflict; then `git push`; then a
+  drift check), so the UI has no push of its own and "origin moved" is never a dead end for the person. With no origin
+  it just applies.
+- **A file that cannot be loaded is still editable.** Every typed form needs a loadable `services.yaml`, so
+  when it is not, `/api/state` reports why and the page shows a recovery screen: **Discard unsaved changes**
+  (the usual cause is an unsaved edit) or **Edit services.yaml** as text. The text goes through
+  `kernel.ReplaceConfig` — the UI still never writes the file itself — which refuses text that does not
+  parse (nothing written) and otherwise writes it as given and syncs like any other mutation. The raw POST is
+  a recovery only: while the file loads it answers 409, so the typed commands and their checks are the one
+  way to change a healthy file (`TestRawConfig_ReadReplaceAndRefuse` pins it).
+- **hemma must be able to read what it writes.** The none auth mode is the empty string internally and was
+  written as `mode: ""`, which the reader refused — a service with mode none plus bypass paths/groups/policy
+  made the whole file unloadable. The writer now spells it `none`; the reader still accepts the old `mode: ""`
+  but refuses a mapping with NO mode key (so `auth: {groups: [x]}` never reads as "no auth"). The auth form
+  only offers fields that apply to the chosen mode, and the server refuses a combination hemma would skip.
+- **Not exposed on purpose:** credential minting (`create app/user`), and terminal-only `help`/`completion`/
+  `version`/`defaults` listings, and `list` (the Services page is the overview). The file browser only ever shows
+  the mounted repo (no `..`, no symlinks, no dot-folders). When `hemma doctor` finds nothing, Issues shows just
+  "No issues"; the two checks you can run yourself (Verify, Measure) live in the Tools dialog. Verify's result is drawn like the deploy
+  checklist (`verifyView`: a card per service, a ✓/✗ row per check, the outcome, the raw text under "Raw output"); it only reads the
+  shape of `hemma verify`'s lines and falls back to the raw text when it finds no service. Measure is drawn the same way
+  (`measureView`: a card per measured path — two with `--compare` — with a bar per timing, spread and range beneath, runs folded away).
+- **Security posture:** sign-in is **authy** (`github.com/miista/authy`), the outermost layer — nothing,
+  not even the page or `/static/`, is reachable without a session. Configure `HEMMA_UI_OIDC_*` (all four
+  together; the IdP decides who may sign in) or, with none set, the first visitor creates a local account —
+  so create it yourself right after starting. `HEMMA_UI_AUTH_DISABLED` is refused at startup (`newGate`):
+  this process must never run ungated. Session state lives in `HEMMA_UI_DATA` (default `/data/auth`, a
+  volume). Mutating requests also get a same-origin check. Still plain HTTP — put it behind TLS. The
+  container mounts the Docker socket (root-equivalent on the host), so keep it LAN-only. Caveat: authy
+  has not had an independent security review yet (its own README says so). `auth_test.go` pins that every
+  route is refused without a session.
+- **The Services page** groups services by host (collapsible, searchable with ⌘K / Ctrl+K); a row opens the service's
+  form directly. The form is the existing typed form drawn as three cards (General, Network, Authentication) with
+  Host and Auth mode as segmented choices; **Enabled** is a switch in it (not a field of `update service`: after the
+  form's own command the page runs `enable`/`disable service`). History, Rename and Remove are buttons at the left of
+  the footer (Remove still confirms). **On a phone** an edit form's footer is just **Close** with a chevron menu button (History, Rename,
+  Remove; up while shut, turning down when open) to its right, and a floating **Cancel / Save** bar slides up above it once the form has changed (`setFloaty`):
+  Cancel resets the form to how it opened, Close leaves it; Verify and the other run-forms keep their normal footer. **History** is a tab (`#/history`; `#/history/<service>` is the same list filtered to one service — the service dialog's
+  History button opens that, and an "All history" button clears it; leaving the tab and coming back keeps the filter and the search): `GET /api/history` (`history.go`) walks the commits that
+  touched `services.yaml` and compares each version with the one before (`diffEntities`, shared with the unsaved-changes diff), so
+  an entry is a Save: its message, who, when, and everything it changed (services, hosts, domains, settings). With `?service=` it
+  follows that one service back through a rename. Entries start folded (a single entry starts open). The search box matches the
+  message, author, date, entity and field names and **both the old and the new values** (every word must match); it narrows the
+  list and marks the matches, and does not open anything (what you opened stays open). A save that changed several things folds each change on its own (with Expand / Collapse all);
+  a lone change just shows its table. On a service's own history the entry's `host/service:` prefix is dropped from the title (the full message
+  stays as the tooltip and is still searched). Removed services show up as entries, so their history is reachable by searching for
+  them. Recent saves are dated "Today, 22:31" / "Yesterday, …" and by weekday for the rest of the week; a week or more ago is a date (in the
+  browser's language; the exact time is the tooltip, and both forms are searched). While it loads, a clock-face spinner (`spinner()`) sits in the middle of the page (the hand sweeps; still under `prefers-reduced-motion`). It is read a page at a time (30 saves, then a **Load older** button; one service's changes are read in chunks of 40 commits until 20 are
+  found, the page carrying the name the service had at that point so a rename is followed across pages). Nothing is stored by hemma; it is all
+  git. Unsaved changes are not in it, and there is no Restore
+  (yet). A row's chip (Added / Changed / Removed) comes from the diff. Something removed but not saved
+  (a service, host or domain) shows struck through with an **Undo**, which re-runs the matching `add …` with the values the
+  diff recorded (`undoRemoved`), so no state lives only in the page. Host and domain rows open on a click; hemma cannot
+  rename a domain, so a domain's dialog only shows it and offers Remove. There is no read-only details dialog any more.
+- **Leaving a dialog with unsaved work asks first** (`leave()`): ×, a click on the backdrop, Esc and a phone's Close all show
+  "Discard your changes?"; with nothing to lose they just close. Cancel (and a form's Cancel / Save bar) is the explicit way
+  to throw edits away and does not ask. What counts as "dirty": a form's field values (`formDirty`) and the raw `services.yaml`
+  editor's text. The **Save dialog never asks**: the message you were writing is kept in `localStorage` (`hemma.saveDraft`)
+  and is back when you reopen it, until the changes are saved or discarded.
+  When the unsaved changes concern exactly one service, the dialog shows "Will be prefixed with `<host>/<service>:`" above the
+  box (`commitPrefix`) and prepends it to what is typed, so messages follow `<host>/<service>: <message>`; with that prefix the
+  box asks the keyboard not to capitalise (`autocapitalize=none`). More than one entity, or anything but a service: no prefix.
+- **Issues lists exactly what `hemma doctor` says.** `GET /api/issues` runs doctor read-only (no write lock, so it
+  can run after every change to keep the tab's badge current) and returns its output verbatim; the page splits it
+  into findings without altering a line. A **Fix** button runs `hemma doctor --fix` and appears only when doctor itself
+  says `--fix` can help (its "Run 'hemma doctor --fix' …" hints; `doctorFixable` follows that wording and
+  `TestIssues_…` pins it to the real output) — what `--fix` cannot resolve (advisories, known_hosts, …) is just
+  listed. Successful changes are confirmed with a plain toast: the warnings a sync prints are repo-wide advisories,
+  not about that change, and belong on Issues.
+- **Four pages and a dialog:** Services (the list), Infrastructure (hosts, domains and — under them — the repo-wide Settings, the
+  defaults), History (every Save), Issues (doctor). **Tools** (Verify, Measure, Recovery → Redeploy everything) is a dialog, not a page — rarely needed —
+  opened from the burger in the phone's top bar or the Tools button in the sidebar's foot; choosing a tool closes the dialog first,
+  so dialogs never stack, and Redeploy asks for its confirmation inside it. The burger menu also carries the version and Sign out.
+  `#/settings` (Settings used to be a page) redirects to Infrastructure; the old `#/tools` lands on Services. The unsaved-change
+  badge on a tab counts that page's entities (`diff.go` kinds: Service → Services, Host/Domain/Setting → Infrastructure).
+- **A phone scrolls the page, not a box inside it** (`#main` only scrolls on a wide screen): iOS scrolls to the top when the status
+  bar is tapped, but only for the page itself. So under 720px the header is `position: sticky`, and the tab bar, the bars and the toast
+  are `position: fixed`; while a dialog is open the page behind it is locked (`overflow: hidden`). Use `scrollToTop()`, not
+  `#main.scrollTop`.
+- **Phones are the primary screen:** keep fields at 16px on every touch screen (`@media (pointer: coarse)`, so an iPhone in landscape
+  and an iPad too — iOS zooms into smaller ones) and `touch-action: manipulation` everywhere (no double-tap zoom), the shell switches to the phone layout under 720px, and
+  nothing may overflow sideways. Test against `hack/ui-fixture` (synthetic data; never a real host).
+- **Look and feel:** the "direction c" design handoff (`form-redesign-request-*/` in the checkout, not committed; the latest numbered one wins):
+  Instrument Sans + JetBrains Mono, a blue accent, a sidebar on a wide screen and a top bar + bottom tab bar under
+  720px, bordered cards, soft change chips. It follows the system light/dark setting. All colours are tokens with a
+  light and a dark value in `static/style.css` — never hard-code a colour in the page. The page (`static/index.html`)
+  holds markup and script only; the stylesheet and the font files (SIL OFL-1.1, licenses alongside) are embedded and
+  served from `/static/` behind the same login. Keep text at WCAG AA (4.5:1) in both themes. The tab icon is the brand tile
+  (`static/icons/icon.svg`, plus `favicon.ico` as the fallback): the `h` is JetBrains Mono Medium's own outline, so it matches the page
+  tile; it is a fixed dark tile with a light `h` because an icon cannot follow the system theme. Being under `/static/` it is behind
+  the login too (`auth_test.go` pins that).
 
 ## Scope boundary (do not cross)
 

@@ -1,0 +1,8 @@
+$ hemma version --help
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma version — print the version
+
+Usage: hemma version   (aliases: --version, -v)
+--- files ---

@@ -1,0 +1,15 @@
+$ hemma apply --help
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma apply — make config live on THIS host
+
+Usage: hemma apply
+
+Two phases: first VALIDATE everything this host owns (caddy config, auth
+provider config) — any failure aborts with nothing touched; then act:
+restart pihole (resolver host), reload caddy (service hosts), restart the
+auth provider (the host running auth_service). A bad config can never cost
+a pihole restart or leave the host half-applied. Run it on each host after
+config changes. Refuses if the repo has drift.
+--- files ---

@@ -1,0 +1,6 @@
+$ hemma remove host
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the <name>.
+--- files ---

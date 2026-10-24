@@ -52,7 +52,7 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 	c.Hosts["resolver"] = Host{IP: "192.0.2.1", Dir: "resolver"}
 	c.Domains["example.com"] = Domain{}
 	c.Defaults.DNSHost = "resolver"
-	c.Services["docs"] = Service{FQDN: "docs.example.com", Host: "resolver", Backend: "paperless:8000"}
+	c.Services["docs"] = Service{FQDN: "docs.example.com", Host: "resolver", Backend: "docsapp:8000"}
 	if err := c.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 	if c2.Hosts["resolver"].IP != "192.0.2.1" {
 		t.Errorf("host not round-tripped: %+v", c2.Hosts["resolver"])
 	}
-	if c2.Services["docs"].Backend != "paperless:8000" {
+	if c2.Services["docs"].Backend != "docsapp:8000" {
 		t.Errorf("service not round-tripped: %+v", c2.Services["docs"])
 	}
 	if c2.Defaults.DNSHost != "resolver" {
@@ -374,17 +374,17 @@ func TestAuth_ObjectFormErrors(t *testing.T) {
 func TestHostSSH_RoundTripAndDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "services.yaml")
-	write(t, path, "hosts:\n  pi: {ip: 192.0.2.1}\ndomains: []\ndefaults: {}\nservices: {}\n")
+	write(t, path, "hosts:\n  edge: {ip: 192.0.2.1}\ndomains: []\ndefaults: {}\nservices: {}\n")
 	c, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Default: no ssh field → destination is the host name.
-	if got := c.Hosts["pi"].SSHDest("pi"); got != "pi" {
+	if got := c.Hosts["edge"].SSHDest("edge"); got != "edge" {
 		t.Errorf("SSHDest default should be the host name, got %q", got)
 	}
 	// Set a verbatim destination and round-trip it.
-	c.Hosts["pi"] = Host{IP: "192.0.2.1", SSH: "admin@raspberry.local"}
+	c.Hosts["edge"] = Host{IP: "192.0.2.1", SSH: "admin@raspberry.local"}
 	c.Hosts["box"] = Host{IP: "192.0.2.2"}
 	if err := c.Save(); err != nil {
 		t.Fatal(err)
@@ -393,10 +393,10 @@ func TestHostSSH_RoundTripAndDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := c2.Hosts["pi"].SSH; got != "admin@raspberry.local" {
+	if got := c2.Hosts["edge"].SSH; got != "admin@raspberry.local" {
 		t.Errorf("ssh field should round-trip, got %q", got)
 	}
-	if got := c2.Hosts["pi"].SSHDest("pi"); got != "admin@raspberry.local" {
+	if got := c2.Hosts["edge"].SSHDest("edge"); got != "admin@raspberry.local" {
 		t.Errorf("SSHDest should return the explicit destination, got %q", got)
 	}
 	// A host without ssh must not gain the key on disk (omitempty).

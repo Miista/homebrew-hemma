@@ -1,0 +1,6 @@
+$ hemma add service dash --fqdn dash2.home.example --host edge --backend dash:3000
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Service "dash" already exists.
+--- files ---

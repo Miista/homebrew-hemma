@@ -1,0 +1,34 @@
+$ hemma doctor --help
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma doctor — audit the repo (gitignore, Caddyfile imports, drift, auth,
+deploy readiness)
+
+Usage: hemma doctor [--fix]
+
+Flags:
+  -f, --fix   Apply fixes: reconcile generated files and .gitignore entries.
+
+The auth checks are read-only advisories (hemma never writes the provider's
+config, users database, or compose file); --fix cannot resolve them. Each
+advisory prints a headline (the consequence), the mechanism, and a fixed
+'fix:'/'then:' grammar — the exact edit to paste in (e.g. the
+X_AUTHELIA_CONFIG value that wires the generated access-control file into
+the auth container) and the follow-up command (usually 'hemma apply').
+
+There is no separate public-horizon check: hemma is the sole author of each
+host's cloudflared config.yml (generated from every service's 'public' field,
+same as the DNS/Caddy files), so a 'public: true' service with no matching
+config.yml entry — e.g. because defaults.tunnel-dir isn't set — surfaces as
+ordinary generated-file drift, the same as any other missing/orphaned file.
+
+The deploy-readiness check verifies each remote deploy target has a host key
+in THIS machine's known_hosts ('ssh-keygen -F' against the host's ip and its
+ssh destination — either counts). 'hemma deploy' sshes with BatchMode=yes,
+which cannot answer the first-connection trust prompt, so a missing entry
+fails deploy outright. Not --fix-able (hemma does not own known_hosts): the
+recipe is to connect once interactively and verify the fingerprint. doctor
+never connects anywhere — whether ssh auth actually WORKS is verified by
+deploy itself, in its phase-0 probe.
+--- files ---

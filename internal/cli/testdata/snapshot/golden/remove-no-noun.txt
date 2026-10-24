@@ -1,0 +1,7 @@
+$ hemma remove
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the noun for "remove" — expected service, host, or domain.
+Usage: hemma remove service|host|domain ...
+--- files ---

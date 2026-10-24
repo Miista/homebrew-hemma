@@ -377,17 +377,26 @@ config changes. Refuses if the repo has drift.`},
 
 Usage: hemma deploy [<host> ...]
 
-Makes the fleet match origin, in three strictly ordered phases:
+Makes the fleet match origin, in four strictly ordered phases:
 
   Phase 0 — probe:  'ssh <dest> true' to every REMOTE host. ANY host
                     unreachable over ssh aborts before anything is pulled —
                     a clear "unreachable" instead of git-pull noise later.
-  Phase 1 — pull:   'git -C ~/docker pull --ff-only' on every target host.
-                    ANY failure (divergence, dirty remote tree, unreachable
-                    host, ssh auth) aborts the ENTIRE deploy before phase 2 —
+  Phase 1 — pull:   first each REMOTE host is brought level with origin the
+                    same way as this host (below): its own unpushed commits are
+                    pushed, origin's new ones are pulled with --rebase, and
+                    uncommitted edits there are left alone — stashed around the
+                    rebase only when origin's commits touch none of those files,
+                    otherwise the deploy stops naming them. If a remote pushed,
+                    this host syncs again. Then 'git -C ~/docker pull --ff-only'
+                    on every target host. ANY failure (a clash, unreachable
+                    host, ssh auth) aborts the ENTIRE deploy before phase 3 —
                     no runtime state changed anywhere. After the pulls, every
                     host must be on the same commit (a racing push aborts too).
-  Phase 2 — apply:  'hemma apply' per host — remotes first, THIS host last,
+  Phase 2 — config: the auth provider's config validate, on the host that runs
+                    the auth service (here or over ssh). An invalid auth config
+                    aborts the deploy before anything is applied or restarted.
+  Phase 3 — apply:  'hemma apply' per host — remotes first, THIS host last,
                     so a resolver restart can't break DNS-resolved ssh to the
                     remaining hosts. A failure on one host is reported and the
                     fan-out continues; exit is non-zero with a per-host summary.
@@ -396,8 +405,23 @@ Targets default to every host with a role (runs a service, or is the
 dns_host); pass names to restrict. Hosts are reached with
 'ssh -o BatchMode=yes <dest>' where <dest> is the host's ssh: field
 (default: its name); a host whose IP matches this machine runs locally.
-Refuses up front if the LOCAL repo is dirty or has unpushed commits —
-deploying means "make the fleet match origin", so push first.`},
+Deploying means "make the fleet match origin", so on THIS host deploy first
+brings the repo level with origin, before any host is touched: it refuses a
+dirty tree; runs 'git pull --rebase' if origin has work this checkout lacks
+(a rebase that hits a real conflict is aborted — nothing is changed); pushes
+any unpushed commits; and refuses if the generated files then no longer match
+services.yaml (run 'hemma doctor --fix', commit, push, deploy again).`},
+
+	{"preflight", `hemma preflight — list uncommitted files hemma owns (exit 1 if any)
+
+Usage: hemma preflight
+
+The dirty-tree rule of 'hemma deploy', as a command: only the files hemma
+owns (services.yaml, the manifest, the files it lists, its .gitignore block)
+must be committed, since they are what goes live; anything else in the repo
+is left alone. deploy runs it on every remote host first and stops, naming
+the files, if any host is not ready — so every host needs a hemma that knows
+this command before it can be deployed to. Needs no services.yaml.`},
 
 	{"doctor", `hemma doctor — audit the repo (gitignore, Caddyfile imports, drift, auth,
 deploy readiness)

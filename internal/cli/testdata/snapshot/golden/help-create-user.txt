@@ -1,0 +1,14 @@
+$ hemma help create user
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma create user — interactively create an auth user (hash + snippet)
+
+Usage: hemma create user <username>
+
+Prompts for an email and a password (hidden, entered twice), hashes the
+password with argon2id (Authelia defaults), and prints a users-database entry
+to paste in. Print-only: the users database is hand-owned and secret-bearing,
+so hemma never writes it. Assign groups by editing the pasted entry's
+'groups: []' — 'hemma doctor' cross-checks them against services.yaml.
+--- files ---

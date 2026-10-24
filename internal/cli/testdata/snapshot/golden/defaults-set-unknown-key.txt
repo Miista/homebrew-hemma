@@ -1,0 +1,6 @@
+$ hemma defaults set colour blue
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Unknown setting "colour" — expected dns-host, deploy-host, auth-snippet, auth-service, tunnel-dir, or local-networks.
+--- files ---

@@ -1,0 +1,15 @@
+$ hemma verify --help
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma verify — check live DNS resolution per service
+
+Usage: hemma verify [--all] [<fqdn>]
+
+By default it checks only services this host can verify (it is the resolver
+or the service host); the rest are hidden. Pass a single <fqdn> to check just
+that service. Run on each host to cover the whole chain; needs docker.
+
+Flags:
+  -a, --all   Also list services with nothing to check on this host.
+--- files ---

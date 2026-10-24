@@ -1,0 +1,191 @@
+$ hemma defaults set auth-service status
+# setup: doctor --fix
+exit: 1
+--- stdout ---
+Set auth_service to "status".
+Synced 15/17 services.
+⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
+
+⚠ could not verify OIDC client for wikijs: open core/authelia/data/config/configuration.yml: no such file or directory
+  • sso
+1 disabled:
+  • shelf
+1 skipped:
+  • status: auth refused: "status" is the auth_service (the forward-auth backend) — protecting it would create a redirect loop
+--- stderr ---
+--- files ---
+- core/caddy/data/sites/status.caddy
+- core/pihole/data/dnsmasq.d/status.generated.conf
+~ core/authelia/data/config/hemma.access_control.generated.yml c1c8de82be08
+~ core/caddy/data/hemma.auth.generated.caddy b524408912f7
+~ core/caddy/data/sites/sso.caddy 21f224508e83
+~ core/cloudflared/config.yml 33c1ff630ba6
+~ edge/caddy/data/hemma.auth.generated.caddy bde941e93cd0
+~ hemma-manifest.yaml 9931807208e8
+~ services.yaml 72f0331791db
+--- services.yaml ---
+hosts:
+    core:
+        ip: 192.0.2.10
+        trusted_proxies:
+            - 198.51.100.10/32
+    edge:
+        ip: 192.0.2.20
+        ssh: ops@192.0.2.20
+        trusted_proxies:
+            - 198.51.100.10/32
+domains:
+    - home.example
+defaults:
+    dns_host: core
+    auth_snippet: shared/auth.caddy
+    auth_service: status
+    tunnel_dir: cloudflared
+    deploy_host: core
+    local_networks:
+        - 192.0.2.0/24
+services:
+    chat:
+        fqdn: chat.home.example
+        host: edge
+        backend: chat:9000
+        auth: external
+    dash:
+        fqdn: dash.home.example
+        host: edge
+        backend: dash:3000
+        auth: oidc
+        tunnel: true
+    downloads:
+        fqdn: downloads.home.example
+        host: edge
+        backend: vpn:8090
+    home:
+        fqdn: ha.home.example
+        host: core
+        backend: host.docker.internal:8123
+        auth: external
+        tunnel: true
+    homepage:
+        fqdn: start.home.example
+        host: core
+        backend: homepage:3000
+        auth:
+            mode: forward
+            bypass_paths:
+                - /api/healthcheck
+            policy:
+                local: one_factor
+        tunnel: true
+    indexer:
+        fqdn: indexer.home.example
+        host: edge
+        backend: indexer:6767
+        auth:
+            mode: forward
+            groups:
+                - operators
+            bypass_paths:
+                - /api/system/ping
+            policy:
+                local: one_factor
+                public: one_factor
+        tunnel: true
+    media:
+        fqdn: watch.home.example
+        host: edge
+        backend: media:8096
+        auth: external
+        tunnel: true
+    music:
+        fqdn: music.home.example
+        host: edge
+        backend: music:4533
+        auth:
+            mode: forward
+            groups:
+                - readers
+            bypass_paths:
+                - /rest/*
+                - /share/*
+                - /ping
+        tunnel: true
+    panel:
+        fqdn: panel.home.example
+        host: core
+        backend: host.docker.internal:8080
+        auth:
+            mode: forward
+            groups:
+                - admins
+    registry:
+        fqdn: registry.home.example
+        host: core
+        backend: registry:5000
+    robot:
+        fqdn: robot.home.example
+        host: edge
+        backend: robot:8765
+        auth:
+            mode: forward
+            groups:
+                - admins
+            bypass_paths:
+                - /healthz
+        tunnel: true
+    shelf:
+        fqdn: shelf.home.example
+        host: edge
+        backend: shelf:80
+        disabled: true
+        auth:
+            mode: forward
+            groups:
+                - readers
+            policy:
+                local: bypass
+                public: one_factor
+        tunnel: true
+    speed:
+        fqdn: speed.home.example
+        host: edge
+        backend: speed-tracker:80
+        auth:
+            mode: forward
+            groups:
+                - admins
+    sso:
+        fqdn: auth.home.example
+        host: core
+        backend: sso:9091
+        tunnel: true
+    status:
+        fqdn: status.home.example
+        host: core
+        backend: status:8080
+        auth:
+            mode: forward
+            groups:
+                - admins
+            bypass_paths:
+                - /health
+                - /api/v1/endpoints/*
+        tunnel: true
+    wiki:
+        fqdn: wiki.home.example
+        host: edge
+        backend: wiki:3000
+        auth:
+            mode: forward
+            groups:
+                - admins
+            policy:
+                local: bypass
+                public: one_factor
+        tunnel: true
+    wikijs:
+        fqdn: docs.home.example
+        host: edge
+        backend: docs:8000
+        auth: oidc
+        tunnel: true

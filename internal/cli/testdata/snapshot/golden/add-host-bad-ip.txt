@@ -1,0 +1,6 @@
+$ hemma add host lab not-an-ip
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: "not-an-ip" is not a valid IP address.
+--- files ---

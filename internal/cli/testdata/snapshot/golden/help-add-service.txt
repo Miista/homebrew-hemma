@@ -1,0 +1,64 @@
+$ hemma help add service
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma add service — declare a service and generate its DNS/Caddy config
+
+Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel]
+
+With no flags (and stdin a terminal) an interactive editor opens instead: the
+fqdn is pre-filled with <name>.<domain> when exactly one domain is defined and
+validated live (must match a domain, must not collide with another service),
+the host and auth mode are pickers, tunnel is a confirm, auth groups are a
+multi-select built from the groups that actually exist — on users in the auth
+provider's users database (members shown per group) and on other services —
+plus a 'new group…' escape hatch, and auth bypass paths are one per line. On
+submit it prints the collected fields and runs the exact same validation and
+sync path as the flags form; Ctrl-C touches nothing. Non-interactive callers
+must pass flags. ('disabled' is not offered when adding — a service is added to
+work; turn it off later with 'hemma disable service'.)
+
+Flags:
+  -f, --fqdn <fqdn>       Public name the service is reached at (must match a declared domain).
+  -H, --host <host>       Host (repo directory) that runs the service.
+  -b, --backend <n:port>  reverse_proxy upstream, e.g. mealie:9000.
+      --auth-mode <mode>  How the service authenticates (default none):
+                            none      no authentication.
+                            forward   Authelia forward-auth — imports the (auth) snippet
+                                      (a gate); requires 'hemma defaults set auth-snippet <path>'.
+                            oidc      Authelia, but the app speaks OIDC itself — no gate,
+                                      and hemma verifies an Authelia OIDC client exists.
+                            external  authenticated by something that is NOT Authelia (the
+                                      app's own login, an API token, an edge proxy like
+                                      Cloudflare Access). Renders like oidc — no gate — but
+                                      hemma verifies nothing. Use this, NOT oidc, when
+                                      Authelia is not involved.
+      --auth-groups <gs>  Comma-separated auth provider group names allowed access; flows into
+                          the generated access-control rules (multiple groups are OR'd).
+                          Requires an auth mode (forward or oidc).
+      --bypass-paths <p>  Comma-separated request paths exempted from the auth gate (e.g. a
+                          Subsonic-API path that a native client can't complete a browser
+                          login for). Requires an auth mode that uses hemma's provider
+                          (forward or oidc); renders as Authelia 'policy: bypass' rules with
+                          no subject, since Authelia forbids pairing bypass with one.
+      --auth              Back-compat shorthand for --auth-mode forward.
+      --auth-policy-local <p>
+      --auth-policy-public <p>
+                          Per-horizon auth requirement: bypass|one_factor|two_factor|deny.
+                          Unset means one_factor on both horizons, which is what a bare
+                          --auth-mode forward has always meant. "local" is a request whose
+                          resolved client IP is in defaults.local_networks; "public" is
+                          everything else. Forward mode only. Effective only when the
+                          reverse proxy resolves the true client IP (see 'update host
+                          --trusted-proxies') — otherwise everything is treated as public,
+                          which is the safe direction.
+      --tunnel            Generate a cloudflared tunnel ingress entry for this
+                          service, so the internet can reach it. Omit for local-only
+                          (every service is reachable on the LAN either way).
+                          Accepts --public as a pre-rename alias.
+                          Writes the entry into this host's cloudflared
+                          config.yml (needs defaults.tunnel-dir set — otherwise the
+                          entry is skipped and 'hemma doctor' flags the drift).
+
+Regenerates files immediately, then prints which hosts need 'hemma apply'.
+--- files ---

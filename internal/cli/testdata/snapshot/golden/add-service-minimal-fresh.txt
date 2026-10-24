@@ -1,0 +1,250 @@
+$ hemma add service newsvc --fqdn newsvc.home.example --host edge --backend newsvc:8080
+exit: 0
+--- stdout ---
+✓ Added service "newsvc"
+Synced 17/18 services.
+⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
+
+⚠ could not verify OIDC client for wikijs: open core/authelia/data/config/configuration.yml: no such file or directory
+  • chat
+  • dash
+  • downloads
+  • home
+  • homepage
+  • indexer
+  • media
+  • music
+  • newsvc
+  • panel
+  • registry
+  • robot
+  • speed
+  • sso
+  • status
+  • wiki
+  • wikijs
+1 disabled:
+  • shelf
+
+To make changes live, run 'hemma apply' on each host:
+  on core:  hemma apply
+  on edge:  hemma apply
+--- stderr ---
+--- files ---
++ core/authelia/data/config/hemma.access_control.generated.yml cdc8708c21a5
++ core/caddy/data/hemma.auth.generated.caddy 171ae1603e0e
++ core/caddy/data/hemma.generated.caddy 356447515900
++ core/caddy/data/hemma.trusted_proxies.generated.caddy 6ec4ce478142
++ core/caddy/data/sites/home.caddy 146310cc5667
++ core/caddy/data/sites/homepage.caddy e14d668a4531
++ core/caddy/data/sites/panel.caddy d80d63131c83
++ core/caddy/data/sites/registry.caddy 7c16f7c29f27
++ core/caddy/data/sites/sso.caddy d6f1d5e4e13d
++ core/caddy/data/sites/status.caddy 92e99857488d
++ core/caddy/data/tls/tls_home_example.caddy 2dbd6138e789
++ core/cloudflared/config.yml 138943c623b2
++ core/pihole/data/dnsmasq.d/chat.generated.conf e2fe254f5eaa
++ core/pihole/data/dnsmasq.d/dash.generated.conf ebe21c0af1a5
++ core/pihole/data/dnsmasq.d/downloads.generated.conf f5fd79710ba9
++ core/pihole/data/dnsmasq.d/home.generated.conf fc5f43086421
++ core/pihole/data/dnsmasq.d/homepage.generated.conf a8b08b585383
++ core/pihole/data/dnsmasq.d/indexer.generated.conf fbdbe437aa14
++ core/pihole/data/dnsmasq.d/media.generated.conf 2abff58d132f
++ core/pihole/data/dnsmasq.d/music.generated.conf 9eb00f6266c2
++ core/pihole/data/dnsmasq.d/newsvc.generated.conf f43ec400c010
++ core/pihole/data/dnsmasq.d/panel.generated.conf 1e4327e386cf
++ core/pihole/data/dnsmasq.d/registry.generated.conf 33a6a14119e6
++ core/pihole/data/dnsmasq.d/robot.generated.conf b09b382ff4fc
++ core/pihole/data/dnsmasq.d/speed.generated.conf b3585fd7de81
++ core/pihole/data/dnsmasq.d/sso.generated.conf 5433cee68593
++ core/pihole/data/dnsmasq.d/status.generated.conf 663cfdc4b90a
++ core/pihole/data/dnsmasq.d/wiki.generated.conf c35fb99d0f7f
++ core/pihole/data/dnsmasq.d/wikijs.generated.conf 4290148ee2fe
++ edge/caddy/data/hemma.auth.generated.caddy 1fd3aa7b2b44
++ edge/caddy/data/hemma.generated.caddy 356447515900
++ edge/caddy/data/hemma.trusted_proxies.generated.caddy 6ec4ce478142
++ edge/caddy/data/sites/chat.caddy 114a2f1bf52f
++ edge/caddy/data/sites/dash.caddy 2d8134873552
++ edge/caddy/data/sites/downloads.caddy 991976936242
++ edge/caddy/data/sites/indexer.caddy d9aa2fea6347
++ edge/caddy/data/sites/media.caddy fc01fd7075b7
++ edge/caddy/data/sites/music.caddy 73b493e367ab
++ edge/caddy/data/sites/newsvc.caddy 21ce94ba2443
++ edge/caddy/data/sites/robot.caddy d257d01454a5
++ edge/caddy/data/sites/speed.caddy e481c91d8ab6
++ edge/caddy/data/sites/wiki.caddy 4125521cfb05
++ edge/caddy/data/sites/wikijs.caddy 10af9b812c9e
++ edge/caddy/data/tls/tls_home_example.caddy 2dbd6138e789
++ edge/cloudflared/config.yml c108894dc88b
++ hemma-manifest.yaml 6bd89803f8d7
+~ services.yaml ec7bd927aec4
+--- services.yaml ---
+hosts:
+    core:
+        ip: 192.0.2.10
+        trusted_proxies:
+            - 198.51.100.10/32
+    edge:
+        ip: 192.0.2.20
+        ssh: ops@192.0.2.20
+        trusted_proxies:
+            - 198.51.100.10/32
+domains:
+    - home.example
+defaults:
+    dns_host: core
+    auth_snippet: shared/auth.caddy
+    auth_service: sso
+    tunnel_dir: cloudflared
+    deploy_host: core
+    local_networks:
+        - 192.0.2.0/24
+services:
+    chat:
+        fqdn: chat.home.example
+        host: edge
+        backend: chat:9000
+        auth: external
+    dash:
+        fqdn: dash.home.example
+        host: edge
+        backend: dash:3000
+        auth: oidc
+        tunnel: true
+    downloads:
+        fqdn: downloads.home.example
+        host: edge
+        backend: vpn:8090
+    home:
+        fqdn: ha.home.example
+        host: core
+        backend: host.docker.internal:8123
+        auth: external
+        tunnel: true
+    homepage:
+        fqdn: start.home.example
+        host: core
+        backend: homepage:3000
+        auth:
+            mode: forward
+            bypass_paths:
+                - /api/healthcheck
+            policy:
+                local: one_factor
+        tunnel: true
+    indexer:
+        fqdn: indexer.home.example
+        host: edge
+        backend: indexer:6767
+        auth:
+            mode: forward
+            groups:
+                - operators
+            bypass_paths:
+                - /api/system/ping
+            policy:
+                local: one_factor
+                public: one_factor
+        tunnel: true
+    media:
+        fqdn: watch.home.example
+        host: edge
+        backend: media:8096
+        auth: external
+        tunnel: true
+    music:
+        fqdn: music.home.example
+        host: edge
+        backend: music:4533
+        auth:
+            mode: forward
+            groups:
+                - readers
+            bypass_paths:
+                - /rest/*
+                - /share/*
+                - /ping
+        tunnel: true
+    newsvc:
+        fqdn: newsvc.home.example
+        host: edge
+        backend: newsvc:8080
+    panel:
+        fqdn: panel.home.example
+        host: core
+        backend: host.docker.internal:8080
+        auth:
+            mode: forward
+            groups:
+                - admins
+    registry:
+        fqdn: registry.home.example
+        host: core
+        backend: registry:5000
+    robot:
+        fqdn: robot.home.example
+        host: edge
+        backend: robot:8765
+        auth:
+            mode: forward
+            groups:
+                - admins
+            bypass_paths:
+                - /healthz
+        tunnel: true
+    shelf:
+        fqdn: shelf.home.example
+        host: edge
+        backend: shelf:80
+        disabled: true
+        auth:
+            mode: forward
+            groups:
+                - readers
+            policy:
+                local: bypass
+                public: one_factor
+        tunnel: true
+    speed:
+        fqdn: speed.home.example
+        host: edge
+        backend: speed-tracker:80
+        auth:
+            mode: forward
+            groups:
+                - admins
+    sso:
+        fqdn: auth.home.example
+        host: core
+        backend: sso:9091
+        tunnel: true
+    status:
+        fqdn: status.home.example
+        host: core
+        backend: status:8080
+        auth:
+            mode: forward
+            groups:
+                - admins
+            bypass_paths:
+                - /health
+                - /api/v1/endpoints/*
+        tunnel: true
+    wiki:
+        fqdn: wiki.home.example
+        host: edge
+        backend: wiki:3000
+        auth:
+            mode: forward
+            groups:
+                - admins
+            policy:
+                local: bypass
+                public: one_factor
+        tunnel: true
+    wikijs:
+        fqdn: docs.home.example
+        host: edge
+        backend: docs:8000
+        auth: oidc
+        tunnel: true

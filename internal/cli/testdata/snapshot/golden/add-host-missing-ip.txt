@@ -1,0 +1,7 @@
+$ hemma add host lab
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: Missing the <ip> for host "lab".
+Usage: hemma add host <name> <ip> [--ssh <dest>]
+--- files ---

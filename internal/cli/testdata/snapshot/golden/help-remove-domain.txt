@@ -1,0 +1,8 @@
+$ hemma help remove domain
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma remove domain — remove a domain (refused while services reference it)
+
+Usage: hemma remove domain <name>
+--- files ---

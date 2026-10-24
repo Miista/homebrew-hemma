@@ -1,0 +1,7 @@
+$ hemma disable service shelf
+# setup: doctor --fix
+exit: 0
+--- stdout ---
+Service "shelf" is already disabled.
+--- stderr ---
+--- files ---

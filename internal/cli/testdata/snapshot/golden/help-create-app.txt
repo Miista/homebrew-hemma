@@ -1,0 +1,21 @@
+$ hemma help create app
+exit: 0
+--- stdout ---
+--- stderr ---
+hemma create app oidc — generate OIDC client credentials for an app
+
+Usage: hemma create app oidc <app_name> [callback_path]
+
+Mints a client id and client secret (72 chars, RFC 3986 unreserved charset)
+plus the secret's PBKDF2-SHA512 digest, then prints a ready-to-paste
+identity_providers.oidc.clients snippet. Print-only: the auth provider's
+configuration is never written.
+
+If <app_name> matches a configured service, its real fqdn is used for the
+redirect URI, and — when the service has auth groups — the snippet references
+the generated named authorization policy instead of one_factor. Otherwise the
+redirect host is derived from the configured domains (<app_name>.<first domain
+alphabetically>); with no domains configured the command refuses — add the
+service or a domain first.
+[callback_path] defaults to /CHANGEME (apps differ; fill in the real path).
+--- files ---

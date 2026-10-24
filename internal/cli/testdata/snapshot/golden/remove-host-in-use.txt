@@ -1,0 +1,8 @@
+$ hemma remove host edge
+# setup: doctor --fix
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Host "edge" is still referenced by 11 services: chat, dash, downloads, indexer, media, music, robot, shelf, speed, wiki, wikijs.
+Reassign or remove those services first.
+--- files ---

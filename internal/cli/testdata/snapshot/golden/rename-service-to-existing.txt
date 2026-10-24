@@ -1,0 +1,7 @@
+$ hemma rename service dash wiki
+# setup: doctor --fix
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Service "wiki" already exists.
+--- files ---

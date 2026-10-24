@@ -1,0 +1,6 @@
+$ hemma remove service nowhere
+exit: 0
+--- stdout ---
+Service "nowhere" does not exist; nothing to remove.
+--- stderr ---
+--- files ---

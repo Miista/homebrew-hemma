@@ -1,0 +1,22 @@
+$ hemma create app oidc foo
+exit: 0
+--- stdout ---
+Created credentials for client foo
+
+Client Name: foo
+Client ID: <random>
+Client Secret (Authelia): <random>
+Client Secret (foo): <random>
+
+Add to identity_providers.oidc.clients in configuration.yml:
+
+      - client_id: '<random>'
+        client_name: 'foo'
+        client_secret: '<random>'
+        public: false
+        consent_mode: 'implicit'
+        authorization_policy: 'one_factor'
+        redirect_uris:
+          - 'https://foo.home.example/CHANGEME'
+--- stderr ---
+--- files ---

@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"strings"
+
+	"hemma/internal/cli/kernel"
 )
 
 // Shell completion scripts are static (this CLI hand-rolls flag parsing, so
@@ -17,7 +19,7 @@ import (
 // than a plain const so its set_keys word list is generated from setSpecs
 // (nouns.go) — the exact list that went stale here when tunnel-dir was added
 // to dispatchSet/help.go but not to this file's own separate copy.
-var BashCompletion = strings.Replace(bashCompletionTemplate, "__SET_KEYS__", strings.Join(setKeyStrings(), " "), 1)
+var BashCompletion = strings.Replace(bashCompletionTemplate, "__SET_KEYS__", strings.Join(kernel.SetKeys(), " "), 1)
 
 const bashCompletionTemplate = `# bash completion for hemma
 _hemma() {
@@ -28,7 +30,7 @@ _hemma() {
         cword=$COMP_CWORD
     }
 
-    local verbs="add update remove create enable disable defaults list verify apply deploy doctor measure version help completion"
+    local verbs="add update remove create enable disable defaults list verify apply deploy preflight doctor measure version help completion"
     local nouns="service host domain"
     local set_keys="__SET_KEYS__"
     local flags="--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --auth-policy-local --auth-policy-public --tunnel --public --ip --ssh --trusted-proxies --all -a --policy --fix --chdir -C --help -h"
@@ -73,14 +75,14 @@ complete -F _hemma hemma splitdns
 
 // ZshCompletion is the zsh completion script for hemma. Computed for the same
 // reason as BashCompletion above.
-var ZshCompletion = strings.Replace(zshCompletionTemplate, "__SET_KEYS__", strings.Join(setKeyStrings(), " "), 1)
+var ZshCompletion = strings.Replace(zshCompletionTemplate, "__SET_KEYS__", strings.Join(kernel.SetKeys(), " "), 1)
 
 const zshCompletionTemplate = `#compdef hemma splitdns
 # zsh completion for hemma
 
 _hemma() {
     local -a verbs nouns set_keys flags
-    verbs=(add update remove create enable disable defaults list verify apply deploy doctor measure version help completion)
+    verbs=(add update remove create enable disable defaults list verify apply deploy preflight doctor measure version help completion)
     nouns=(service host domain)
     set_keys=(__SET_KEYS__)
     flags=(--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --auth-policy-local --auth-policy-public --tunnel --public --ip --ssh --trusted-proxies --all -a --policy --fix --chdir -C --help -h)
@@ -123,19 +125,19 @@ _hemma "$@"
 // cmdCompletion prints a shell completion script to stdout. It is a hidden
 // command (not listed in the verb inventory of `list`/help top matter) but does
 // carry a help topic. Usage: hemma completion <bash|zsh>.
-func cmdCompletion(args []string) int {
+func cmdCompletion(env *kernel.Env, args []string) int {
 	if len(args) < 1 {
-		errf("Missing the shell — expected bash or zsh.")
-		hint("Usage: hemma completion <bash|zsh>")
+		kernel.Errf(env, "Missing the shell — expected bash or zsh.")
+		kernel.Hint(env, "Usage: hemma completion <bash|zsh>")
 		return 2
 	}
 	switch args[0] {
 	case "bash":
-		fmt.Print(BashCompletion)
+		fmt.Fprint(env.Out, BashCompletion)
 	case "zsh":
-		fmt.Print(ZshCompletion)
+		fmt.Fprint(env.Out, ZshCompletion)
 	default:
-		errf("Unsupported shell %q — expected bash or zsh.", args[0])
+		kernel.Errf(env, "Unsupported shell %q — expected bash or zsh.", args[0])
 		return 2
 	}
 	return 0

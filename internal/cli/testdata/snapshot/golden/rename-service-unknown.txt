@@ -1,0 +1,6 @@
+$ hemma rename service nowhere x
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Service "nowhere" does not exist.
+--- files ---
