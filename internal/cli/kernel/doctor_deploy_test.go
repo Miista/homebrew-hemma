@@ -76,8 +76,8 @@ func TestCheckDeployReadiness_ChecksOnlyDeployTargets(t *testing.T) {
 func TestSSHHostPart(t *testing.T) {
 	cases := map[string]string{
 		"admin@192.0.2.2": "192.0.2.2",
-		"core":             "core",
-		"a@b@c":                "c",
+		"core":            "core",
+		"a@b@c":           "c",
 	}
 	for in, want := range cases {
 		if got := sshHostPart(in); got != want {
