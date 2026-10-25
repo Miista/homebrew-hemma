@@ -121,7 +121,7 @@ jobs:
             echo
             git log --reverse --format='- %s (%h)' ${prev:+"$prev.."}"$TAG" \
               | grep -Ev -- '^- (chore|docs|test|ci)(\(.+\))?:' \
-              | grep -Ev -- '^- (Brew formula update|Merge )' \
+              | grep -Ev -- '^- (Brew formula update|Merge[: ])' \
               || echo "- (no user-facing changes)"
             echo
             echo "Pull: \`docker pull ghcr.io/miista/hemma-ui:${VERSION#v}\`"
