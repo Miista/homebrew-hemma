@@ -1,4 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="hemma">
+  <!-- the brand mark: a monoline H with a roof above it (hemma = "at home"), the stroke fading from
+       white at the ridge to blue at the feet; a fixed dark tile, since an icon cannot follow the theme -->
+  <defs>
+    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="381.5" x2="0" y2="130.5">
+      <stop offset="0" stop-color="#4f93e6"/>
+      <stop offset="1" stop-color="#f3f5f8"/>
+    </linearGradient>
+  </defs>
   <rect width="512" height="512" rx="183" fill="#0d1824"/>
-  <path fill="#f3f5f8" transform="translate(256 256) scale(0.3647 -0.3647) translate(-301 -365)" d="M84 0V730H192V550L191 445H217L191 420Q191 486 230 523Q269 560 338 560Q420 560 469 507.5Q518 455 518 366V0H410V354Q410 408 381 438Q352 468 302 468Q251 468 221.5 436.5Q192 405 192 347V0Z"/>
+  <path fill="none" stroke="url(#g)" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"
+        d="M190 216.5V381.5M322 216.5V381.5M190 302.3H322M190 170.5L244.1 137.7Q256 128.3 267.9 137.7L322 170.5"/>
 </svg>

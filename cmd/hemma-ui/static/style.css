@@ -131,7 +131,8 @@ label.switchrow .txt .hint { font-size: 12.5px; }
 /* ---------- shell: a sidebar on a wide screen; a top bar and a bottom tab bar on a phone ---------- */
 #side { flex: none; width: 236px; display: flex; flex-direction: column; gap: 2px; padding: 18px 12px 16px; border-right: 1px solid var(--line); background: var(--side); box-shadow: var(--side-shadow); position: relative; z-index: 2; }
 .brand { display: flex; align-items: center; gap: 10px; }
-.brand-tile { width: 28px; height: 28px; border-radius: var(--r); background: var(--ink); color: var(--bg); display: grid; place-items: center; font-family: var(--mono); font-weight: 600; font-size: 14px; }
+/* the brand mark is the tab icon itself (a fixed dark tile, so it is the same in both themes); its own corners are rounded */
+.brand-tile { width: 28px; height: 28px; background: url(/static/icons/icon.svg) center / contain no-repeat; }
 .brand-name { font-weight: 700; font-size: 16px; letter-spacing: -.01em; }
 #side .brand { padding: 2px 10px 18px; }
 nav { position: relative; }
