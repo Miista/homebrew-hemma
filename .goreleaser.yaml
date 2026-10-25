@@ -106,7 +106,7 @@ changelog:
       - "^test:"
       - "^ci:"
       - "^Brew formula update"
-      - "^Merge "
+      - "^Merge[: ]"
   groups:
     - title: Features
       regexp: '^feat(\(.+\))?:'
