@@ -1,13 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="hemma">
-  <!-- the brand mark: a monoline H with a roof above it (hemma = "at home"), the stroke fading from
-       white at the ridge to blue at the feet; a fixed dark tile, since an icon cannot follow the theme -->
+  <!-- the brand mark: an angular lowercase h, leaning forward, cut from straight lines — a chamfered arch, a notch in the
+       stem at the x-height and a sliced right foot — fading from white at the top to blue at the feet; a fixed dark tile,
+       since an icon cannot follow the theme -->
   <defs>
-    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="381.5" x2="0" y2="130.5">
-      <stop offset="0" stop-color="#4f93e6"/>
+    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="380" x2="0" y2="132">
+      <stop offset="0" stop-color="#3f86e0"/>
       <stop offset="1" stop-color="#f3f5f8"/>
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="183" fill="#0d1824"/>
-  <path fill="none" stroke="url(#g)" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"
-        d="M190 216.5V381.5M322 216.5V381.5M190 302.3H322M190 170.5L244.1 137.7Q256 128.3 267.9 137.7L322 170.5"/>
+  <g transform="translate(256 256) skewX(-18) translate(-250 -256)">
+    <path fill="url(#g)" d="M170 132H218V196H300L342 238V364L326 380H294V258L276 240H218V380H170V236L186 220L170 204Z"/>
+  </g>
 </svg>

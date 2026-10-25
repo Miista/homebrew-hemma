@@ -299,8 +299,8 @@ authy). It is NOT a second implementation of hemma:
   holds markup and script only; the stylesheet and the font files (SIL OFL-1.1, licenses alongside) are embedded and
   served from `/static/` behind the same login. Keep text at WCAG AA (4.5:1) in both themes. The brand mark
   (`static/icons/icon.svg`, plus `favicon.ico` as the fallback: 16/32/48 px PNGs packed by hand from the SVG) is the tab icon AND the
-  page's brand tile (`.brand-tile` is just the SVG as a background): a monoline `H` with a roof hovering above it, hemma being "at home",
-  the stroke fading from white at the ridge to the accent blue at the feet. It is a fixed dark tile because an icon cannot follow the
+  page's brand tile (`.brand-tile` is just the SVG as a background): an angular lowercase `h` leaning forward, cut from straight lines (a chamfered
+  arch, a notch in the stem at the x-height, a sliced right foot), fading from white at the top to the accent blue at the feet. It is a fixed dark tile because an icon cannot follow the
   system theme, so it is the same in both. Being under `/static/` it is behind the login too (`auth_test.go` pins that).
 
 ## Scope boundary (do not cross)
