@@ -1,18 +1,43 @@
-name: Release
+name: cli release
+
+# Releases the hemma CLI when a cli-v<X.Y.Z> tag is pushed. It is independent of the hemma-ui image's release
+# (release-ui.yml, ui-v<X.Y.Z> tags): the two have their own version numbers, and tagging one does not release the
+# other. Tag the CLI when the CLI or the kernel (everything both are built from) changed; tag the image when the UI or
+# the kernel changed.
+#
+# cli-v<X.Y.Z> is the trigger. The bare v<X.Y.Z> on the same commit is made here, for Go: `go install ...@vX.Y.Z` and
+# the module proxy read only plain semver tags. GoReleaser then runs on that bare tag as it always has, so the GitHub
+# release, the Homebrew formula's download URLs and the Cloudsmith debs are unchanged. A tag pushed with the workflow's
+# own token starts no workflow, so the bare tag cannot release twice; a bare v* pushed by hand releases nothing.
+#
+# A manual run is a dry run: it builds with the version you give and publishes nothing.
 
 on:
   push:
     tags:
-      - "v*"
-  workflow_dispatch: {}
+      - "cli-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Dry run: build with this version, v<X.Y.Z>. Nothing is pushed."
+        required: true
+        default: "v0.0.0"
 
 permissions:
   contents: write
 
+concurrency:
+  group: cli-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    env:
+      # Passed through the environment, never interpolated into the script.
+      EVENT: ${{ github.event_name }}
+      TAG: ${{ github.ref_name }}
+      INPUT_VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -21,6 +46,49 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+
+      - name: Version from the tag
+        id: version
+        run: |
+          if [ "$EVENT" = push ]; then
+            version="${TAG#cli-}"
+            skip=""
+            publish=true
+          else
+            version="$INPUT_VERSION"
+            skip="--skip=validate,publish"
+            publish=false
+          fi
+          if ! [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$version' is not a version. Tag the CLI cli-vX.Y.Z (for example cli-v0.44.0)."
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "skip=$skip"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing the CLI as $version (publish: $publish)"
+
+      # The bare tag Go reads, on the commit the cli- tag names. Already there on a re-run, it is left alone if it
+      # names this commit, and refused if it names another.
+      - name: Bare tag for Go
+        if: steps.version.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if existing=$(git rev-parse -q --verify "refs/tags/$VERSION^{commit}"); then
+            if [ "$existing" != "$GITHUB_SHA" ]; then
+              echo "::error::$VERSION already exists on $existing, not on $GITHUB_SHA."
+              exit 1
+            fi
+            echo "$VERSION already names this commit"
+          else
+            git config user.name github-actions
+            git config user.email github-actions@users.noreply.github.com
+            git tag -a "$VERSION" -m "hemma $VERSION (from $TAG)" "$GITHUB_SHA"
+            git push origin "refs/tags/$VERSION"
+          fi
 
       - name: Generate man page
         run: go run ./tools/genman
@@ -31,12 +99,13 @@ jobs:
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
-          args: release --clean
+          args: release --clean ${{ steps.version.outputs.skip }}
         env:
           # The repo IS the Homebrew tap (Miista/homebrew-hemma), so GoReleaser
           # self-publishes Formula/ back into this same repo — the default
           # GITHUB_TOKEN suffices, no PAT needed.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ steps.version.outputs.version }}
 
       # Publish this release's .debs to the shared Cloudsmith apt repo
       # (guldmund/stable). Each tool pushes only its own artifacts; Cloudsmith
@@ -52,6 +121,7 @@ jobs:
       # source line is correspondingly:
       #   deb [...] https://dl.cloudsmith.io/public/guldmund/stable/deb/debian any-version main
       - name: Publish debs to Cloudsmith
+        if: steps.version.outputs.publish == 'true'
         env:
           CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
         run: |
@@ -72,3 +142,11 @@ jobs:
               > /dev/null
             echo "  published $(basename "$deb")"
           done
+
+      - name: Summary
+        run: |
+          {
+            echo "### hemma CLI"
+            echo "- version: \`${{ steps.version.outputs.version }}\` (from \`${{ github.ref_name }}\`)"
+            echo "- published: \`${{ steps.version.outputs.publish }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

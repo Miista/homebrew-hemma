@@ -47,17 +47,22 @@ GOARCH=$(UI_ARCH) go build`, `UI_ARCH` defaults to arm64: the edge host and Coli
 layout goreleaser builds for a release. `make ui-image` and `make fixture-redeploy` do that for you. A build stage in the image recompiles every
 dependency each time and its cache once filled a whole Docker disk.
 
-**Two releases, two tags, independent versions.** The `hemma` CLI is released by a `v<X.Y.Z>` tag (`.github/workflows/release.yml`, `.goreleaser.yaml`:
-GitHub release, apt, Homebrew). The `hemma-ui` image is released by a `ui-v<X.Y.Z>` tag (`.github/workflows/release-ui.yml`, `.goreleaser.ui.yaml`):
+**Two releases, two tags, independent versions.** The `hemma` CLI is released by a `cli-v<X.Y.Z>` tag (`.github/workflows/release.yml`, `.goreleaser.yaml`:
+GitHub release titled "cli vX.Y.Z", apt, Homebrew). That workflow also creates and pushes the bare `v<X.Y.Z>` on the same commit, because Go's module
+proxy and `go install ...@vX.Y.Z` read only plain semver tags and the formula's download URLs are built from it; GoReleaser runs on the bare tag as
+before. A tag pushed with the workflow's token starts no workflow, so it cannot release twice, and a bare `v*` pushed by hand releases nothing. The
+`hemma-ui` image is released by a `ui-v<X.Y.Z>` tag (`.github/workflows/release-ui.yml`, `.goreleaser.ui.yaml`):
 goreleaser cross-compiles both architectures on the runner, builds `Dockerfile.ui` for `linux/amd64,linux/arm64` (QEMU only for the image's own `RUN`
-steps) and pushes `ghcr.io/miista/hemma-ui:<X.Y.Z>`, `:<X.Y>` and `:latest`. There is no GitHub Release page and no changelog for the image. Tagging is
+steps) and pushes `ghcr.io/miista/hemma-ui:<X.Y.Z>`, `:<X.Y>` and `:latest`. The workflow then makes a GitHub release on the `ui-v` tag itself, titled
+"ui vX.Y.Z" with no files: the commit subjects since the previous `ui-v` tag (filtered like the CLI's changelog) and a compare link — goreleaser cannot
+write that one, since the only tag it can parse is the bare version, which is not in git. Tagging is
 manual, and **which tag(s) to push is the person's call: a change to the kernel (everything both are built from: `internal/cli/kernel`, `config`, `plan`,
 `render`, `sync`, `manifest`, `auth`) means tag both; a UI-only change (`cmd/hemma-ui`, `Dockerfile.ui`) only `ui-v…`; a CLI-only change
 (`internal/cli`, `main.go`) only `v…`.** Push both tags in one `git push` when both are due. The open-source goreleaser only accepts a plain semver tag,
 so the image workflow strips the prefix (`ui-v0.3.0` → `v0.3.0`) and passes it as `GORELEASER_CURRENT_TAG` with `--skip=validate`; the CLI's goreleaser
-config ignores `ui-*` tags (`git.ignore_tags`) so its changelog never takes an image tag as the previous release. A manual run of the image workflow is a
-dry run (nothing is pushed); `.github/workflows/release-check.yml` builds the image for both platforms on every pull request that touches how it is
-built. The only credential is the workflow's own `GITHUB_TOKEN` with `packages: write`. The first image on the edge host was put there by hand
+config ignores `cli-*` and `ui-*` tags (`git.ignore_tags`) so its changelog never takes a prefixed tag as the previous release. A manual run of either
+workflow is a dry run (it builds with the version you give; nothing is pushed); `.github/workflows/release-check.yml` builds the image for both platforms
+on every pull request that touches how it is built. Older bare `vX.Y.Z` tags (up to the last release before `cli-`) stay as they are. The only credential is the workflow's own `GITHUB_TOKEN` with `packages: write`. The first image on the edge host was put there by hand
 (`docker save | ssh edge docker load`, then `docker compose up -d hemma` in `~/docker/edge`); that still works for a local build.
 
 ## Architecture — the sync pipeline
