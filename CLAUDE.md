@@ -238,7 +238,11 @@ authy). It is NOT a second implementation of hemma:
   has not had an independent security review yet (its own README says so). `auth_test.go` pins that every
   route is refused without a session.
 - **The Services page** groups services by host (collapsible, searchable with ⌘K / Ctrl+K); a row opens the service's
-  form directly. The form is the existing typed form drawn as three cards (General, Network, Authentication) with
+  form directly. Every row ends in two fixed icon columns (`svcMarks`), so they line up for scanning: **reach** (house = local only,
+  globe = `tunnel`) and **sign-in**, which answers only "is it fronted by Authelia?": filled padlock = `forward`/`oidc`, outline
+  padlock = `external`, key = the `auth_service` itself, red ⚠ = `none`. A bypass policy comes from the server as `auth-bypass`
+  (resolved with `AuthPolicy.ForService`, never re-derived in the page): `local` is an amber filled padlock, `everywhere` is the red
+  ⚠ like `none` (and a `doctor` advisory). A disabled service's icons stay muted — it is not served, so nothing to warn about. The form is the existing typed form drawn as three cards (General, Network, Authentication) with
   Host and Auth mode as segmented choices; **Enabled** is a switch in it (not a field of `update service`: after the
   form's own command the page runs `enable`/`disable service`). History, Rename and Remove are buttons at the left of
   the footer (Remove still confirms). **On a phone** an edit form's footer is just **Close** with a chevron menu button (History, Rename,

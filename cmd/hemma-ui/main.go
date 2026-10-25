@@ -160,9 +160,18 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	svcs := []map[string]any{}
 	for _, n := range names {
 		v := cfg.Services[n]
+		// Where the effective policy skips sign-in (the list's sign-in icon): "everywhere" is no sign-in at all, like mode none.
+		// Resolved by config's own rule (an unset public follows local without the tunnel), so the page never re-derives it.
+		bypass, eff := "", v.Auth.Policy.ForService(v.Tunnel)
+		if v.Auth.Mode.UsesProvider() && eff.Local == config.PolicyBypass {
+			bypass = "local"
+			if eff.Public == config.PolicyBypass {
+				bypass = "everywhere"
+			}
+		}
 		svcs = append(svcs, map[string]any{
 			"name": n, "fqdn": v.FQDN, "host": v.Host, "backend": v.Backend, "disabled": v.Disabled,
-			"auth-mode": string(v.Auth.Mode), "auth-groups": strings.Join(v.Auth.Groups, ","),
+			"auth-mode": string(v.Auth.Mode), "auth-groups": strings.Join(v.Auth.Groups, ","), "auth-bypass": bypass,
 			"bypass-paths":       strings.Join(v.Auth.BypassPaths, ","),
 			"auth-policy-local":  string(v.Auth.Policy.Local),
 			"auth-policy-public": string(v.Auth.Policy.Public), "tunnel": v.Tunnel,

@@ -198,7 +198,12 @@ button.sidetools:hover:not(:disabled) { background: var(--hover); color: var(--i
 .svc .top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .svc .nm { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
 .svc .fq { font-family: var(--mono); font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
-.svc .tags { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.svc .marks { flex: none; display: flex; gap: 6px; margin-left: auto; color: var(--muted); }
+.svc .mark { width: 28px; height: 28px; display: grid; place-items: center; }
+.svc .mark svg { width: 18px; height: 18px; display: block; }
+.svc .mark.warn { color: var(--p-danger-fg); } .svc .mark.check { color: var(--p-warn-fg); }
+.svc.off .mark.warn, .svc.off .mark.check { color: inherit; }   /* a disabled service is not served: nothing to warn about */
+.svc.off .marks, .svc.gone .marks { opacity: .55; }
 .svc.off .nm, .svc.gone .nm { color: var(--muted); } .svc.gone { cursor: default; } .svc.gone .nm { text-decoration: line-through; }
 .empty { padding: 32px 16px; text-align: center; color: var(--muted); border: 1px dashed var(--line-strong); border-radius: var(--r2); }
 
@@ -423,7 +428,7 @@ dialog form { margin: 0; }
   .drow .etext { display: none; }   /* the same for hosts and domains: the whole row opens it */
   .hrow .act:has(.etext) { display: none; }
   .hrow:has(.act .etext) { grid-template-areas: 'name name' 'ip px'; }   /* no "Edit" column: the name takes the full first line */
-  .svc { flex-wrap: wrap; } .svc .tags { flex-basis: 100%; justify-content: flex-start; }
+  .svc { gap: 10px; }
   /* dialogs are sheets at the bottom: their buttons are under the thumb */
   dialog { width: 100vw; max-width: none; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); margin: auto 0 0; border-radius: 22px 22px 0 0; }
   .dbd { max-height: calc(100vh - 24px - 220px); max-height: calc(100dvh - 24px - 220px); }

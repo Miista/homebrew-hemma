@@ -1047,6 +1047,8 @@ hemma doctor [--fix]     (-f)
 5. **Auth config consistency** (§4.5): the half-configured-auth warnings are printed; most are
    advisory, but snippet-set-but-no-`auth_service` counts as a problem (redirect-loop hazard).
    An unreadable `auth_snippet` source also counts as a problem (keep-last-good still applies).
+   Also advisory: an enabled `forward`/`oidc` service whose effective policy (§4.8) is `bypass` on
+   both horizons — unauthenticated, the same as `auth: none`. Bypass at home only is not flagged.
 6. **Deploy readiness** (§6.8): for each remote target `hemma deploy` would fan out to, checks
    THIS machine's `known_hosts` already trusts that host (`ssh-keygen -F` against its declared ip
    and its ssh destination — either counts). `deploy` sshes with `BatchMode=yes`, which cannot

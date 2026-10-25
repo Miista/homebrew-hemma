@@ -528,6 +528,22 @@ func authConfigWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 		})
 	}
 
+	// A provider-backed service whose effective policy is bypass on BOTH horizons asks no one to sign in: mode none in
+	// disguise, behind a padlock. Bypass at home only is a deliberate choice (§4.8) and not flagged; a disabled service is
+	// not served, so it is not flagged either.
+	for _, name := range sortedKeysOf(cfg.Services) {
+		s := cfg.Services[name]
+		if eff := s.Auth.Policy.ForService(s.Tunnel); s.Disabled || !s.Auth.Mode.UsesProvider() ||
+			eff.Local != config.PolicyBypass || eff.Public != config.PolicyBypass {
+			continue
+		}
+		w = append(w, auth.Advisory{
+			Headline: fmt.Sprintf("anyone can access %s — its auth policy is bypass on both horizons", name),
+			Body:     []string{fmt.Sprintf("service %s is auth: %s, but its effective policy is local: bypass, public: bypass — the same as auth: none.", name, s.Auth.Mode)},
+			Fix:      []string{fmt.Sprintf("hemma update service %s --auth-policy-local one_factor --auth-policy-public one_factor", name)},
+		})
+	}
+
 	// OIDC client-existence checks (read-only; never writes the Authelia config).
 	if anyOIDC {
 		w = append(w, oidcClientWarnings(repoRoot, cfg)...)
