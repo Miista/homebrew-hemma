@@ -214,20 +214,21 @@ func printServiceTable(env *Env, cfg *config.Config, svcNames []string, policy b
 		fmt.Fprintln(env.Out, "  (AUTH: forward = imports the (auth) snippet; oidc = Authelia, app does OIDC itself; external = authenticated outside Authelia (app login / token / edge); (portal) = this service IS the auth provider; change with 'hemma update service <name> --auth-mode <mode>')")
 	}
 	if policy {
-		fmt.Fprintln(env.Out, "  (LOCAL/PUBLIC: the auth.policy each horizon requires — bypass, one_factor, two_factor or deny; unset = one_factor; - = no policy, since only 'forward' mode carries one. PUBLIC is shown even when TUNNEL is no: the policy is declared, it just never fires from the internet)")
+		fmt.Fprintln(env.Out, "  (LOCAL/PUBLIC: the auth.policy each horizon requires — bypass, one_factor, two_factor or deny; unset = one_factor; - = no policy, since only 'forward' and 'oidc' carry one (oidc has no bypass). PUBLIC is shown even when TUNNEL is no: the policy is declared, it just never fires from the internet)")
 	}
 	fmt.Fprintln(env.Out, "  (TUNNEL: yes = a cloudflared tunnel ingress entry is generated for the FQDN, so the internet can reach it; no = local horizon only)")
 }
 
 // horizonPolicies returns a service's effective auth policy per horizon, or
-// "-" for both when its mode carries none: only `forward` takes a policy
+// "-" for both when its mode carries none: only `forward` and `oidc` take a policy
 // (design §4.8). The public level is reported even for a tunnel-less service —
 // the two axes are separate, so a declared public policy is shown, not hidden.
 func horizonPolicies(svc config.Service) (local, public string) {
-	if svc.Auth.Mode != config.AuthForward {
+	if !svc.Auth.Mode.UsesProvider() {
 		return "-", "-"
 	}
-	return string(svc.Auth.Policy.ResolveLocal()), string(svc.Auth.Policy.ResolvePublic())
+	pol := svc.Auth.Policy.ForService(svc.Tunnel)
+	return string(pol.ResolveLocal()), string(pol.ResolvePublic())
 }
 
 // jsonService is the stable shape emitted by --json: field names are the
@@ -243,7 +244,7 @@ type jsonService struct {
 	Backend string `json:"backend"`
 	// AuthMode is the config.AuthMode value ("none" when ungated). The two
 	// policy fields are the effective per-horizon levels and are omitted
-	// unless the mode is `forward`, the only one that carries a policy.
+	// unless the mode is `forward` or `oidc`, the ones that carry a policy.
 	AuthMode     string `json:"auth_mode"`
 	PolicyLocal  string `json:"policy_local,omitempty"`
 	PolicyPublic string `json:"policy_public,omitempty"`
@@ -268,7 +269,7 @@ func cmdListJSON(env *Env, cfg *config.Config) int {
 		if svc.Auth.Mode == config.AuthNone {
 			js.AuthMode = "none" // AuthNone is "" internally; scripts get the documented word
 		}
-		if svc.Auth.Mode == config.AuthForward {
+		if svc.Auth.Mode.UsesProvider() {
 			js.PolicyLocal, js.PolicyPublic = horizonPolicies(svc)
 		}
 		out = append(out, js)

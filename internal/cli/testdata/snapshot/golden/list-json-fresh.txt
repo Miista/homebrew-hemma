@@ -16,6 +16,8 @@ exit: 0
     "host": "edge",
     "backend": "dash:3000",
     "auth_mode": "oidc",
+    "policy_local": "one_factor",
+    "policy_public": "one_factor",
     "tunnel": true
   },
   {
@@ -154,6 +156,8 @@ exit: 0
     "host": "edge",
     "backend": "docs:8000",
     "auth_mode": "oidc",
+    "policy_local": "one_factor",
+    "policy_public": "one_factor",
     "tunnel": true
   }
 ]

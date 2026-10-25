@@ -636,6 +636,23 @@ function openCmd(key, prefill = {}) {
     requestAnimationFrame(() => requestAnimationFrame(() => byName[dep].lab.closest(".card")?.scrollIntoView({ block: "nearest", behavior: "smooth" })));
   });
   syncShown();
+  // A choice that would be refused is not selectable, so the form cannot build it: the public policy may not be weaker
+  // than the local one (an unset level is one_factor), and an oidc login has no bypass. A selection that becomes
+  // unselectable moves to the nearest allowed level.
+  const polL = byName["auth-policy-local"]?.k.node, polP = byName["auth-policy-public"]?.k.node, modeC = byName["auth-mode"]?.k;
+  if (polL && polP && modeC) {
+    const rank = { "": 1, bypass: 0, one_factor: 1, two_factor: 2, deny: 3 };
+    const syncPolicy = () => {
+      const oidc = modeC.get() === "oidc";
+      for (const sel of [polL, polP]) for (const o of sel.options) o.disabled = oidc && o.value === "bypass";
+      if (oidc) for (const sel of [polL, polP]) if (sel.value === "bypass") sel.value = "";
+      for (const o of polP.options) o.disabled ||= rank[o.value] < rank[polL.value];
+      if (polP.selectedOptions[0]?.disabled) polP.value = polL.value;
+    };
+    polL.addEventListener("change", syncPolicy);
+    modeC.node.addEventListener("change", syncPolicy);
+    syncPolicy();
+  }
   // Editing a service: Rename and Remove sit at the left of the footer, out of the way of Save (Remove asks to confirm).
   if (key === "update service") {
     const actions = [["History", () => { $("#dlg").close(); openHistory(prefill.name); }],

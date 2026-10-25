@@ -61,7 +61,7 @@ Flags:
                           Unset means one_factor on both horizons, which is what a bare
                           --auth-mode forward has always meant. "local" is a request whose
                           resolved client IP is in defaults.local_networks; "public" is
-                          everything else. Forward mode only. Effective only when the
+                          everything else. Forward or oidc mode (oidc has no bypass). Effective only when the
                           reverse proxy resolves the true client IP (see 'update host
                           --trusted-proxies') — otherwise everything is treated as public,
                           which is the safe direction.
@@ -114,7 +114,7 @@ Flags:
       --auth-policy-public <p>
                           Per-horizon auth requirement: bypass|one_factor|two_factor|deny;
                           '' clears one back to the default (one_factor). See 'hemma help
-                          add service' for the full semantics. Forward mode only.
+                          add service' for the full semantics. Forward or oidc mode.
       --tunnel            Generate a cloudflared tunnel ingress entry (so the internet
                           can reach it); --tunnel=false opts back out. Accepts --public
                           as a pre-rename alias. Writes into this host's cloudflared config.yml

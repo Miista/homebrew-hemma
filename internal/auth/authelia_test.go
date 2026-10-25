@@ -122,9 +122,44 @@ func TestAuthelia_OIDCAuthorizationPolicies(t *testing.T) {
 		t.Errorf("no oidc-with-groups → no identity_providers section:\n%s", fwdOnly)
 	}
 
-	// oidc without groups → nothing at all.
+	// oidc without groups or policy → nothing at all.
 	if _, _, ok := p.AccessControl([]Service{{Name: "a", FQDN: "a.example.com", Mode: ModeOIDC}}); ok {
 		t.Error("oidc without groups should emit no artifact")
+	}
+}
+
+// A per-horizon policy on oidc: the local rule first (first match wins), then
+// the catch-all. With groups the catch-all is scoped by subject; without, by
+// every address (a rule with neither is invalid in Authelia).
+func TestAuthelia_OIDCPerHorizonPolicy(t *testing.T) {
+	p := provider(t)
+	_, got, _ := p.AccessControl([]Service{{Name: "app", FQDN: "app.example.com", Mode: ModeOIDC,
+		Groups: []string{"admins"}, LocalNetworks: []string{"10.0.0.0/8"}, LocalPolicy: "one_factor", PublicPolicy: "two_factor"}})
+	want := "      app:\n" +
+		"        default_policy: 'deny'\n" +
+		"        rules:\n" +
+		"          - policy: 'one_factor'\n" +
+		"            networks:\n" +
+		"              - '10.0.0.0/8'\n" +
+		"            subject:\n" +
+		"              - 'group:admins'\n" +
+		"          - policy: 'two_factor'\n" +
+		"            subject:\n" +
+		"              - 'group:admins'\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("with groups:\n%s", got)
+	}
+
+	_, got, ok := p.AccessControl([]Service{{Name: "app", FQDN: "app.example.com", Mode: ModeOIDC, PublicPolicy: "two_factor"}})
+	if !ok {
+		t.Fatal("a non-default public policy alone should emit a policy")
+	}
+	want = "          - policy: 'two_factor'\n" +
+		"            networks:\n" +
+		"              - '0.0.0.0/0'\n" +
+		"              - '::/0'\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("without groups:\n%s", got)
 	}
 }
 

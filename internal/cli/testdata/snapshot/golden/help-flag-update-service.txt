@@ -41,7 +41,7 @@ Flags:
       --auth-policy-public <p>
                           Per-horizon auth requirement: bypass|one_factor|two_factor|deny;
                           '' clears one back to the default (one_factor). See 'hemma help
-                          add service' for the full semantics. Forward mode only.
+                          add service' for the full semantics. Forward or oidc mode.
       --tunnel            Generate a cloudflared tunnel ingress entry (so the internet
                           can reach it); --tunnel=false opts back out. Accepts --public
                           as a pre-rename alias. Writes into this host's cloudflared config.yml

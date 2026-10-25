@@ -139,7 +139,7 @@ func cmdAddInteractive(env *Env, repoRoot, cfgPath, name string) int {
 				Options(groupOpts...).
 				Value(&selGroups),
 			huh.NewSelect[string]().Title("auth policy (local)").
-				Description("What a request from defaults.local_networks must satisfy. Forward mode only.").
+				Description("What a request from defaults.local_networks must satisfy. Forward or oidc mode (oidc has no bypass).").
 				Options(huh.NewOptions(policyDefaultChoice, "bypass", "one_factor", "two_factor", "deny")...).
 				Value(&policyLocal),
 			huh.NewSelect[string]().Title("auth policy (public)").

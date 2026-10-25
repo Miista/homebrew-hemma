@@ -196,7 +196,7 @@ service is authenticated some other way entirely, use `external`. If it is genui
 
 The `AUTH` column in `hemma list` shows the mode (`forward` / `oidc` / `external` / `-`).
 `hemma list --policy` adds `LOCAL` and `PUBLIC` columns with the effective per-horizon
-`auth.policy` (unset = `one_factor`; `-` for modes that carry no policy — only `forward` does).
+`auth.policy` (unset = `one_factor`; `-` for modes that carry no policy — only `forward` and `oidc` do).
 `--json` carries the same values as `auth_mode`, `policy_local`, `policy_public` and `tunnel`.
 
 ### Different auth at home than from outside
@@ -224,6 +224,10 @@ Levels are Authelia's four: `bypass`, `one_factor`, `two_factor`, `deny`. Unset 
 on both horizons — exactly what a bare `auth: forward` has always meant, so adding this to the
 schema changed nothing for existing services. Per-service and off by default: an admin panel stays
 gated on the LAN unless it says otherwise.
+
+`oidc` services take a policy too: hemma writes it into the generated `authorization_policy` (local
+rule first, then the catch-all), which the Authelia OIDC client must reference by name — `hemma
+doctor` says so when it does not. OIDC has no `bypass` level.
 
 Set it with `hemma update service <name> --auth-policy-local bypass --auth-policy-public one_factor`,
 or in the interactive editor.

@@ -282,6 +282,35 @@ func planTrustedProxies(c *config.Config, p *Plan) {
 // No-op when defaults.auth_service is unset/invalid or the provider has no
 // forward/oidc services to cover — the half-configured cases are already
 // surfaced by the cli auth warnings, not here.
+// ProviderService is the provider-facing view of a service whose auth mode
+// uses the provider (forward or oidc), with its per-horizon policy resolved
+// against defaults.local_networks. A differing local policy needs networks to
+// scope it; with none configured the service keeps a single catch-all and
+// unresolved is true (see Plan.UnresolvedLocalPolicy).
+func ProviderService(c *config.Config, name string, svc config.Service) (s auth.Service, unresolved bool) {
+	var localNets []string
+	localPolicy := ""
+	pol := svc.Auth.Policy.ForService(svc.Tunnel)
+	if pol.NeedsLocalRule() {
+		if len(c.Defaults.LocalNetworks) > 0 {
+			localNets = c.Defaults.LocalNetworks
+			localPolicy = string(pol.ResolveLocal())
+		} else {
+			unresolved = true
+		}
+	}
+	return auth.Service{
+		Name:          name,
+		FQDN:          svc.FQDN,
+		Mode:          string(svc.Auth.Mode),
+		Groups:        svc.Auth.Groups,
+		BypassPaths:   svc.Auth.BypassPaths,
+		LocalNetworks: localNets,
+		LocalPolicy:   localPolicy,
+		PublicPolicy:  string(pol.ResolvePublic()),
+	}, unresolved
+}
+
 func planAccessControl(c *config.Config, p *Plan) {
 	if c.Defaults.AuthService == "" {
 		return
@@ -303,29 +332,11 @@ func planAccessControl(c *config.Config, p *Plan) {
 		if !ok || !svc.Auth.Mode.UsesProvider() {
 			continue
 		}
-		// A differing local policy needs networks to scope it; with none
-		// configured the service keeps a single catch-all and is reported (see
-		// Plan.UnresolvedLocalPolicy).
-		var localNets []string
-		localPolicy := ""
-		if svc.Auth.Mode == config.AuthForward && svc.Auth.Policy.NeedsLocalRule() {
-			if len(c.Defaults.LocalNetworks) > 0 {
-				localNets = c.Defaults.LocalNetworks
-				localPolicy = string(svc.Auth.Policy.ResolveLocal())
-			} else {
-				p.UnresolvedLocalPolicy = append(p.UnresolvedLocalPolicy, name)
-			}
+		as, unresolved := ProviderService(c, name, svc)
+		if unresolved {
+			p.UnresolvedLocalPolicy = append(p.UnresolvedLocalPolicy, name)
 		}
-		svcs = append(svcs, auth.Service{
-			Name:          name,
-			FQDN:          svc.FQDN,
-			Mode:          string(svc.Auth.Mode),
-			Groups:        svc.Auth.Groups,
-			BypassPaths:   svc.Auth.BypassPaths,
-			LocalNetworks: localNets,
-			LocalPolicy:   localPolicy,
-			PublicPolicy:  string(svc.Auth.Policy.ResolvePublic()),
-		})
+		svcs = append(svcs, as)
 	}
 	sort.Strings(p.UnresolvedLocalPolicy)
 	relPath, content, ok := auth.Default().AccessControl(svcs)
@@ -442,12 +453,22 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 	if !svc.Auth.Mode.UsesProvider() && len(svc.Auth.BypassPaths) > 0 {
 		return nil, "auth bypass_paths set but auth mode does not use hemma's provider — set mode forward, or clear them"
 	}
-	// A per-horizon policy parameterises the forward-auth gate, so it needs one:
-	// oidc's gate is the app's own OIDC flow (which hemma cannot vary by source
-	// IP), and external/none have no gate at all — a half-formed intent rather
-	// than a silent no-op.
-	if svc.Auth.Mode != config.AuthForward && !svc.Auth.Policy.IsZero() {
-		return nil, "auth policy set but auth mode is not forward — only forward-auth has a gate to vary per horizon, so set mode forward or clear it"
+	// A per-horizon policy parameterises a gate hemma writes: forward's
+	// access_control rules, or oidc's authorization_policy. external/none have
+	// no such gate — a half-formed intent rather than a silent no-op.
+	if !svc.Auth.Mode.UsesProvider() && !svc.Auth.Policy.IsZero() {
+		return nil, "auth policy set but auth mode does not use hemma's provider — set mode forward|oidc, or clear it"
+	}
+	// The public horizon is everything outside local_networks, so a request
+	// from outside must never face an easier gate than one from the LAN.
+	if pol := svc.Auth.Policy.ForService(svc.Tunnel); svc.Auth.Mode.UsesProvider() && pol.PublicWeakerThanLocal() {
+		return nil, fmt.Sprintf("auth policy public (%s) is weaker than local (%s) — a request from outside must not get an easier gate than one from the LAN; raise public or lower local",
+			pol.ResolvePublic(), pol.ResolveLocal())
+	}
+	// Authelia's OIDC authorization_policies only know one_factor, two_factor
+	// and deny: there is no unauthenticated flow to bypass.
+	if svc.Auth.Mode == config.AuthOIDC && (svc.Auth.Policy.Local == config.PolicyBypass || svc.Auth.Policy.Public == config.PolicyBypass) {
+		return nil, "auth policy bypass is not valid with mode oidc — an OIDC login is always authenticated; use one_factor, two_factor or deny"
 	}
 
 	dnsPath := filepath.Join(dnsM.ResolvedDir(dnsHostName), config.DefaultDnsmasqDir, name+".generated.conf")

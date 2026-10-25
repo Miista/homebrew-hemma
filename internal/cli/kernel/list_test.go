@@ -331,8 +331,8 @@ func TestList_PolicyColumns(t *testing.T) {
 	if blog := serviceLine(out, "blog.example.com"); strings.Contains(blog, "one_factor") || strings.Contains(blog, "bypass") {
 		t.Errorf("ungated row must carry no policy, got %q", blog)
 	}
-	if app := serviceLine(out, "app.example.com"); strings.Contains(app, "one_factor") {
-		t.Errorf("oidc carries no policy, got %q", app)
+	if app := serviceLine(out, "app.example.com"); !strings.Contains(app, "one_factor") {
+		t.Errorf("oidc carries a policy too (default one_factor), got %q", app)
 	}
 }
 
@@ -372,8 +372,11 @@ func TestList_JSONPolicy(t *testing.T) {
 	if by["blog"]["auth_mode"] != "none" {
 		t.Errorf("ungated service should report auth_mode none, got %v", by["blog"]["auth_mode"])
 	}
+	if by["app"]["policy_local"] != "one_factor" {
+		t.Errorf("oidc carries a policy too: %v", by["app"])
+	}
 	for _, name := range []string{"blog", "app"} {
-		if _, ok := by[name]["policy_local"]; ok {
+		if _, ok := by[name]["policy_local"]; ok && name == "blog" {
 			t.Errorf("%s has no policy; policy_local must be omitted: %v", name, by[name])
 		}
 		if _, ok := by[name]["auth_mode"]; !ok {

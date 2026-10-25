@@ -86,7 +86,7 @@ func validateRef(ref, v string) error {
 
 // checkAuthFields refuses an auth combination hemma would persist and then skip (design: plan.go's
 // groups / bypass_paths / policy rules): groups and bypass paths only mean something when the mode
-// goes through the auth provider (forward|oidc), and a per-horizon policy only when it is forward.
+// goes through the auth provider (forward|oidc), and so is a per-horizon policy (oidc has no bypass level).
 // The form never offers them otherwise; this is the server not trusting the form. No state needed.
 func checkAuthFields(c *command, vals map[string]any) error {
 	if c.Key != "add service" && c.Key != "update service" {
@@ -101,8 +101,18 @@ func checkAuthFields(c *command, vals map[string]any) error {
 	if !usesProvider && str("bypass-paths") != "" {
 		return fmt.Errorf("Bypass paths need an auth mode of forward or oidc — pick one, or clear them")
 	}
-	if mode != "forward" && (str("auth-policy-local") != "" || str("auth-policy-public") != "") {
-		return fmt.Errorf("A per-horizon policy needs the forward auth mode — pick it, or clear the policy")
+	if !usesProvider && (str("auth-policy-local") != "" || str("auth-policy-public") != "") {
+		return fmt.Errorf("A per-horizon policy needs an auth mode of forward or oidc — pick one, or clear the policy")
+	}
+	if usesProvider {
+		tunnel, _ := vals["tunnel"].(bool)
+		pol := config.AuthPolicy{Local: config.PolicyLevel(str("auth-policy-local")), Public: config.PolicyLevel(str("auth-policy-public"))}.ForService(tunnel)
+		if pol.PublicWeakerThanLocal() {
+			return fmt.Errorf("Public (%s) is weaker than local (%s) — a request from outside must not get an easier gate than one from the LAN", pol.ResolvePublic(), pol.ResolveLocal())
+		}
+	}
+	if mode == "oidc" && (str("auth-policy-local") == "bypass" || str("auth-policy-public") == "bypass") {
+		return fmt.Errorf("An oidc login is always authenticated, so a policy of bypass does not apply — use one_factor, two_factor or deny")
 	}
 	return nil
 }

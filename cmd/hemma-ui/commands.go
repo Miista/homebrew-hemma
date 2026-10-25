@@ -78,11 +78,11 @@ func serviceFields(add bool) []field {
 		{Name: "tunnel", Label: "Reachable from the internet", Kind: "bool", Help: "Routes through the cloudflared tunnel."},
 		inSection(field{Name: "auth-mode", Label: "Auth mode", Kind: "select", Options: authModes, Default: "none"}, "Authentication"),
 		// Only offered where they mean something (plan.go: groups and bypass paths need a mode that goes through
-		// the auth provider; a per-horizon policy needs forward) — so the form cannot build a combination hemma skips.
+		// the auth provider; a per-horizon policy needs one too) — so the form cannot build a combination hemma skips.
 		withShows(list("auth-groups", "Auth groups", "name"), "auth-mode=forward|oidc"),
 		withShows(list("bypass-paths", "Bypass paths", "path"), "auth-mode=forward|oidc"),
-		withShows(field{Name: "auth-policy-local", Label: "Policy: local horizon", Kind: "select", Options: levels}, "auth-mode=forward"),
-		withShows(field{Name: "auth-policy-public", Label: "Policy: public horizon", Kind: "select", Options: levels}, "auth-mode=forward&tunnel=true"),
+		withShows(field{Name: "auth-policy-local", Label: "Policy: local horizon", Kind: "select", Options: levels}, "auth-mode=forward|oidc"),
+		withShows(field{Name: "auth-policy-public", Label: "Policy: public horizon", Kind: "select", Options: levels}, "auth-mode=forward|oidc&tunnel=true"),
 	}
 }
 

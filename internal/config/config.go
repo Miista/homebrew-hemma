@@ -160,6 +160,40 @@ func orDefault(l PolicyLevel) PolicyLevel {
 	return l
 }
 
+// ForService returns the policy as it applies to a service. Without the tunnel
+// nothing from the internet reaches it: whoever is outside local_networks got
+// in some other way (a VPN, a guest VLAN) and is meant to have the same
+// experience as the LAN, so an unset public level follows the local one.
+func (p AuthPolicy) ForService(tunnel bool) AuthPolicy {
+	if !tunnel && p.Public == "" {
+		p.Public = p.Local
+	}
+	return p
+}
+
+// strictness orders the levels by how much they ask of a request: bypass asks
+// nothing, deny lets nothing through.
+func (l PolicyLevel) strictness() int {
+	switch l {
+	case PolicyBypass:
+		return 0
+	case PolicyOneFactor:
+		return 1
+	case PolicyTwoFactor:
+		return 2
+	default: // deny
+		return 3
+	}
+}
+
+// PublicWeakerThanLocal reports whether the effective public level asks less
+// than the local one — a request from outside would get an easier gate than
+// one from the LAN, which is never intended. Unset resolves to the default
+// first, so `local: two_factor` with no public is caught too.
+func (p AuthPolicy) PublicWeakerThanLocal() bool {
+	return p.ResolvePublic().strictness() < p.ResolveLocal().strictness()
+}
+
 // NeedsLocalRule reports whether the local horizon differs from the public one
 // and therefore needs its own networks-scoped rule. Identical levels would
 // generate a rule that changes nothing, so it is omitted — the catch-all

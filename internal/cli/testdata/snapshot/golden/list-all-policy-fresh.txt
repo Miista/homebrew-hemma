@@ -15,7 +15,7 @@ exit: 0
 == Services (17) ==
   NAME       FQDN                    HOST  BACKEND                    AUTH      LOCAL       PUBLIC      TUNNEL
   chat       chat.home.example       edge  chat:9000                  external  -           -           no
-  dash       dash.home.example       edge  dash:3000                  oidc      -           -           yes
+  dash       dash.home.example       edge  dash:3000                  oidc      one_factor  one_factor  yes
   downloads  downloads.home.example  edge  vpn:8090                   -         -           -           no
   home       ha.home.example         core  host.docker.internal:8123  external  -           -           yes
   homepage   start.home.example      core  homepage:3000              forward   one_factor  one_factor  yes
@@ -30,9 +30,9 @@ exit: 0
   sso        auth.home.example       core  sso:9091                   (portal)  -           -           yes
   status     status.home.example     core  status:8080                forward   one_factor  one_factor  yes
   wiki       wiki.home.example       edge  wiki:3000                  forward   bypass      one_factor  yes
-  wikijs     docs.home.example       edge  docs:8000                  oidc      -           -           yes
+  wikijs     docs.home.example       edge  docs:8000                  oidc      one_factor  one_factor  yes
   (AUTH: forward = imports the (auth) snippet; oidc = Authelia, app does OIDC itself; external = authenticated outside Authelia (app login / token / edge); (portal) = this service IS the auth provider; change with 'hemma update service <name> --auth-mode <mode>')
-  (LOCAL/PUBLIC: the auth.policy each horizon requires — bypass, one_factor, two_factor or deny; unset = one_factor; - = no policy, since only 'forward' mode carries one. PUBLIC is shown even when TUNNEL is no: the policy is declared, it just never fires from the internet)
+  (LOCAL/PUBLIC: the auth.policy each horizon requires — bypass, one_factor, two_factor or deny; unset = one_factor; - = no policy, since only 'forward' and 'oidc' carry one (oidc has no bypass). PUBLIC is shown even when TUNNEL is no: the policy is declared, it just never fires from the internet)
   (TUNNEL: yes = a cloudflared tunnel ingress entry is generated for the FQDN, so the internet can reach it; no = local horizon only)
 
 == Groups (3) ==

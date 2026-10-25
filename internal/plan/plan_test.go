@@ -656,7 +656,7 @@ func TestBuild_PerHorizonPolicyWithoutNetworksIsReported(t *testing.T) {
 	c := base()
 	c.Defaults.AuthService = "portal"
 	c.Services["portal"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091"}
-	c.Services["media"] = config.Service{FQDN: "media.example.com", Host: "appbox", Backend: "jellyfin:8096",
+	c.Services["media"] = config.Service{FQDN: "media.example.com", Host: "appbox", Backend: "jellyfin:8096", Tunnel: true,
 		Auth: config.Auth{Mode: config.AuthForward, Policy: config.AuthPolicy{Local: config.PolicyBypass}}}
 
 	p := Build(c)
@@ -682,8 +682,37 @@ func TestBuild_PerHorizonPolicyWithoutNetworksIsReported(t *testing.T) {
 
 // A policy on a non-forward mode is a half-formed intent: there is no
 // forward-auth gate for it to vary.
-func TestBuild_PolicyRequiresForwardMode(t *testing.T) {
-	for _, mode := range []config.AuthMode{config.AuthOIDC, config.AuthExternal, config.AuthNone} {
+// oidc takes a per-horizon policy too (an authorization_policy with a networks
+// rule), but has no bypass level.
+func TestBuild_OIDCPolicy(t *testing.T) {
+	c := base()
+	c.Defaults.AuthService = "portal"
+	c.Defaults.LocalNetworks = []string{"10.0.0.0/8"}
+	c.Services["portal"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091"}
+	c.Services["x"] = config.Service{FQDN: "x.example.com", Host: "appbox", Backend: "app:80",
+		Auth: config.Auth{Mode: config.AuthOIDC, Policy: config.AuthPolicy{Public: config.PolicyTwoFactor}}}
+	p := Build(c)
+	if reason, skipped := p.Skipped["x"]; skipped {
+		t.Fatalf("oidc with a policy should plan, skipped: %s", reason)
+	}
+	got := p.Files[authAccessKey][0].Content
+	for _, want := range []string{"authorization_policies:", "- policy: 'one_factor'\n            networks:\n              - '10.0.0.0/8'", "- policy: 'two_factor'"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+
+	for _, lvl := range []config.PolicyLevel{config.PolicyBypass} {
+		c.Services["x"] = config.Service{FQDN: "x.example.com", Host: "appbox", Backend: "app:80",
+			Auth: config.Auth{Mode: config.AuthOIDC, Policy: config.AuthPolicy{Public: lvl}}}
+		if _, skipped := Build(c).Skipped["x"]; !skipped {
+			t.Errorf("oidc with policy %q should be skipped", lvl)
+		}
+	}
+}
+
+func TestBuild_PolicyRequiresProviderMode(t *testing.T) {
+	for _, mode := range []config.AuthMode{config.AuthExternal, config.AuthNone} {
 		c := base()
 		c.Services["x"] = config.Service{FQDN: "x.example.com", Host: "appbox", Backend: "app:80",
 			Auth: config.Auth{Mode: mode, Policy: config.AuthPolicy{Local: config.PolicyBypass}}}
@@ -714,5 +743,64 @@ func TestBuild_IdenticalHorizonsEmitOneRule(t *testing.T) {
 	}
 	if n := strings.Count(got, "- domain: 'x.example.com'"); n != 1 {
 		t.Errorf("expected 1 rule for x, got %d:\n%s", n, got)
+	}
+}
+
+// A request from outside must never face an easier gate than one from the LAN:
+// an unset public resolves to one_factor, so local two_factor alone is refused.
+func TestBuild_PublicWeakerThanLocalIsSkipped(t *testing.T) {
+	for _, mode := range []config.AuthMode{config.AuthForward, config.AuthOIDC} {
+		for name, pol := range map[string]config.AuthPolicy{
+			"unset public":  {Local: config.PolicyTwoFactor},
+			"explicit weak": {Local: config.PolicyDeny, Public: config.PolicyTwoFactor},
+		} {
+			c := base()
+			c.Services["x"] = config.Service{FQDN: "x.example.com", Host: "appbox", Backend: "app:80", Tunnel: true,
+				Auth: config.Auth{Mode: mode, Policy: pol}}
+			reason, skipped := Build(c).Skipped["x"]
+			if !skipped || !strings.Contains(reason, "weaker") {
+				t.Errorf("%s/%s should be skipped as weaker, got skipped=%v %q", mode, name, skipped, reason)
+			}
+		}
+	}
+	// Stricter or equal outside is fine, and so is the README's bypass-at-home.
+	for _, pol := range []config.AuthPolicy{
+		{Local: config.PolicyBypass, Public: config.PolicyOneFactor},
+		{Public: config.PolicyTwoFactor},
+		{Local: config.PolicyTwoFactor, Public: config.PolicyTwoFactor},
+	} {
+		c := base()
+		c.Services["x"] = config.Service{FQDN: "x.example.com", Host: "appbox", Backend: "app:80",
+			Auth: config.Auth{Mode: config.AuthForward, Policy: pol}}
+		if reason, skipped := Build(c).Skipped["x"]; skipped {
+			t.Errorf("%+v should plan, skipped: %s", pol, reason)
+		}
+	}
+}
+
+// Without the tunnel nothing from the internet reaches the service, so an
+// unset public level follows local (a VPN user gets the LAN experience): one
+// catch-all at the local level, no networks rule, nothing refused.
+func TestBuild_NoTunnelPublicFollowsLocal(t *testing.T) {
+	c := base()
+	c.Defaults.AuthService = "portal"
+	c.Defaults.LocalNetworks = []string{"10.0.0.0/8"}
+	c.Services["portal"] = config.Service{FQDN: "auth.example.com", Host: "appbox", Backend: "authelia:9091"}
+	c.Services["x"] = config.Service{FQDN: "x.example.com", Host: "appbox", Backend: "app:80",
+		Auth: config.Auth{Mode: config.AuthForward, Policy: config.AuthPolicy{Local: config.PolicyTwoFactor}}}
+	p := Build(c)
+	if reason, skipped := p.Skipped["x"]; skipped {
+		t.Fatalf("should plan, skipped: %s", reason)
+	}
+	got := p.Files[authAccessKey][0].Content
+	if strings.Contains(got, "networks:") || !strings.Contains(got, "policy: 'two_factor'") {
+		t.Errorf("want one two_factor catch-all and no networks rule:\n%s", got)
+	}
+	// With the tunnel the same policy is refused: public stays one_factor.
+	svc := c.Services["x"]
+	svc.Tunnel = true
+	c.Services["x"] = svc
+	if _, skipped := Build(c).Skipped["x"]; !skipped {
+		t.Error("with the tunnel, local two_factor and unset public is weaker outside — refuse")
 	}
 }

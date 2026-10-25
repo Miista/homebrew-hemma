@@ -58,7 +58,7 @@ func (authelia) AccessControl(services []Service) (path, content string, ok bool
 		switch {
 		case s.Mode == ModeForward:
 			forward = append(forward, s)
-		case s.Mode == ModeOIDC && len(s.Groups) > 0:
+		case s.Mode == ModeOIDC && oidcHasPolicy(s):
 			oidcWithGroups = append(oidcWithGroups, s)
 		}
 	}
@@ -126,13 +126,39 @@ func (authelia) AccessControl(services []Service) (path, content string, ok bool
 			fmt.Fprintf(&b, "      %s:\n", s.Name)
 			b.WriteString("        default_policy: 'deny'\n")
 			b.WriteString("        rules:\n")
-			b.WriteString("          - policy: 'one_factor'\n")
-			writeSubject(&b, "            ", s.Groups)
+			// Same shape as the forward rules (§4.8): the local-horizon rule
+			// first (first match wins), then the catch-all with the public
+			// policy. Authelia calls a rule with neither subject nor networks
+			// invalid, so without groups the catch-all is scoped to every
+			// address instead. OIDC has no bypass level (plan refuses it).
+			if len(s.LocalNetworks) > 0 {
+				b.WriteString("          - policy: " + yq(policyOr(s.LocalPolicy)) + "\n")
+				b.WriteString("            networks:\n")
+				for _, n := range s.LocalNetworks {
+					fmt.Fprintf(&b, "              - %s\n", yq(n))
+				}
+				writeSubject(&b, "            ", s.Groups)
+			}
+			b.WriteString("          - policy: " + yq(policyOr(s.PublicPolicy)) + "\n")
+			if len(s.Groups) > 0 {
+				writeSubject(&b, "            ", s.Groups)
+			} else {
+				b.WriteString("            networks:\n")
+				b.WriteString("              - '0.0.0.0/0'\n")
+				b.WriteString("              - '::/0'\n")
+			}
 		}
 	}
 
 	dir := filepath.Dir(autheliaConfigPath)
 	return filepath.Join(dir, autheliaAccessControlFile), b.String(), true
+}
+
+// oidcHasPolicy reports whether an oidc service needs a generated
+// authorization_policy: it restricts to groups, or asks for a per-horizon
+// policy other than the one_factor an unconfigured client already gives.
+func oidcHasPolicy(s Service) bool {
+	return len(s.Groups) > 0 || len(s.LocalNetworks) > 0 || policyOr(s.PublicPolicy) != "one_factor"
 }
 
 // policyOr returns the policy or the default gate when unset. Kept here (not
@@ -254,13 +280,14 @@ func (authelia) ValidateConfig(cfgPath string, services []Service) []Advisory {
 			})
 			continue
 		}
-		// Groups generate a named authorization_policy (see AccessControl);
-		// it only takes effect if the client opts into it by name.
-		if len(s.Groups) > 0 && matchedPolicy != s.Name {
+		// Groups or a per-horizon policy generate a named authorization_policy
+		// (see AccessControl); it only takes effect if the client opts into it
+		// by name.
+		if oidcHasPolicy(s) && matchedPolicy != s.Name {
 			w = append(w, Advisory{
-				Headline: fmt.Sprintf("group restrictions on %s are not enforced", s.Name),
-				Body: []string{fmt.Sprintf("%s has auth groups, but its Authelia OIDC client does not reference the generated", s.Name),
-					"named authorization_policy, so the group policy never applies."},
+				Headline: fmt.Sprintf("the access policy on %s is not enforced", s.Name),
+				Body: []string{fmt.Sprintf("%s has auth groups or a per-horizon policy, but its Authelia OIDC client does not", s.Name),
+					"reference the generated named authorization_policy, so it never applies."},
 				Fix: []string{fmt.Sprintf("set on the client in %s:", cfgPath),
 					fmt.Sprintf("  authorization_policy: '%s'", s.Name)},
 				Then: "hemma apply",

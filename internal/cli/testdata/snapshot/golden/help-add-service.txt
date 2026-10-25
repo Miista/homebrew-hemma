@@ -48,7 +48,7 @@ Flags:
                           Unset means one_factor on both horizons, which is what a bare
                           --auth-mode forward has always meant. "local" is a request whose
                           resolved client IP is in defaults.local_networks; "public" is
-                          everything else. Forward mode only. Effective only when the
+                          everything else. Forward or oidc mode (oidc has no bypass). Effective only when the
                           reverse proxy resolves the true client IP (see 'update host
                           --trusted-proxies') — otherwise everything is treated as public,
                           which is the safe direction.

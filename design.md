@@ -106,7 +106,7 @@ services:
     # tunnel: true                    # optional; generate a cloudflared ingress entry — §12.
                                       # absent = local horizon only (pre-rename key: public)
     # auth: forward                   # optional auth mode: forward|oidc|external (or legacy true=forward) — §4.5
-    # auth:                           # per-horizon requirement (§4.8), forward mode only:
+    # auth:                           # per-horizon requirement (§4.8), forward or oidc mode:
     #   mode: forward
     #   policy: {local: bypass, public: one_factor}
     # auth:                           # object form when groups or bypass paths are set:
@@ -451,8 +451,11 @@ hemma generates the auth provider's access-control rules from the same `services
 it already renders Caddy gates from, so "who may reach this service" is declared once. Emitted
 only when `defaults.auth_service` is set **and** there is something to say: `access_control`
 rules for `auth: forward` services, `identity_providers.oidc.authorization_policies` for
-`auth: oidc` services **with groups** (oidc services without groups need no provider-side
-policy). When neither applies, the file is not planned at all and a previously generated one is
+`auth: oidc` services **with groups or a per-horizon policy** (oidc services with neither need no
+provider-side policy). An oidc policy carries the same two horizons as forward (§4.8): a
+`networks: local_networks` rule with the local level first, then the catch-all with the public
+level — scoped by `subject` when the service has groups, otherwise by `0.0.0.0/0` + `::/0`, since
+Authelia calls a rule with neither criterion invalid. OIDC has no `bypass` level (plan refuses it). When neither applies, the file is not planned at all and a previously generated one is
 GC'd like any orphan. Content, in stable alphabetical-by-service order:
 
 ```yaml
@@ -718,6 +721,20 @@ words apart is deliberate; see §2's naming rule.
 value is a load error rather than a default — every wrong guess here silently widens (`bypass`) or
 narrows (`deny`) a security statement.
 
+**Public is never weaker than local.** Ordered by what they ask of a request — `bypass` <
+`one_factor` < `two_factor` < `deny` — the effective public level must be at least the local one,
+else the entry is a per-entry validation error (§7): a request from outside must not get an easier
+gate than one from the LAN. Unset resolves to the default first, so `local: two_factor` alone is
+refused (public would be `one_factor`); set both. `bypass` at home with a login from outside, the
+motivating case, is unaffected.
+
+**Without the tunnel, an unset public follows local.** A service that is not on the tunnel is not
+reachable from the internet, so whoever arrives from outside `local_networks` got in some other way
+(a VPN, a guest VLAN) and is meant to have the LAN experience. An unset `public` therefore resolves
+to the service's local level instead of the default (`AuthPolicy.ForService`), which also keeps the
+rule above satisfied. An explicit `public` is always honoured, and with the tunnel on nothing
+changes: unset is still `one_factor`.
+
 **Unset means the default gate** (`one_factor`), which is exactly what a bare `auth: forward` has
 always generated, so the feature is purely additive: a service with no `policy` produces
 byte-identical output to before it existed. A partial map overrides one horizon and leaves the
@@ -760,9 +777,13 @@ the local horizon being treated as strictly as the public one. Unlike the tunnel
 force a non-zero exit: nothing is exposed and nothing is broken, so it is a did-you-mean rather
 than a misconfiguration.
 
-**Only with mode `forward`** — it parameterises the forward-auth gate. `oidc`'s gate is the app's
-own OIDC flow (which hemma cannot vary by source IP) and `external`/`none` have no gate here at
+**Only with mode `forward` or `oidc`** — the two modes whose gate hemma writes. `forward` gets
+`access_control` rules; `oidc` gets an `authorization_policy` (§4.6) whose rules take `networks`
+too, so the same two horizons apply. Authelia's OIDC policies only know `one_factor`, `two_factor`
+and `deny`: `bypass` with `oidc` is a validation error. `external`/`none` have no gate here at
 all, so a policy on those is a per-entry validation error (§7), like `groups` with mode `none`.
+Caveat from Authelia: an OIDC rule is evaluated when consent is given, so a client whose address
+changes afterwards is not re-checked until its tokens expire.
 
 *Considered and rejected (for now)*: per-horizon **groups** (`public: {policy: one_factor, groups:
 [remote-media]}`) — a different audience per horizon, not just a different strictness. Rejected as

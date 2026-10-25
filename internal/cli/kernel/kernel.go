@@ -597,7 +597,8 @@ func oidcClientWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 		if !s.Auth.Mode.UsesProvider() {
 			continue
 		}
-		svcs = append(svcs, auth.Service{Name: name, FQDN: s.FQDN, Mode: string(s.Auth.Mode), Groups: s.Auth.Groups, BypassPaths: s.Auth.BypassPaths})
+		as, _ := plan.ProviderService(cfg, name, s)
+		svcs = append(svcs, as)
 	}
 	return provider.ValidateConfig(cfgPath, svcs)
 }
