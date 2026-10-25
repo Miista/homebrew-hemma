@@ -764,6 +764,44 @@ Package layout (`internal/`):
 | `sync` | The reconcile engine — the **only** code that writes or deletes generated files. |
 | `cli` | Command parsing and wiring; thin `main.go`. |
 
+## Releasing
+
+Two products, each with its own version numbers and its own tag. Tagging one never releases the
+other, and tagging is a deliberate, manual step: the tag is the approval.
+
+| Product | Tag you push | Workflow | What it publishes |
+| --- | --- | --- | --- |
+| `hemma` CLI | `cli-vX.Y.Z` | `release.yml` | GitHub release "cli vX.Y.Z" with archives, `.deb`s and checksums; the Homebrew formula (committed back to this repo, which is the tap); the `.deb`s to the [Cloudsmith](https://cloudsmith.io) apt repo `guldmund/stable` |
+| `hemma-ui` image | `ui-vX.Y.Z` | `release-ui.yml` | `ghcr.io/miista/hemma-ui:X.Y.Z`, `:X.Y` and `:latest` for amd64 and arm64; a GitHub release "ui vX.Y.Z" with notes only (the commits since the previous `ui-v` tag, the pull command, a compare link) |
+
+**Which tag(s) to push** is a judgement, not automated: a change to the kernel (everything both are
+built from: `internal/cli/kernel`, `config`, `plan`, `render`, `sync`, `manifest`, `auth`) means both
+tags, pushed together; a UI-only change (`cmd/hemma-ui`, `Dockerfile.ui`) only `ui-v…`; a CLI-only
+change (`internal/cli`, `main.go`) only `cli-v…`.
+
+```sh
+git tag -a cli-v0.45.0 -m "…" && git tag -a ui-v0.3.0 -m "…"
+git push origin cli-v0.45.0 ui-v0.3.0
+```
+
+How it works, for when something looks odd:
+
+- **The CLI workflow creates the bare `vX.Y.Z` tag itself**, on the same commit, before running
+  GoReleaser on it. Go's module proxy and `go install …@vX.Y.Z` read only plain semver tags, and the
+  formula's download URLs are built from that tag. A tag pushed with the workflow's own token starts
+  no workflow, so it cannot release twice; a bare `v…` pushed by hand releases nothing. Never push
+  one yourself.
+- **The image workflow writes its release notes with `gh`**, not GoReleaser. GoReleaser only accepts
+  a plain semver tag, so it is handed the bare version with validation skipped, and that tag does not
+  exist in git; it cannot compute "since the previous release" from it. The GitHub release for the
+  image therefore has no files: the image on ghcr.io is the artifact.
+- **A manual run of either workflow is a dry run.** It builds with the version you type and
+  publishes nothing. `release-check.yml` builds the image for both platforms on pull requests that
+  touch how it is built.
+- **Hosts must run a CLI that knows `hemma preflight`** (0.44.0 and later) before a deploy from the
+  new version will touch them: `hemma deploy` runs it on every remote host first and refuses one
+  whose CLI does not know it. Upgrade the hosts from apt, then deploy.
+
 ## Non-goals
 
 No general SSH/orchestration — `apply` acts only on the host it runs on, and `deploy` is the
