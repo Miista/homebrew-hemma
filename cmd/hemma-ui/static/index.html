@@ -626,9 +626,11 @@ function openCmd(key, prefill = {}) {
   // Fields that only mean something for some value of another field (auth groups, bypass paths and policy
   // depend on the auth mode) are offered only then — the form cannot build a combination hemma would skip.
   const byName = Object.fromEntries(ctl.map(x => [x.fd.name, x]));
-  const offered = x => { if (!x.fd.shows) return true; const [dep, vals] = x.fd.shows.split("="); return vals.split("|").includes(byName[dep]?.k.get() ?? ""); };
+  // "shows" is one or more "<field>=<v1>|<v2>" clauses joined by "&"; all must hold (a bool compares as "true"/"false").
+  const clauses = x => x.fd.shows.split("&").map(c => c.split("="));
+  const offered = x => !x.fd.shows || clauses(x).every(([dep, vals]) => vals.split("|").includes(String(byName[dep]?.k.get() ?? "")));
   const syncShown = () => ctl.forEach(x => { if (x.fd.shows) x.lab.hidden = !offered(x); });
-  for (const dep of new Set(ctl.filter(x => x.fd.shows).map(x => x.fd.shows.split("=")[0]))) byName[dep]?.k.node.addEventListener("change", () => {
+  for (const dep of new Set(ctl.filter(x => x.fd.shows).flatMap(x => clauses(x).map(c => c[0])))) byName[dep]?.k.node.addEventListener("change", () => {
     syncShown();
     // choosing a mode that brings more fields: make sure the new ones are in view
     requestAnimationFrame(() => requestAnimationFrame(() => byName[dep].lab.closest(".card")?.scrollIntoView({ block: "nearest", behavior: "smooth" })));

@@ -24,7 +24,7 @@ type field struct {
 	Required bool     `json:"required,omitempty"`
 	Help     string   `json:"help,omitempty"`
 	// Shows: the field is only offered while another field has one of these values, as
-	// "<field>=<v1>|<v2>". The browser hides it otherwise; checkAuthFields is the server's own check.
+	// "<field>=<v1>|<v2>", several joined by "&" (all must hold; a bool is "true"/"false"). The browser hides it otherwise; checkAuthFields is the server's own check.
 	Shows string `json:"shows,omitempty"`
 	// Section: a heading the browser draws above this field and the ones after it, until the next Section.
 	// Fields before the first heading are drawn ungrouped.
@@ -82,7 +82,7 @@ func serviceFields(add bool) []field {
 		withShows(list("auth-groups", "Auth groups", "name"), "auth-mode=forward|oidc"),
 		withShows(list("bypass-paths", "Bypass paths", "path"), "auth-mode=forward|oidc"),
 		withShows(field{Name: "auth-policy-local", Label: "Policy: local horizon", Kind: "select", Options: levels}, "auth-mode=forward"),
-		withShows(field{Name: "auth-policy-public", Label: "Policy: public horizon", Kind: "select", Options: levels}, "auth-mode=forward"),
+		withShows(field{Name: "auth-policy-public", Label: "Policy: public horizon", Kind: "select", Options: levels}, "auth-mode=forward&tunnel=true"),
 	}
 }
 
