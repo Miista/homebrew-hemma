@@ -365,7 +365,7 @@ button.info svg { width: 17px; height: 17px; }
 .fd > button.fh:hover:not(:disabled) { background: var(--hover); }
 .fd > button.fh .fp { min-width: 0; overflow-wrap: anywhere; }
 .fdiff { border-top: 1px solid var(--line); background: var(--code-bg); }
-.fdiff pre { margin: 0; padding: 8px 0; max-height: 50vh; overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 1.5; tab-size: 4; }
+.fdiff pre { margin: 0; padding: 8px 0; border: 0; border-radius: 0; max-height: 50vh; overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 1.5; tab-size: 4; }
 .fdiff pre span { display: block; min-width: max-content; padding: 0 14px; white-space: pre; color: var(--ink-2); }
 .fdiff pre span.add { background: var(--add-soft); color: var(--add-text); }
 .fdiff pre span.del { background: var(--del-soft); color: var(--del-text); }
