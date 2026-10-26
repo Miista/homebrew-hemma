@@ -28,7 +28,7 @@ mkdir -p "$work"
 hemma="$work/hemma"
 
 seed="$work/seed"
-mkdir -p "$seed/edge/caddy/data/certs/example.com"
+mkdir -p "$seed/edge/caddy/data"
 cd "$seed"
 git init -q -b main .
 
@@ -51,11 +51,6 @@ services:
 $([ "$with_auth" = 1 ] && printf '    authelia:\n        fqdn: auth.example.com\n        host: edge\n        backend: authelia:9091\n')
 EOF
 
-# Throwaway self-signed cert at the path hemma's TLS snippet expects.
-openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj "/CN=*.example.com" \
-  -keyout edge/caddy/data/certs/example.com/privkey.key \
-  -out edge/caddy/data/certs/example.com/fullchain.cer 2>/dev/null
-
 # The hand-maintained Caddyfile hemma requires (trusted_proxies import + generated import).
 cat > edge/caddy/data/Caddyfile <<'EOF'
 {
@@ -74,6 +69,8 @@ EOF
 
 mkdir -p edge/cloudflared
 "$hemma" -C "$seed" doctor --fix >/dev/null 2>&1 || true
+# A throwaway self-signed cert for every domain the generated TLS snippets load.
+"$here/certs.sh" "$seed"
 
 git add -A
 git -c user.name=fixture -c user.email=fixture@example.com commit -q -m "fixture: initial synthetic homelab repo"

@@ -36,6 +36,8 @@ fi
 # Regenerate everything from the new services.yaml with this checkout's hemma (advisories make doctor exit 1: fine).
 go build -o "$root/hemma" .
 "$root/hemma" -C "$repo" doctor --fix >/dev/null 2>&1 || true
+# The imported file can name domains the fixture has no certificate for: give each a throwaway one, or caddy will not start.
+"$here/certs.sh" "$repo"
 
 cd "$repo"
 git add -A

@@ -4,7 +4,7 @@ A fully synthetic single-host homelab for exercising `hemma-ui` end to end — i
 `apply` and `deploy` — with no real hosts, data or credentials.
 
 ```sh
-./setup.sh                                  # builds .work/: repo + local bare remote + throwaway cert
+./setup.sh                                  # builds .work/: repo + local bare remote + throwaway certs (certs.sh)
 (cd ../.. && make ui-binary)                # the image only copies in a cross-compiled binary
 docker compose -f compose.yml up -d --build
 # UI: http://127.0.0.1:18080 — sign-in is authy's local account: the FIRST visitor creates it
