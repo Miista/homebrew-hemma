@@ -302,7 +302,10 @@ authy). It is NOT a second implementation of hemma:
   light and a dark value in `static/style.css` — never hard-code a colour in the page. The page (`static/index.html`)
   holds markup and script only; the stylesheet and the font files (SIL OFL-1.1, licenses alongside) are embedded and
   served from `/static/` behind the same login. Keep text at WCAG AA (4.5:1) in both themes. The brand mark
-  (`static/icons/icon.svg`, plus `favicon.ico` as the fallback: 16/32/48 px PNGs packed by hand from the SVG) is the tab icon AND the
+  (`static/icons/icon.svg`, plus `favicon.ico` as the fallback: 16/32/48 px PNGs packed by hand from the SVG — render them on a
+  TRANSPARENT background, e.g. headless Chromium with `omitBackground`; a renderer that paints white leaves white corners around the
+  rounded tile. The page links both with `?v=<file hash>` (`versionIcons`): browsers keep favicons in a store that ignores
+  Cache-Control, so a changed icon only shows up under a new URL) is the tab icon AND the
   page's brand tile (`.brand-tile` is just the SVG as a background): an angular lowercase `h` leaning forward, cut from straight lines (a chamfered
   arch, a notch in the stem at the x-height, a sliced right foot), fading from white at the top to the accent blue at the feet. It is a fixed dark tile because an icon cannot follow the
   system theme, so it is the same in both. Being under `/static/` it is behind the login too (`auth_test.go` pins that).

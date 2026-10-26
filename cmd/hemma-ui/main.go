@@ -86,10 +86,14 @@ func main() {
 // without a session.
 func (s *server) routes(gate *authy.Gate) (http.Handler, error) {
 	mux := http.NewServeMux()
+	page, err := static.ReadFile("static/index.html")
+	if err != nil {
+		return nil, err
+	}
+	page = versionIcons(page)
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		b, _ := static.ReadFile("static/index.html")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(b)
+		w.Write(page)
 	})
 	assets, err := fs.Sub(static, "static")
 	if err != nil {
@@ -111,6 +115,21 @@ func (s *server) routes(gate *authy.Gate) (http.Handler, error) {
 	mux.HandleFunc("GET /api/config/raw", s.handleRawGet)
 	mux.HandleFunc("POST /api/config/raw", s.handleRawSave)
 	return gate.Wrap(guard(mux)), nil
+}
+
+// versionIcons gives the page's icon links a hash of each file (?v=…). Browsers keep favicons in a store of their own that
+// ignores Cache-Control, so a changed icon only shows up under a new URL. The file server ignores the query.
+func versionIcons(page []byte) []byte {
+	for _, name := range []string{"icon.svg", "favicon.ico"} {
+		b, err := static.ReadFile("static/icons/" + name)
+		if err != nil {
+			continue
+		}
+		sum := sha256.Sum256(b)
+		href := `href="/static/icons/` + name
+		page = bytes.ReplaceAll(page, []byte(href+`"`), []byte(href+"?v="+hex.EncodeToString(sum[:6])+`"`))
+	}
+	return page
 }
 
 func env(k, def string) string {
