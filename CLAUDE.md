@@ -208,7 +208,13 @@ authy). It is NOT a second implementation of hemma:
   on a freshly set-up machine with nothing to save (nothing about what is LIVE is ever inferred from the page). Deploy is the kernel's `deploy`, which first brings this
   checkout level with origin itself (`git pull --rebase`, aborted cleanly on a real conflict; then `git push`; then a
   drift check), so the UI has no push of its own and "origin moved" is never a dead end for the person. With no origin
-  it just applies.
+  it just applies. **A deploy outlives its stream** (it runs detached from the request, `workContext`), and the stream is often
+  cut: a deploy from outside restarts the very cloudflared it is streamed through. So the UI records each deploy
+  (`lastdeploy.go`: id, running/ok, steps, output) in `HEMMA_UI_DATA/last-deploy.json` — on the data volume so it survives an
+  update of hemma-ui; a record a stopped process left "running" is marked interrupted at startup — and `/api/state` reports it
+  as `deploy`. The stream's first event carries the id. When the stream drops, the page says "Connection lost", stays
+  "deploying" (no second Deploy offered) and checks the state until its deploy (by id) is finished, then shows the real
+  outcome and, on success, clears "Saved, not live yet".
 - **A file that cannot be loaded is still editable.** Every typed form needs a loadable `services.yaml`, so
   when it is not, `/api/state` reports why and the page shows a recovery screen: **Discard unsaved changes**
   (the usual cause is an unsaved edit) or **Edit services.yaml** as text. The text goes through

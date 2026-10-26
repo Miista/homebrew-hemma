@@ -42,6 +42,7 @@ var static embed.FS
 
 type server struct {
 	repo    string
+	data    string     // HEMMA_UI_DATA: authy's files and the last deploy's record (lastdeploy.go); "" keeps no record
 	version string     // "hemma <version>", shown in the page footer
 	mu      sync.Mutex // one mutating hemma invocation at a time
 	cc      changesCache
@@ -71,7 +72,8 @@ func main() {
 	}
 	kernel.DisableColor()               // output is captured for a browser, never a terminal
 	kernel.SetLocalHost(deployHostSelf) // this page runs on the deploy host (host.go)
-	s := &server{repo: env("HEMMA_REPO", "/repo"), version: "hemma " + cli.Version}
+	s := &server{repo: env("HEMMA_REPO", "/repo"), data: env("HEMMA_UI_DATA", "/data/auth"), version: "hemma " + cli.Version}
+	s.markInterruptedDeploy()
 	handler, err := s.routes(gate)
 	if err != nil {
 		log.Fatal(err)
@@ -191,7 +193,7 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	cfg, err := config.Load(filepath.Join(s.repo, "services.yaml"))
 	if err != nil {
 		// The version rides along so the recovery screen can still show it in the footer.
-		writeJSON(w, 500, map[string]any{"error": err.Error(), "version": s.version})
+		writeJSON(w, 500, map[string]any{"error": err.Error(), "version": s.version, "deploy": s.deployState()})
 		return
 	}
 	names := make([]string, 0, len(cfg.Services))
@@ -240,6 +242,7 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"apply":    map[string]any{"host": selfHost, "steps": steps},
 		"services": svcs, "hosts": hosts, "domains": cfg.DomainNames(), "settings": settings, "version": s.version,
+		"deploy": s.deployState(), // the last deploy, for a page whose stream was cut (lastdeploy.go)
 	})
 }
 

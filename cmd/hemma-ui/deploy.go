@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"hemma/internal/cli/kernel"
 )
@@ -330,7 +331,11 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	stepsJSON := func() string { b, _ := json.Marshal(prog.Steps()); return string(b) }
 	last := stepsJSON()
-	send(map[string]any{"type": "progress", "steps": prog.Steps()})
+	// The record (lastdeploy.go) says how this deploy ended even to a page whose stream is cut; the first event carries
+	// its id, so that page knows which record is its own.
+	rec := newDeployRecord(in.Command)
+	s.saveDeploy(rec)
+	send(map[string]any{"type": "progress", "id": rec.ID, "steps": prog.Steps()})
 	lw := &lineWriter{onLine: func(line string) {
 		prog.Feed(line)
 		if cur := stepsJSON(); cur != last {
@@ -356,5 +361,8 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	prog.Finish(ok)
 	log.Printf("run %q -> exit=%d (streamed)", in.Command, code)
+	end := time.Now().UTC()
+	rec.Running, rec.OK, rec.Finished, rec.Steps, rec.Output = false, ok, &end, prog.Steps(), lw.String()
+	s.saveDeploy(rec) // before the last event: a page that reads the state after it must find the end
 	send(map[string]any{"type": "done", "ok": ok, "output": lw.String(), "steps": prog.Steps()})
 }
