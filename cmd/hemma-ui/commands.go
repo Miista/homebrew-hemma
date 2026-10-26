@@ -84,8 +84,8 @@ func serviceFields(add bool) []field {
 		withShows(field{Name: "auth-policy-local", Label: "Policy: local horizon", Kind: "select", Options: levels}, "auth-mode=forward|oidc"),
 		withShows(field{Name: "auth-policy-public", Label: "Policy: public horizon", Kind: "select", Options: levels}, "auth-mode=forward|oidc&tunnel=true"),
 		// §4.9: only for an oidc app on the tunnel. Hidden, an update sends it as false, so leaving oidc or the tunnel clears it.
-		withShows(field{Name: "forward-gate", Label: "Forward auth on internet requests", Kind: "bool",
-			Help: "Every request from outside your local networks needs a live session with the auth provider, so the app's own session can't keep someone logged in from the internet."},
+		withShows(field{Name: "forward-gate", Label: "Forward gate", Kind: "bool",
+			Help: "Every request from the internet needs a live session with the auth provider, so the app's own session can't keep someone logged in from outside. At home nothing changes."},
 			"auth-mode=oidc&tunnel=true"),
 	}
 }

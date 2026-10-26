@@ -263,7 +263,7 @@ outside `local_networks`:
 Every request from outside then needs a live Authelia session (with the public policy and the
 groups); at home nothing changes. The app's own OIDC login still runs on top — from the same Authelia
 session. Set it with `hemma update service <name> --forward-gate`, in the editor, or with the
-"Forward auth on internet requests" switch in hemma-ui. How long that Authelia session lasts
+"Forward gate" switch in hemma-ui. How long that Authelia session lasts
 (`session.inactivity`, `expiration`, and `remember_me` when ticked) is how strict it really is.
 Mobile and API clients can't follow a login: exempt their paths with `bypass_paths`.
 

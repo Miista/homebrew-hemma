@@ -1204,7 +1204,7 @@ async function undoRemoved(e) {
     key = "add service";
     values = { name: e.name, fqdn: f["Address"], host: f["Host"], backend: f["Backend"], "auth-mode": f["Auth mode"] || "none", "auth-groups": list(f["Auth groups"]),
                "bypass-paths": list(f["Bypass paths"]), "auth-policy-local": f["Policy: local"] || "", "auth-policy-public": f["Policy: public"] || "", tunnel: f["Reachable from the internet"] === "yes",
-               "forward-gate": f["Forward auth on internet requests"] === "yes" };
+               "forward-gate": f["Forward gate"] === "yes" };
   } else if (e.kind === "Host") { key = "add host"; values = { name: e.name, ip: f["IP address"], ssh: (f["SSH destination"] || "").replace("—", ""), "trusted-proxies": list(f["Extra trusted proxies"]) };
   } else if (e.kind === "Domain") { key = "add domain"; values = { name: e.name };
   } else return;

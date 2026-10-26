@@ -70,7 +70,7 @@ func serviceKV(sv config.Service) []kv {
 		{"Bypass paths", strings.Join(sv.Auth.BypassPaths, ", ")},
 		{"Policy: local", string(sv.Auth.Policy.Local)}, {"Policy: public", string(sv.Auth.Policy.Public)},
 		{"Reachable from the internet", yesNo(sv.Tunnel)},
-		{"Forward auth on internet requests", yesNo(sv.Auth.ForwardGate)},
+		{"Forward gate", yesNo(sv.Auth.ForwardGate)},
 	}
 }
 
