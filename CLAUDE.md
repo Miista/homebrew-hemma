@@ -239,10 +239,14 @@ authy). It is NOT a second implementation of hemma:
   route is refused without a session.
 - **The Services page** groups services by host (collapsible, searchable with ⌘K / Ctrl+K); a row opens the service's
   form directly. Every row ends in two fixed icon columns (`svcMarks`), so they line up for scanning: **reach** (house = local only,
-  globe = `tunnel`) and **sign-in**, which answers only "is it fronted by Authelia?": filled padlock = `forward`/`oidc`, outline
+  globe = `tunnel`) and **sign-in**, which answers only "is it fronted by the auth provider?" (labels name the role, never the product: providers are pluggable): filled padlock = `forward`/`oidc`, outline
   padlock = `external`, key = the `auth_service` itself, red ⚠ = `none`. A bypass policy comes from the server as `auth-bypass`
   (resolved with `AuthPolicy.ForService`, never re-derived in the page): `local` is an amber filled padlock, `everywhere` is the red
-  ⚠ like `none` (and a `doctor` advisory). A disabled service's icons stay muted — it is not served, so nothing to warn about. The form is the existing typed form drawn as three cards (General, Network, Authentication) with
+  ⚠ like `none` (and a `doctor` advisory). A disabled service's icons stay muted — it is not served, so nothing to warn about.
+  All of it comes from one function (`svcIcons`): the row, the **legend** (the ⓘ after the summary line, `#ldlg`) and the service
+  form, which shows the same icon and its words under the Network and Authentication card titles and follows the form live. For
+  that the form asks `GET /api/signin?mode=&tunnel=&local=&public=` (read-only, the same `authBypass` helper `/api/state` uses)
+  whenever the mode, the tunnel or a policy changes; the latest answer wins and a failed ask leaves the icon as it was. The form is the existing typed form drawn as three cards (General, Network, Authentication) with
   Host and Auth mode as segmented choices; **Enabled** is a switch in it (not a field of `update service`: after the
   form's own command the page runs `enable`/`disable service`). History, Rename and Remove are buttons at the left of
   the footer (Remove still confirms). **On a phone** an edit form's footer is just **Close** with a chevron menu button (History, Rename,

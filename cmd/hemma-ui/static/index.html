@@ -75,6 +75,13 @@
   <div class="dft"><div class="grp"><button type="button" id="tclose">Close</button></div></div>
 </dialog>
 
+<!-- The icon legend: the ⓘ on the Services page. -->
+<dialog id="ldlg" tabindex="-1" autofocus aria-labelledby="ltitle">
+  <div class="dhd"><div class="tt"><h2 id="ltitle">Icons</h2><p class="meta">What the two icons on each service row mean.</p></div><button type="button" class="x" id="lx" aria-label="Close">×</button></div>
+  <div class="dbd" id="lbody"></div>
+  <div class="dft"><div class="grp"><button type="button" id="lclose">Close</button></div></div>
+</dialog>
+
 <dialog id="dlg" tabindex="-1" autofocus aria-labelledby="dtitle">
   <form method="dialog" id="form">
     <div class="dhd"><div class="tt"><h2 id="dtitle"></h2><p class="meta" id="dhelp"></p></div><button type="button" class="x" id="dx" aria-label="Close">×</button></div>
@@ -591,6 +598,40 @@ function switchRow(label, hint, checked) {
   return { node: lab, get: () => i.checked };
 }
 
+// svcFormIcons puts the row's two icons, with their words, under the service form's Network and Authentication card titles, and
+// keeps them following the form before a save. Whether a policy skips sign-in is the server's call (/api/signin, the same rule
+// /api/state uses): the page asks whenever the mode, the tunnel or a policy changes, and the latest answer wins. A failed ask
+// leaves the icon as it was; it never blocks the form.
+function svcFormIcons(byName, offered, enabled, prefill) {
+  const head = f => byName[f]?.lab.closest(".card")?.querySelector(".sect");
+  const net = head("tunnel"), au = head("auth-mode");
+  if (!net || !au) return;
+  const netS = el("span", null, { className: "sstat" }), auS = el("span", null, { className: "sstat" });
+  net.after(netS); au.after(auS);
+  const val = f => byName[f] && offered(byName[f]) ? byName[f].k.get() : "";
+  let bypass = prefill["auth-bypass"] || "", seq = 0;
+  const paint = () => {
+    const ic = svcIcons({ name: val("name") || prefill.name, tunnel: !!val("tunnel"), "auth-mode": val("auth-mode"), "auth-bypass": bypass });
+    const off = enabled && !enabled.get();
+    netS.replaceChildren(markSlot(ic.reach), el("span", ic.reach[0]));
+    auS.replaceChildren(markSlot(ic.signin, off ? "" : ic.colour), el("span", ic.signin[0]));
+  };
+  const ask = async () => {
+    const n = ++seq;
+    const q = new URLSearchParams({ mode: val("auth-mode"), tunnel: String(!!val("tunnel")), local: val("auth-policy-local"), public: val("auth-policy-public") });
+    try {
+      const r = await fetch("/api/signin?" + q);
+      if (!r.ok) return;
+      const j = await r.json();
+      if (n === seq) { bypass = j["auth-bypass"] || ""; paint(); }
+    } catch {}
+  };
+  for (const f of ["tunnel", "auth-mode", "auth-policy-local", "auth-policy-public"]) byName[f]?.k.node.addEventListener("change", () => { paint(); ask(); });
+  byName.name?.k.node.addEventListener("input", paint);
+  enabled?.node.addEventListener("change", paint);
+  paint(); ask();
+}
+
 // openCmd renders a form from the command's schema; prefill pre-populates it.
 function openCmd(key, prefill = {}) {
   const c = cmds[key];
@@ -653,6 +694,7 @@ function openCmd(key, prefill = {}) {
     modeC.node.addEventListener("change", syncPolicy);
     syncPolicy();
   }
+  if (key === "add service" || key === "update service") svcFormIcons(byName, offered, enabled, prefill);
   // Editing a service: Rename and Remove sit at the left of the footer, out of the way of Save (Remove asks to confirm).
   if (key === "update service") {
     const actions = [["History", () => { $("#dlg").close(); openHistory(prefill.name); }],
@@ -1172,32 +1214,64 @@ const REACH = {
   local: ["Local network only", ICON('<path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/>')],
   tunnel: ["Reachable from the internet", ICON('<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/>')],
 };
-// Sign-in answers one question: is the service fronted by Authelia? forward and oidc both are (filled padlock); external is
-// protected by something hemma cannot check (outline padlock); none is a warning. auth-bypass (resolved by the server) "local" is
-// still behind Authelia (filled padlock) but drawn in the attention colour; "everywhere" is no sign-in at all, so it is none.
-// Bypass paths are the intended exemption and stay a plain padlock.
+// Sign-in answers one question: is the service fronted by the auth provider? forward and oidc both are (filled padlock); external
+// is protected by something hemma cannot check (outline padlock); none is a warning. auth-bypass (resolved by the server) "local"
+// is still behind the provider (filled padlock) but drawn in the attention colour; "everywhere" is no sign-in at all, so it is none.
+// Bypass paths are the intended exemption and stay a plain padlock. Labels name the role, never the product: providers are pluggable.
 const LOCK = '<path d="M8 11V7a4 4 0 0 1 8 0v4"/>';
 const SIGNIN = {
-  none: ["No sign-in", ICON('<path d="M12 3.5L2.5 20h19L12 3.5z"/><path d="M12 10v4M12 17h.01"/>')],
-  authelia: ["Protected by Authelia", ICON('<rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor"/>' + LOCK)],
-  external: ["Protected outside hemma", ICON('<rect x="5" y="11" width="14" height="10" rx="2"/>' + LOCK)],
-  auth: ["The sign-in service itself", ICON('<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M16 7l3 3M14 9l2 2"/>')],
+  none: ["No authentication", ICON('<path d="M12 3.5L2.5 20h19L12 3.5z"/><path d="M12 10v4M12 17h.01"/>')],
+  provider: ["Protected by auth", ICON('<rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor"/>' + LOCK)],
+  external: ["Protected by external auth", ICON('<rect x="5" y="11" width="14" height="10" rx="2"/>' + LOCK)],
+  auth: ["Auth service", ICON('<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M16 7l3 3M14 9l2 2"/>')],
 };
-function svcMarks(s) {
-  const box = el("div", null, { className: "marks" });
-  const slot = (m, cls) => { const i = el("span", null, { className: "mark" + (cls ? " " + cls : "") }); if (m) { i.innerHTML = m[1]; i.title = m[0]; i.setAttribute("role", "img"); i.setAttribute("aria-label", m[0]); } return i; };   // static markup defined above
-  if (!s) { box.append(slot(), slot()); return box; }
+SIGNIN.everywhere = ["No authentication — bypassed on both horizons", SIGNIN.none[1]];
+SIGNIN.home = ["Protected by auth, bypassed on local horizon", SIGNIN.provider[1]];
+const SIGNIN_COLOUR = { none: "warn", everywhere: "warn", home: "check" };
+// svcIcons: the two icons a service shows (each [label, svg]) and the sign-in icon's colour class. The row, the service form and
+// the legend all draw from here, so they cannot disagree.
+function svcIcons(s) {
   const mode = s["auth-mode"] || "none";
   // The auth service (defaults.auth_service) is exempt from the warning: it IS the sign-in page, so it never has one in front.
   const authSvc = (state.settings.find(x => x.key === "auth-service") || {}).value;
-  let kind = s.name === authSvc ? "auth" : mode === "forward" || mode === "oidc" ? "authelia" : mode === "external" ? "external" : "none";
-  if (kind === "authelia" && s["auth-bypass"] === "everywhere") kind = "everywhere";
-  const local = kind === "authelia" && s["auth-bypass"] === "local";
-  const signin = kind === "everywhere" ? ["No sign-in: the policy bypasses it everywhere", SIGNIN.none[1]]
-    : local ? ["Protected by Authelia, but no sign-in from the local network", SIGNIN.authelia[1]] : SIGNIN[kind];
-  box.append(slot(REACH[s.tunnel ? "tunnel" : "local"]), slot(signin, kind === "none" || kind === "everywhere" ? "warn" : local ? "check" : ""));
+  let kind = s.name === authSvc ? "auth" : mode === "forward" || mode === "oidc" ? "provider" : mode === "external" ? "external" : "none";
+  if (kind === "provider" && s["auth-bypass"]) kind = s["auth-bypass"] === "everywhere" ? "everywhere" : "home";
+  return { reach: REACH[s.tunnel ? "tunnel" : "local"], signin: SIGNIN[kind], colour: SIGNIN_COLOUR[kind] || "" };
+}
+function markSlot(m, cls) {
+  const i = el("span", null, { className: "mark" + (cls ? " " + cls : "") });
+  if (m) { i.innerHTML = m[1]; i.title = m[0]; i.setAttribute("role", "img"); i.setAttribute("aria-label", m[0]); }   // static markup defined above
+  return i;
+}
+function svcMarks(s) {
+  const box = el("div", null, { className: "marks" });
+  if (!s) { box.append(markSlot(), markSlot()); return box; }
+  const ic = svcIcons(s);
+  box.append(markSlot(ic.reach), markSlot(ic.signin, ic.colour));
   return box;
 }
+// The legend behind the ⓘ on the Services page: every icon a row can show, drawn from the same tables.
+const LEGEND = [
+  ["Reach", [[REACH.local, ""], [REACH.tunnel, ""]]],
+  ["Authentication", [[SIGNIN.provider, ""], [SIGNIN.home, "check"], [SIGNIN.external, ""], [SIGNIN.auth, ""],
+                      [["No authentication, or bypassed on both horizons", SIGNIN.none[1]], "warn"]]],   // the legend's one entry for none + everywhere
+];
+function openLegend() {
+  const body = $("#lbody"); body.replaceChildren();
+  for (const [title, rows] of LEGEND) {
+    const list = el("div", null, { className: "list" });
+    for (const [m, cls] of rows) {
+      const r = el("div", null, { className: "trow" }), tx = el("div", null, { className: "tx" });
+      tx.append(el("div", m[0], { className: "tt" }));
+      r.append(markSlot(m, cls), tx); list.append(r);
+    }
+    const sec = el("section", null, { className: "section" }); sec.append(sectionHead(title), list); body.append(sec);
+  }
+  body.append(el("p", "A disabled service's icons are dimmed and never coloured: it is not served.", { className: "meta" }));
+  openModal($("#ldlg"));
+}
+$("#lx").onclick = $("#lclose").onclick = () => $("#ldlg").close();
+closeOnBackdrop($("#ldlg"), () => false);
 function svcRow(s, ent) {
   const gone = !!s.ghost;
   const r = el("div", null, { className: "svc" + (s.disabled && !gone ? " off" : "") + (gone ? " gone" : "") });
@@ -1244,7 +1318,8 @@ function drawGroups(box) {
 }
 const pageHead = (title, sub, ...tools) => {
   const h = el("div", null, { className: "phead" }), t = el("div", null, { className: "t" });
-  t.append(el("h1", title), el("div", sub, { className: "sub" })); h.append(t);
+  const sd = el("div", null, { className: "sub" }); sd.append(sub);   // text, or a node (the Services line carries the ⓘ)
+  t.append(el("h1", title), sd); h.append(t);
   if (tools.length) { const x = el("div", null, { className: "tools" }); x.append(...tools); h.append(x); }
   return h;
 };
@@ -1261,7 +1336,11 @@ const VIEWS = {
     search.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); search.blur(); } else if (e.key === "Escape") { if (q) { q = ""; search.value = ""; drawGroups(groups); } else search.blur(); } };   // Enter is "done": it puts the phone's keyboard away
     const add = btn("Add service", () => openCmd("add service"), "primary");
     drawGroups(groups);
-    return [pageHead("Services", `${plural(state.services.length, "service")} on ${plural(state.hosts.length, "host")} · ${on} enabled`, search, add), groups];
+    const sub = el("span"), info = el("button", null, { type: "button", className: "info", title: "What the icons mean", onclick: openLegend });
+    info.setAttribute("aria-label", "What the icons mean");
+    info.innerHTML = ICON('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/>');   // static markup
+    sub.append(`${plural(state.services.length, "service")} on ${plural(state.hosts.length, "host")} · ${on} enabled`, info);
+    return [pageHead("Services", sub, search, add), groups];
   },
   Infrastructure() {
     const em = entMap();

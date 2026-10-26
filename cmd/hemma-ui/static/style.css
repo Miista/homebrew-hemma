@@ -199,9 +199,10 @@ button.sidetools:hover:not(:disabled) { background: var(--hover); color: var(--i
 .svc .nm { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
 .svc .fq { font-family: var(--mono); font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
 .svc .marks { flex: none; display: flex; gap: 6px; margin-left: auto; color: var(--muted); }
-.svc .mark { width: 28px; height: 28px; display: grid; place-items: center; }
-.svc .mark svg { width: 18px; height: 18px; display: block; }
-.svc .mark.warn { color: var(--p-danger-fg); } .svc .mark.check { color: var(--p-warn-fg); }
+/* a service's reach / sign-in icon: the row, the service form's card headers and the legend draw the same one */
+.mark { flex: none; width: 28px; height: 28px; display: grid; place-items: center; color: var(--muted); }
+.mark svg { width: 18px; height: 18px; display: block; }
+.mark.warn { color: var(--p-danger-fg); } .mark.check { color: var(--p-warn-fg); }
 .svc.off .mark.warn, .svc.off .mark.check { color: inherit; }   /* a disabled service is not served: nothing to warn about */
 .svc.off .marks, .svc.gone .marks { opacity: .55; }
 .svc.off .nm, .svc.gone .nm { color: var(--muted); } .svc.gone { cursor: default; } .svc.gone .nm { text-decoration: line-through; }
@@ -310,6 +311,14 @@ dialog form { margin: 0; }
 .dft .dswitch { flex: 1 1 260px; min-width: 0; }
 .card { display: flex; flex-direction: column; gap: 16px; padding: 18px; border: 1px solid color-mix(in oklch, var(--line-strong) 80%, var(--ink)); border-radius: var(--r2); background: var(--surface); }
 .sect { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
+/* a service form card's icon and its words, a line under the card title (the card's 16px gap is pulled in to keep them together) */
+.sstat { margin-top: -10px; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.sstat .mark { width: 20px; height: 20px; margin-left: -1px; }
+/* the ⓘ after the Services summary line: opens the icon legend */
+button.info { display: inline-grid; place-items: center; vertical-align: middle; width: 28px; height: 28px; margin: -6px 0 -6px 4px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); }
+button.info:hover { color: var(--ink); background: var(--hover); }
+button.info svg { width: 17px; height: 17px; }
+#lbody .trow { gap: 12px; }
 .fqdn { display: flex; gap: 6px; align-items: center; } .fqdn input { flex: 1 1 40%; } .fqdn select { flex: 1 1 55%; } .fqdn .dot { color: var(--muted); }
 #kdlg { width: min(440px, calc(100vw - 32px)); } #kdlg .dbd p { line-height: 1.5; text-wrap: pretty; }
 #kdlg .dhd { padding-bottom: 0; } #kdlg .dbd { padding-top: 10px; }

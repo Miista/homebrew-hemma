@@ -97,6 +97,7 @@ func (s *server) routes(gate *authy.Gate) (http.Handler, error) {
 	}
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(assets)))
 	mux.HandleFunc("GET /api/state", s.state)
+	mux.HandleFunc("GET /api/signin", s.signin)
 	mux.HandleFunc("GET /api/commands", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, commands) })
 	mux.HandleFunc("GET /api/browse", s.handleBrowse)
 	mux.HandleFunc("GET /api/changes", s.handleChanges)
@@ -145,6 +146,28 @@ func guard(next http.Handler) http.Handler {
 	})
 }
 
+// authBypass is where the effective policy skips sign-in (the sign-in icon): "local", or "everywhere" — no sign-in at all, like
+// mode none. Resolved by config's own rule (an unset public follows local without the tunnel), so the page never re-derives it.
+func authBypass(a config.Auth, tunnel bool) string {
+	eff := a.Policy.ForService(tunnel)
+	switch {
+	case !a.Mode.UsesProvider() || eff.Local != config.PolicyBypass:
+		return ""
+	case eff.Public == config.PolicyBypass:
+		return "everywhere"
+	}
+	return "local"
+}
+
+// signin answers authBypass for the values a service form holds right now, so its sign-in icon follows the form before a save.
+// Read-only: nothing is loaded or written. A value hemma would refuse simply is not bypass; the save itself validates.
+func (s *server) signin(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	a := config.Auth{Mode: config.AuthMode(q.Get("mode")),
+		Policy: config.AuthPolicy{Local: config.PolicyLevel(q.Get("local")), Public: config.PolicyLevel(q.Get("public"))}}
+	writeJSON(w, 200, map[string]string{"auth-bypass": authBypass(a, q.Get("tunnel") == "true")})
+}
+
 func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	cfg, err := config.Load(filepath.Join(s.repo, "services.yaml"))
 	if err != nil {
@@ -160,18 +183,9 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	svcs := []map[string]any{}
 	for _, n := range names {
 		v := cfg.Services[n]
-		// Where the effective policy skips sign-in (the list's sign-in icon): "everywhere" is no sign-in at all, like mode none.
-		// Resolved by config's own rule (an unset public follows local without the tunnel), so the page never re-derives it.
-		bypass, eff := "", v.Auth.Policy.ForService(v.Tunnel)
-		if v.Auth.Mode.UsesProvider() && eff.Local == config.PolicyBypass {
-			bypass = "local"
-			if eff.Public == config.PolicyBypass {
-				bypass = "everywhere"
-			}
-		}
 		svcs = append(svcs, map[string]any{
 			"name": n, "fqdn": v.FQDN, "host": v.Host, "backend": v.Backend, "disabled": v.Disabled,
-			"auth-mode": string(v.Auth.Mode), "auth-groups": strings.Join(v.Auth.Groups, ","), "auth-bypass": bypass,
+			"auth-mode": string(v.Auth.Mode), "auth-groups": strings.Join(v.Auth.Groups, ","), "auth-bypass": authBypass(v.Auth, v.Tunnel),
 			"bypass-paths":       strings.Join(v.Auth.BypassPaths, ","),
 			"auth-policy-local":  string(v.Auth.Policy.Local),
 			"auth-policy-public": string(v.Auth.Policy.Public), "tunnel": v.Tunnel,

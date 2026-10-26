@@ -45,3 +45,28 @@ services:
 		}
 	}
 }
+
+// /api/signin gives a service form's current values the same answer /api/state gives a saved service, so the form's sign-in
+// icon never disagrees with the row it will become.
+func TestSignin_SameAnswerAsState(t *testing.T) {
+	s := repoWithConfig(t)
+	for query, want := range map[string]string{
+		"mode=forward": "",
+		"mode=forward&tunnel=true&local=bypass&public=one_factor": "local",
+		"mode=forward&local=bypass":                               "everywhere",
+		"mode=forward&tunnel=true&local=bypass":                   "local",
+		"mode=oidc&tunnel=true&local=bypass&public=bypass":        "everywhere",
+		"mode=none&local=bypass&public=bypass":                    "",
+		"mode=external&local=bypass":                              "",
+	} {
+		rec := httptest.NewRecorder()
+		s.signin(rec, httptest.NewRequest("GET", "/api/signin?"+query, nil))
+		var out map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 {
+			t.Fatalf("%s: %d %s", query, rec.Code, rec.Body.String())
+		}
+		if out["auth-bypass"] != want {
+			t.Errorf("%s: auth-bypass = %q, want %q", query, out["auth-bypass"], want)
+		}
+	}
+}

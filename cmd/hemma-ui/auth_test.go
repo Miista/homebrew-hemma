@@ -36,6 +36,7 @@ func TestGate_EveryRouteRefusedWithoutASession(t *testing.T) {
 		{"GET", "/static/icons/favicon.ico", ""},
 		{"GET", "/static/fonts/instrument-sans-latin-400-normal.woff2", ""},
 		{"GET", "/api/state", ""},
+		{"GET", "/api/signin?mode=forward&local=bypass", ""},
 		{"GET", "/api/commands", ""},
 		{"GET", "/api/browse?path=.", ""},
 		{"GET", "/api/changes", ""},
