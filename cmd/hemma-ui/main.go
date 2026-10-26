@@ -54,7 +54,9 @@ type server struct {
 // ungated: FromEnv returns a nil gate only when HEMMA_UI_AUTH_DISABLED is set,
 // and that is refused.
 func newGate(ctx context.Context, opts ...authy.Option) (*authy.Gate, error) {
-	opts = append([]authy.Option{authy.WithDataDir(env("HEMMA_UI_DATA", "/data/auth"))}, opts...)
+	// The brand mark is the one thing served without a session: the signed-out lock screen shows it, and it is no secret.
+	// An exact path (authy matches a prefix only for entries ending in "/", and never passes a path with dot segments).
+	opts = append([]authy.Option{authy.WithDataDir(env("HEMMA_UI_DATA", "/data/auth")), authy.WithPublicPaths("/static/icons/icon.svg")}, opts...)
 	gate, err := authy.FromEnv(ctx, "hemma-ui", opts...)
 	if err != nil {
 		return nil, err

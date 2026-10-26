@@ -26,13 +26,14 @@ func gatedServer(t *testing.T) (http.Handler, *server) {
 }
 
 // Without a session, NOTHING is reachable: not the page, not the static files,
-// not a single API route — reads or writes.
+// not a single API route — reads or writes. The one exception is the brand
+// mark (/static/icons/icon.svg), which the signed-out lock screen shows; see
+// TestGate_OnlyTheBrandMarkIsPublic.
 func TestGate_EveryRouteRefusedWithoutASession(t *testing.T) {
 	h, _ := gatedServer(t)
 	routes := []struct{ method, path, body string }{
 		{"GET", "/", ""},
 		{"GET", "/static/style.css", ""},
-		{"GET", "/static/icons/icon.svg", ""},
 		{"GET", "/static/icons/favicon.ico", ""},
 		{"GET", "/static/fonts/instrument-sans-latin-400-normal.woff2", ""},
 		{"GET", "/api/state", ""},
@@ -65,6 +66,25 @@ func TestGate_EveryRouteRefusedWithoutASession(t *testing.T) {
 			if strings.Contains(body, leak) && !strings.Contains(strings.ToLower(body), "sign") {
 				t.Errorf("%s %s leaked app content (%q): %s", r.method, r.path, leak, body)
 			}
+		}
+	}
+}
+
+// The brand mark is served without a session (the signed-out lock screen shows it) — exactly that path, nothing next to
+// it: not the favicon, not the folder, not a dot-segment or look-alike path that a file server might clean into it.
+func TestGate_OnlyTheBrandMarkIsPublic(t *testing.T) {
+	h, _ := gatedServer(t)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/static/icons/icon.svg", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<svg") {
+		t.Errorf("icon.svg without a session: want 200 with the svg, got %d", rec.Code)
+	}
+	for _, p := range []string{"/static/icons/", "/static/icons/favicon.ico", "/static/icons/icon.svg/../../style.css",
+		"/static/icons/../style.css", "/static/icons/icon.svgx", "/static/style.css"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", p, nil))
+		if rec.Code == http.StatusOK {
+			t.Errorf("%s must not be served without a session (got 200)", p)
 		}
 	}
 }

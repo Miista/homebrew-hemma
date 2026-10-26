@@ -115,8 +115,6 @@
 </dialog>
 
 <script>
-// A session that has ended answers API calls with 401: go back through sign-in instead of showing a broken page.
-{ const f = window.fetch; window.fetch = async (...a) => { const r = await f(...a); if (r.status === 401) location.reload(); return r; }; }
 const $ = s => document.querySelector(s);
 let changes = { git: false, files: [] };
 let state = { services: [], hosts: [], domains: [], settings: [] };
@@ -156,6 +154,41 @@ function tabBadge(t) {
   if (t === "Infrastructure") return es.filter(e => e.kind === "Host" || e.kind === "Domain" || e.kind === "Setting").length;
   if (t === "Issues") return issues.count;
   return 0;
+}
+
+/* ---------- signed out ----------
+   A session can end while the page is open: hemma's own (its sign-in answers the API with 401) or, from outside, the
+   auth provider's behind the forward gate — which answers every request with a redirect to its sign-in (302, 303 for a
+   POST). A fetch cannot follow that to another site, so it would just fail and the page would sit there showing what it
+   had. So every /api/ request refuses redirects (hemma's API never redirects), and a redirect or a 401 locks the page:
+   dialogs closed, everything that was on screen and in memory dropped, one screen left whose button reloads the page.
+   That page load goes through the sign-in(s) as usual and lands back here — no sign-in URL is built in the page. The page
+   does not poll to find out sooner: a check in the background would count as activity and keep the session alive. */
+let signedOut = false;
+const pageFetch = window.fetch.bind(window);
+window.fetch = async (input, init = {}) => {
+  const url = typeof input === "string" ? input : input.url;
+  if (!/^(\/|https?:\/\/[^/]+\/)api\//.test(url) || (/^https?:/.test(url) && !url.startsWith(location.origin))) return pageFetch(input, init);
+  if (signedOut) throw new Error("signed out");
+  const r = await pageFetch(input, { ...init, redirect: "manual" });
+  if (r.type === "opaqueredirect" || r.status === 401) { lockSignedOut(); throw new Error("signed out"); }
+  return r;
+};
+// Once locked, whatever was already running (a Save that re-enables its button, a render) finds the page gone and
+// throws; that is expected, so it stays quiet.
+addEventListener("error", e => { if (signedOut) e.preventDefault(); });
+addEventListener("unhandledrejection", e => { if (signedOut) e.preventDefault(); });
+function lockSignedOut() {
+  if (signedOut) return;
+  signedOut = true;
+  document.querySelectorAll("dialog[open]").forEach(d => d.close());
+  state = null; changes = null; pending = null;   // what the page knew, gone with what it showed
+  const box = el("div", null, { className: "lock" }), card = el("div", null, { className: "lockcard" });
+  card.append(el("div", null, { className: "brand-tile" }), el("h1", "Signed out"),   // the brand mark is served without a session (main.go)
+    el("p", "Your session has ended. Sign in again to continue.", { className: "meta" }),
+    btn("Sign in again", () => location.reload(), "primary"));
+  box.append(card);
+  document.body.replaceChildren(box);
 }
 
 async function post(url, body) {

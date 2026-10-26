@@ -326,7 +326,14 @@ authy). It is NOT a second implementation of hemma:
   Cache-Control, so a changed icon only shows up under a new URL) is the tab icon AND the
   page's brand tile (`.brand-tile` is just the SVG as a background): an angular lowercase `h` leaning forward, cut from straight lines (a chamfered
   arch, a notch in the stem at the x-height, a sliced right foot), fading from white at the top to the accent blue at the feet. It is a fixed dark tile because an icon cannot follow the
-  system theme, so it is the same in both. Being under `/static/` it is behind the login too (`auth_test.go` pins that).
+  system theme, so it is the same in both. Everything under `/static/` is behind the login **except `icon.svg`**
+  (`authy.WithPublicPaths`, exact path): the signed-out lock screen shows it. `auth_test.go` pins both — that one file is
+  public, and the favicon, the folder and dot-segment/look-alike paths are not. From outside, the forward gate still asks
+  for a session first unless the hemma service lists `/static/icons/icon.svg` in its `bypass_paths`.
+- **Signed out mid-session** (`lockSignedOut`): every `/api/` fetch refuses redirects (hemma's API never redirects); a
+  redirect (the forward gate's answer to a lapsed provider session — 302, 303 for a POST) or a 401 (hemma's own session)
+  closes dialogs, drops the page's data and shows only "Signed out" with a "Sign in again" button that just reloads (the
+  sign-ins send the page load back here). No polling: a background check would keep the provider's session alive.
 
 ## Scope boundary (do not cross)
 
