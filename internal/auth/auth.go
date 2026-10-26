@@ -28,7 +28,7 @@ type Service struct {
 	FQDN        string
 	Mode        string   // ModeForward or ModeOIDC (external/none never reach the provider)
 	Groups      []string // provider group names allowed access; empty = any authenticated user
-	BypassPaths []string // paths exempt from the auth gate (forward mode only)
+	BypassPaths []string // paths exempt from the auth gate (forward, and oidc with ForwardGate)
 	// LocalNetworks are the CIDRs that count as the local horizon for this
 	// service, and LocalPolicy is what those requests must satisfy; both are
 	// set only when the service's local policy DIFFERS from its public one, so
@@ -41,6 +41,12 @@ type Service struct {
 	// PublicPolicy is the catch-all requirement (every request not matched by
 	// the local rule). Empty falls back to the provider's default gate.
 	PublicPolicy string
+	// ForwardGate marks an oidc service that also sits behind the forward-auth gate for requests from outside the local
+	// networks (design §4.9). It then gets forward-style access-control rules too — bypass paths, the local horizon
+	// (GateNetworks) fixed at bypass, the catch-all with PublicPolicy and Groups — next to its OIDC authorization policy,
+	// which still governs the app's own login.
+	ForwardGate  bool
+	GateNetworks []string
 }
 
 // Advisory is one instructive advisory (design §6.4): a finding about a file

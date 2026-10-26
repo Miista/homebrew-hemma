@@ -7,11 +7,16 @@ Synced 16/17 services.
 ⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
 
 ⚠ could not verify OIDC client for wikijs: open core/authelia/data/config/configuration.yml: no such file or directory
+  • wiki
 1 disabled:
   • shelf
+
+To make changes live, run 'hemma apply' on each host:
+  on edge:  hemma apply
 --- stderr ---
 --- files ---
 ~ core/authelia/data/config/hemma.access_control.generated.yml 5b4dcb79e07a
+~ edge/caddy/data/sites/wiki.caddy a342b687a3b4
 ~ services.yaml 39822241ccf9
 --- services.yaml ---
 hosts:

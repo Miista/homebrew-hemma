@@ -308,6 +308,8 @@ func ProviderService(c *config.Config, name string, svc config.Service) (s auth.
 		LocalNetworks: localNets,
 		LocalPolicy:   localPolicy,
 		PublicPolicy:  string(pol.ResolvePublic()),
+		ForwardGate:   svc.Auth.Mode == config.AuthOIDC && svc.Auth.ForwardGate,
+		GateNetworks:  c.Defaults.LocalNetworks,
 	}, unresolved
 }
 
@@ -470,13 +472,20 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 	if svc.Auth.Mode == config.AuthOIDC && (svc.Auth.Policy.Local == config.PolicyBypass || svc.Auth.Policy.Public == config.PolicyBypass) {
 		return nil, "auth policy bypass is not valid with mode oidc — an OIDC login is always authenticated; use one_factor, two_factor or deny"
 	}
+	// The forward gate (§4.9) closes one gap: an oidc app on the tunnel whose own session outlives the provider's. forward is
+	// already asked on every request, external apps need their own clients to reach them, and off the tunnel nothing from
+	// the internet arrives — so anywhere else it is a half-formed intent.
+	if svc.Auth.ForwardGate && (svc.Auth.Mode != config.AuthOIDC || !svc.Tunnel) {
+		return nil, "auth forward_gate set but the service is not oidc on the tunnel — the gate is for an oidc app reachable from the internet; set mode oidc and tunnel, or clear it"
+	}
 
 	dnsPath := filepath.Join(dnsM.ResolvedDir(dnsHostName), config.DefaultDnsmasqDir, name+".generated.conf")
 	caddyPath := filepath.Join(hostM.ResolvedDir(svc.Host), config.DefaultCaddySitesDir, name+".caddy")
 
 	return []File{
 		{Path: dnsPath, Content: render.DNSRecord(svc.FQDN, hostM.IP)},
-		{Path: caddyPath, Content: render.CaddySite(svc.FQDN, tlsImport, svc.Backend, svc.Auth.Mode, name == c.Defaults.AuthService)},
+		{Path: caddyPath, Content: render.CaddySite(svc.FQDN, tlsImport, svc.Backend,
+			svc.GateScope(len(c.Defaults.LocalNetworks) > 0), c.Defaults.LocalNetworks, name == c.Defaults.AuthService)},
 	}, ""
 }
 

@@ -9,7 +9,7 @@ _hemma() {
     verbs=(add update remove create enable disable defaults list verify apply deploy preflight doctor measure version help completion)
     nouns=(service host domain)
     set_keys=(dns-host deploy-host auth-snippet auth-service tunnel-dir local-networks)
-    flags=(--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --auth-policy-local --auth-policy-public --tunnel --public --ip --ssh --trusted-proxies --all -a --policy --fix --chdir -C --help -h)
+    flags=(--fqdn -f --host -H --backend -b --auth --auth-mode --auth-groups --auth-policy-local --auth-policy-public --tunnel --forward-gate --public --ip --ssh --trusted-proxies --all -a --policy --fix --chdir -C --help -h)
 
     if (( CURRENT == 2 )); then
         _describe 'command' verbs

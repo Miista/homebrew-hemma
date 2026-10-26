@@ -64,6 +64,7 @@ func cmdUpdateInteractive(env *Env, repoRoot, cfgPath, name string) int {
 	selGroups := append([]string(nil), svc.Auth.Groups...)
 	newGroup := ""
 	tunnel := svc.Tunnel
+	forwardGate := svc.Auth.ForwardGate
 	disabled := svc.Disabled
 	bypass := strings.Join(svc.Auth.BypassPaths, "\n")
 	policyLocal := policyChoice(svc.Auth.Policy.Local)
@@ -149,6 +150,7 @@ func cmdUpdateInteractive(env *Env, repoRoot, cfgPath, name string) int {
 			).WithHideFunc(func() bool {
 				return mode == "none" || !slices.Contains(selGroups, newGroupSentinel)
 			}),
+			forwardGatePage(&forwardGate).WithHideFunc(func() bool { return mode != "oidc" || !tunnel }),
 		)
 	}
 
@@ -197,6 +199,8 @@ func cmdUpdateInteractive(env *Env, repoRoot, cfgPath, name string) int {
 				Public: policyLevelFromChoice(policyPublic),
 			}
 		}
+		// The gate goes with the combination it is for (§4.9): leaving oidc or the tunnel clears it.
+		updated.Auth.ForwardGate = forwardGate && updated.Auth.Mode == config.AuthOIDC && tunnel
 	}
 
 	lines := summarizeServiceChanges(svc, updated)
@@ -352,6 +356,7 @@ func summarizeServiceChanges(oldSvc, newSvc config.Service) []string {
 	add("auth mode", displayMode(oldSvc.Auth.Mode), displayMode(newSvc.Auth.Mode))
 	add("auth groups", displayGroups(oldSvc.Auth.Groups), displayGroups(newSvc.Auth.Groups))
 	add("auth bypass paths", displayGroups(oldSvc.Auth.BypassPaths), displayGroups(newSvc.Auth.BypassPaths))
+	add("forward gate", displayBool(oldSvc.Auth.ForwardGate), displayBool(newSvc.Auth.ForwardGate))
 	return lines
 }
 

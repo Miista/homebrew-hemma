@@ -24,6 +24,8 @@ Usage of add:
     	comma-separated request paths exempted from the auth gate (forward mode only)
   -f string
     	alias for --fqdn
+  -forward-gate
+    	forward auth on requests from outside local_networks (oidc + --tunnel only)
   -fqdn string
     	service fqdn
   -host string

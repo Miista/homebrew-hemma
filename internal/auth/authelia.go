@@ -58,8 +58,18 @@ func (authelia) AccessControl(services []Service) (path, content string, ok bool
 		switch {
 		case s.Mode == ModeForward:
 			forward = append(forward, s)
-		case s.Mode == ModeOIDC && oidcHasPolicy(s):
-			oidcWithGroups = append(oidcWithGroups, s)
+		case s.Mode == ModeOIDC:
+			if oidcHasPolicy(s) {
+				oidcWithGroups = append(oidcWithGroups, s)
+			}
+			// The forward gate (§4.9) asks the provider for requests from outside the local networks only (Caddy sends no
+			// local request), so its rules are forward's with the local horizon fixed at bypass. The OIDC policy above is
+			// built from the service as declared: it still governs the app's own login.
+			if s.ForwardGate {
+				g := s
+				g.LocalNetworks, g.LocalPolicy = s.GateNetworks, "bypass"
+				forward = append(forward, g)
+			}
 		}
 	}
 	if len(forward) == 0 && len(oidcWithGroups) == 0 {

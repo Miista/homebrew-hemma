@@ -24,6 +24,8 @@ Usage of update:
     	comma-separated request paths exempted from the auth gate ('' clears; forward mode only)
   -f string
     	alias for --fqdn
+  -forward-gate
+    	forward auth on requests from outside local_networks (oidc + tunnel only; '--forward-gate=false' removes it)
   -fqdn string
     	service fqdn
   -host string

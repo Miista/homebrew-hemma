@@ -209,7 +209,7 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 			"auth-mode": string(v.Auth.Mode), "auth-groups": strings.Join(v.Auth.Groups, ","), "auth-bypass": authBypass(v.Auth, v.Tunnel),
 			"bypass-paths":       strings.Join(v.Auth.BypassPaths, ","),
 			"auth-policy-local":  string(v.Auth.Policy.Local),
-			"auth-policy-public": string(v.Auth.Policy.Public), "tunnel": v.Tunnel,
+			"auth-policy-public": string(v.Auth.Policy.Public), "tunnel": v.Tunnel, "forward-gate": v.Auth.ForwardGate,
 		})
 	}
 	hosts := []map[string]any{}

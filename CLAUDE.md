@@ -154,6 +154,15 @@ default, resolved against `defaults.local_networks`; unset = `one_factor` on bot
 additive; a `bypass` rule carries no `subject` because Authelia forbids that combination). If a new field needs a
 name, name the mechanism; if new prose needs to talk about reach, say local/public.
 
+`auth.forward_gate` (§4.9) follows the rule: it names the mechanism (a forward-auth gate) and no horizon, since it is
+only valid with `mode: oidc` + `tunnel: true` (plan refuses anything else). **Caddy asks the auth provider only on a
+horizon where it has something to check** — `config.Service.GateScope` decides it, `render.CaddySite` renders it:
+`GateAll` (`import auth`), `GateOutside` (`@hemma_outside not client_ip <local_networks>` + `route @hemma_outside {
+import auth }` — the user's snippet is scoped, never rewritten) for an oidc service with the gate and for `forward` with a
+local `bypass`, `GateNone` (plain proxy). Without `local_networks` a would-be `GateOutside` asks everyone. A gated oidc
+service also gets forward-style `access_control` rules (local fixed at `bypass`, catch-all `policy.public` + groups,
+bypass paths) next to its OIDC `authorization_policy`.
+
 ## Host-split commands (`apply`, `verify`)
 
 `apply` and `verify` are **host-split** (the CLI; `hemma-ui` supplies its host from `deploy_host` instead, see below): they identify which host they run on via a local-IP match and

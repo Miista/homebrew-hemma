@@ -143,12 +143,13 @@ func (a authelia) ValidateWiring(hostDir, container string, services []Service) 
 }
 
 // gatedBypassPaths lists, as sorted <fqdn><path> strings, every public_paths
-// entry of the forward services — the paths that stay auth-gated while the
-// access-control artifact is unwired.
+// entry of the services behind a forward gate (forward, or oidc with the
+// forward gate) — the paths that stay auth-gated while the access-control
+// artifact is unwired.
 func gatedBypassPaths(services []Service) []string {
 	var gated []string
 	for _, s := range services {
-		if s.Mode != ModeForward {
+		if s.Mode != ModeForward && !s.ForwardGate {
 			continue
 		}
 		for _, p := range s.BypassPaths {

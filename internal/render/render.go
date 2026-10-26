@@ -140,10 +140,18 @@ func DNSRecord(fqdn, hostIP string) string {
 //     match. (config.AuthMode.UsesProvider draws the other line — which modes
 //     Authelia validates — and puts oidc with forward, not with external.)
 //
+// The gate is decided by config.Service.GateScope (§4.9), not by the mode alone:
+// Caddy asks the provider only on a horizon where it has something to check.
+// GateAll is the forward shape above; GateOutside scopes the same (auth) import
+// to requests from outside localNetworks with a named matcher and a route — the
+// user-supplied snippet is scoped, never rewritten — so a local request never
+// reaches the provider (an oidc service with forward_gate, or forward with a
+// local bypass); GateNone is the plain proxy.
+//
 // authBackend is orthogonal to the mode: when true (this service is the
 // forward-auth portal) the reverse_proxy preserves the inbound X-Forwarded-Host
 // so post-login redirects target the original service, not the portal.
-func CaddySite(fqdn, tlsImport, backend string, mode config.AuthMode, authBackend bool) string {
+func CaddySite(fqdn, tlsImport, backend string, gate config.GateScope, localNetworks []string, authBackend bool) string {
 	// The forward-auth backend (e.g. an Authelia portal) must preserve the inbound
 	// X-Forwarded-Host through the reverse_proxy. When a protected service's
 	// auth check hits this backend, Caddy's outer hop already set
@@ -160,12 +168,23 @@ func CaddySite(fqdn, tlsImport, backend string, mode config.AuthMode, authBacken
 	// AuthForward: one uniform shape — import auth, then proxy. No handle
 	// wrappers: with a single branch they add nothing, and per-path public
 	// branches are the auth provider's job now.
-	if mode == config.AuthForward {
+	switch {
+	case gate == config.GateAll:
+		return fmt.Sprintf("%s\n%s {\n\timport %s\n\timport %s\n\t%s\n}\n",
+			Header, fqdn, tlsImport, AuthSnippetName, proxyLine)
+	case gate == config.GateOutside && len(localNetworks) > 0:
+		return fmt.Sprintf("%s\n%s {\n\timport %s\n\t@%s not client_ip %s\n\troute @%s {\n\t\timport %s\n\t}\n\t%s\n}\n",
+			Header, fqdn, tlsImport, OutsideMatcher, strings.Join(localNetworks, " "), OutsideMatcher, AuthSnippetName, proxyLine)
+	case gate == config.GateOutside:
+		// No local networks to leave out: everyone is asked (GateScope already says GateAll then; this is the backstop).
 		return fmt.Sprintf("%s\n%s {\n\timport %s\n\timport %s\n\t%s\n}\n",
 			Header, fqdn, tlsImport, AuthSnippetName, proxyLine)
 	}
 	return fmt.Sprintf("%s\n%s {\n\timport %s\n\t%s\n}\n", Header, fqdn, tlsImport, proxyLine)
 }
+
+// OutsideMatcher names the matcher for requests from outside defaults.local_networks in a GateOutside site.
+const OutsideMatcher = "hemma_outside"
 
 // TrustedProxiesFilename is the generated file holding the trusted_proxies
 // and client_ip_headers directives for one host's Caddy. It sits directly in

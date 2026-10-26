@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -146,6 +147,9 @@ func printServiceTable(env *Env, cfg *config.Config, svcNames []string, policy b
 		auth := "-"
 		if svc.Auth.Mode != config.AuthNone {
 			auth = string(svc.Auth.Mode)
+			if svc.Auth.ForwardGate {
+				auth += "+gate" // §4.9: forward auth on requests from outside local_networks too
+			}
 			anyAuth = true
 		}
 		// The auth_service is the one row where "-" actively misinforms: it is
@@ -213,6 +217,9 @@ func printServiceTable(env *Env, cfg *config.Config, svcNames []string, policy b
 	if anyAuth {
 		fmt.Fprintln(env.Out, "  (AUTH: forward = imports the (auth) snippet; oidc = Authelia, app does OIDC itself; external = authenticated outside Authelia (app login / token / edge); (portal) = this service IS the auth provider; change with 'hemma update service <name> --auth-mode <mode>')")
 	}
+	if slices.ContainsFunc(rows, func(r row) bool { return strings.Contains(r.auth, "+gate") }) {
+		fmt.Fprintln(env.Out, "  (+gate: forward auth on requests from outside local_networks too — the app's own session cannot keep someone logged in from the internet; 'hemma update service <name> --forward-gate=false' removes it)")
+	}
 	if policy {
 		fmt.Fprintln(env.Out, "  (LOCAL/PUBLIC: the auth.policy each horizon requires — bypass, one_factor, two_factor or deny; unset = one_factor; - = no policy, since only 'forward' and 'oidc' carry one (oidc has no bypass). PUBLIC is shown even when TUNNEL is no: the policy is declared, it just never fires from the internet)")
 	}
@@ -249,6 +256,7 @@ type jsonService struct {
 	PolicyLocal  string `json:"policy_local,omitempty"`
 	PolicyPublic string `json:"policy_public,omitempty"`
 	Tunnel       bool   `json:"tunnel"`
+	ForwardGate  bool   `json:"forward_gate,omitempty"` // §4.9; only ever true for an oidc service on the tunnel
 }
 
 // cmdListJSON prints every service as a JSON array, one object per service,
@@ -259,12 +267,13 @@ func cmdListJSON(env *Env, cfg *config.Config) int {
 	for _, name := range names {
 		svc := cfg.Services[name]
 		js := jsonService{
-			Name:     name,
-			FQDN:     svc.FQDN,
-			Host:     svc.Host,
-			Backend:  svc.Backend,
-			AuthMode: string(svc.Auth.Mode),
-			Tunnel:   svc.Tunnel,
+			Name:        name,
+			FQDN:        svc.FQDN,
+			Host:        svc.Host,
+			Backend:     svc.Backend,
+			AuthMode:    string(svc.Auth.Mode),
+			Tunnel:      svc.Tunnel,
+			ForwardGate: svc.Auth.ForwardGate,
 		}
 		if svc.Auth.Mode == config.AuthNone {
 			js.AuthMode = "none" // AuthNone is "" internally; scripts get the documented word

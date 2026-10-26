@@ -37,6 +37,10 @@ func TestBuild(t *testing.T) {
 		{"verify", map[string]any{"all": true, "fqdn": "a.example.com"}, []string{"verify", "--all=true", "a.example.com"}, ""},
 		{"defaults set", map[string]any{"key": "tunnel-dir", "value": "-"}, []string{"defaults", "set", "tunnel-dir", "-"}, ""},
 		{"measure", map[string]any{"target": "web", "runs": float64(3)}, []string{"measure", "--runs=3", "web"}, ""},
+		// the forward gate (§4.9): a hidden yes/no field is sent as false on update (the page's rule), which clears it
+		{"update service", map[string]any{"name": "docs", "forward-gate": false}, []string{"update", "service", "docs", "--forward-gate=false"}, ""},
+		{"update service", map[string]any{"name": "docs", "forward-gate": true}, []string{"update", "service", "docs", "--forward-gate=true"}, ""},
+		{"update service", map[string]any{"name": "docs", "forward-gate": ""}, nil, "expected true/false"},
 		// rejections
 		{"add host", map[string]any{"name": "--evil", "ip": "1.2.3.4"}, nil, "not a valid name"},
 		{"add host", map[string]any{"name": "a b", "ip": "1.2.3.4"}, nil, "not a valid name"},

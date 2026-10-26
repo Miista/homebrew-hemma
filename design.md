@@ -783,8 +783,8 @@ too, so the same two horizons apply. Authelia's OIDC policies only know `one_fac
 and `deny`: `bypass` with `oidc` is a validation error. `external`/`none` have no gate here at
 all, so a policy on those is a per-entry validation error (§7), like `groups` with mode `none`.
 Caveat from Authelia: an OIDC rule is evaluated when consent is given, so a client whose address
-changes afterwards is not re-checked until its tokens expire. (§4.9 proposes the fix for tunnelled
-OIDC services, `forward_gate`, and rendering a local `bypass` in Caddy so the provider is not asked.)
+changes afterwards is not re-checked until its tokens expire. (§4.9 closes this for tunnelled OIDC
+services with `forward_gate`, and renders a local `bypass` in Caddy so the provider is not asked.)
 
 *Considered and rejected (for now)*: per-horizon **groups** (`public: {policy: one_factor, groups:
 [remote-media]}`) — a different audience per horizon, not just a different strictness. Rejected as
@@ -794,7 +794,7 @@ hardened remotely) all want the *same* audience at *different* strictness. Group
 horizons answer "how hard". It stays addable without a break, since a string level can grow into a
 mapping via the same accept-both-then-re-emit approach used elsewhere.
 
-### 4.9 The forward gate, and `bypass` rendered in Caddy — PROPOSED (2026-10-26, not implemented)
+### 4.9 The forward gate, and `bypass` rendered in Caddy
 
 **The gap.** An `oidc` service renders a plain `reverse_proxy` (§4.5): the auth provider is asked
 once, when the app signs the user in, and its `authorization_policy` is evaluated only then (the
@@ -846,8 +846,10 @@ docs.example.com {
 ```
 
 `route` keeps the user-supplied `(auth)` snippet (§4.5) untouched — hemma does not rewrite its
-content, it scopes it. (The form passes `caddy validate` on Caddy 2.11, the version the hosts run;
-the behaviour per horizon is to verify end to end when implemented.)
+content, it scopes it. Verified on Caddy 2.11 (the hosts' version): the form passes `caddy validate`,
+and with a provider stub that always answers 401, a request from inside `local_networks` reaches the
+app (200) while one from outside gets the provider's 401. The decision is `config.Service.GateScope`;
+`render.CaddySite` takes its result.
 
 | Service | Caddy site | Local request | Internet request |
 |---|---|---|---|

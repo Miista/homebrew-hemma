@@ -17,7 +17,7 @@ type HelpTopic struct {
 var HelpTopics = []HelpTopic{
 	{"add service", `hemma add service — declare a service and generate its DNS/Caddy config
 
-Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel]
+Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel] [--forward-gate]
 
 With no flags (and stdin a terminal) an interactive editor opens instead: the
 fqdn is pre-filled with <name>.<domain> when exactly one domain is defined and
@@ -25,7 +25,8 @@ validated live (must match a domain, must not collide with another service),
 the host and auth mode are pickers, tunnel is a confirm, auth groups are a
 multi-select built from the groups that actually exist — on users in the auth
 provider's users database (members shown per group) and on other services —
-plus a 'new group…' escape hatch, and auth bypass paths are one per line. On
+plus a 'new group…' escape hatch, and auth bypass paths are one per line. For
+an oidc service on the tunnel a follow-up page asks about the forward gate. On
 submit it prints the collected fields and runs the exact same validation and
 sync path as the flags form; Ctrl-C touches nothing. Non-interactive callers
 must pass flags. ('disabled' is not offered when adding — a service is added to
@@ -72,12 +73,19 @@ Flags:
                           Writes the entry into this host's cloudflared
                           config.yml (needs defaults.tunnel-dir set — otherwise the
                           entry is skipped and 'hemma doctor' flags the drift).
+      --forward-gate      Forward auth on requests from outside defaults.local_networks,
+                          for an oidc service on the tunnel only: every such request then
+                          needs a live session with the auth provider, so the app's own
+                          (often long) session cannot keep someone logged in from the
+                          internet. Local requests go straight to the app. The public
+                          policy and the groups apply; --bypass-paths exempt API paths
+                          for clients that cannot follow a login.
 
 Regenerates files immediately, then prints which hosts need 'hemma apply'.`},
 
 	{"update service", `hemma update service — change a service's fqdn, host, backend, or auth
 
-Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel]
+Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel] [--forward-gate[=false]]
 
 With no flags (and stdin a terminal) an interactive editor opens instead:
 EVERY field is pre-filled with the service's current values and editable
@@ -86,7 +94,8 @@ groups, and auth bypass paths. The host and auth mode are pickers, tunnel and
 disabled are confirms, auth groups are a multi-select built from the groups
 that actually exist — on users in the auth provider's users database (members
 shown per group) and on other services — plus a 'new group…' escape hatch, and
-bypass paths are one per line. Turning 'disabled' on removes the service's
+bypass paths are one per line; for an oidc service on the tunnel a follow-up
+page asks about the forward gate. Turning 'disabled' on removes the service's
 generated files, exactly as 'hemma disable service' does. On submit it prints
 the changed fields (old → new) and runs the same validation and sync path as
 the flags form; 'no changes' or Ctrl-C touches nothing. Non-interactive callers
@@ -120,6 +129,11 @@ Flags:
                           as a pre-rename alias. Writes into this host's cloudflared config.yml
                           (needs defaults.tunnel-dir set — otherwise the entry is
                           skipped and 'hemma doctor' flags the drift).
+      --forward-gate[=false]
+                          Forward auth on requests from outside defaults.local_networks
+                          (oidc on the tunnel only); =false removes it. Changing the mode
+                          away from oidc or the tunnel off clears it with a note. See
+                          'hemma help add service'.
 
 Only the given flags change; regenerated files and apply-hints follow.`},
 

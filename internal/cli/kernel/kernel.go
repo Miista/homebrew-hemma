@@ -354,6 +354,7 @@ func cmdAdd(env *Env, repoRoot, cfgPath string, args []string) int {
 	fs.BoolVar(tunnel, "public", false, "pre-rename alias for --tunnel")
 	policyLocal := fs.String("auth-policy-local", "", "auth requirement for local-horizon requests: bypass|one_factor|two_factor|deny")
 	policyPublic := fs.String("auth-policy-public", "", "auth requirement for public-horizon requests: bypass|one_factor|two_factor|deny")
+	forwardGate := fs.Bool("forward-gate", false, "forward auth on requests from outside local_networks (oidc + --tunnel only)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -373,6 +374,10 @@ func cmdAdd(env *Env, repoRoot, cfgPath string, args []string) int {
 	// Groups only make sense with an auth gate — refuse before persisting.
 	if len(groups) > 0 && !mode.UsesProvider() {
 		errf(env, "--auth-groups requires a provider-backed auth mode — pass --auth-mode forward or --auth-mode oidc (external is authenticated outside hemma, so groups have nothing to apply to).")
+		return 2
+	}
+	if *forwardGate && (mode != config.AuthOIDC || !*tunnel) {
+		errf(env, "--forward-gate is for an oidc app on the tunnel — pass --auth-mode oidc and --tunnel (forward is already asked on every request).")
 		return 2
 	}
 	// Validate required flags BEFORE touching the YAML, so a mistyped command
@@ -410,7 +415,7 @@ func cmdAdd(env *Env, repoRoot, cfgPath string, args []string) int {
 	return persistNewService(env, repoRoot, cfg, name,
 		config.Service{FQDN: *fqdn, Host: *host, Backend: *backend,
 			Auth: config.Auth{Mode: mode, Groups: groups, BypassPaths: paths,
-				Policy: config.AuthPolicy{Local: addLocal, Public: addPublic}},
+				Policy: config.AuthPolicy{Local: addLocal, Public: addPublic}, ForwardGate: *forwardGate},
 			Tunnel: *tunnel})
 }
 
@@ -715,6 +720,7 @@ func cmdUpdate(env *Env, repoRoot, cfgPath string, args []string) int {
 	fs.BoolVar(tunnel, "public", false, "pre-rename alias for --tunnel")
 	policyLocal := fs.String("auth-policy-local", "", "auth requirement for local-horizon requests ('' clears): bypass|one_factor|two_factor|deny")
 	policyPublic := fs.String("auth-policy-public", "", "auth requirement for public-horizon requests ('' clears): bypass|one_factor|two_factor|deny")
+	forwardGate := fs.Bool("forward-gate", false, "forward auth on requests from outside local_networks (oidc + tunnel only; '--forward-gate=false' removes it)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -774,8 +780,22 @@ func cmdUpdate(env *Env, repoRoot, cfgPath string, args []string) int {
 			svc.Auth.Policy.Local = newLocal
 		case "auth-policy-public":
 			svc.Auth.Policy.Public = newPublic
+		case "forward-gate":
+			svc.Auth.ForwardGate = *forwardGate
 		}
 	})
+	// The forward gate is only for an oidc app on the tunnel (§4.9). Asked for anywhere else, it is refused before anything
+	// is written; left over from before a change of mode or tunnel, it goes with it — the entry must not end up skipped.
+	if svc.Auth.ForwardGate && (svc.Auth.Mode != config.AuthOIDC || !svc.Tunnel) {
+		explicit := false
+		fs.Visit(func(f *flag.Flag) { explicit = explicit || f.Name == "forward-gate" })
+		if explicit {
+			errf(env, "--forward-gate is for an oidc app on the tunnel — the service would not be oidc with tunnel: true.")
+			return 2
+		}
+		svc.Auth.ForwardGate = false
+		fmt.Fprintln(env.Out, "forward_gate cleared: it applies only to an oidc service on the tunnel.")
+	}
 	// Shared tail with the interactive editor: validate-before-persist, save,
 	// single sync path.
 	return persistUpdatedService(env, repoRoot, cfg, name, svc)

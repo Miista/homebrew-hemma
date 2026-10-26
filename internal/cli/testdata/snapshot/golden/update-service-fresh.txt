@@ -69,7 +69,7 @@ To make changes live, run 'hemma apply' on each host:
 + edge/caddy/data/sites/music.caddy 73b493e367ab
 + edge/caddy/data/sites/robot.caddy d257d01454a5
 + edge/caddy/data/sites/speed.caddy e481c91d8ab6
-+ edge/caddy/data/sites/wiki.caddy 4125521cfb05
++ edge/caddy/data/sites/wiki.caddy 0dafebbb7763
 + edge/caddy/data/sites/wikijs.caddy 10af9b812c9e
 + edge/caddy/data/tls/tls_home_example.caddy 2dbd6138e789
 + edge/cloudflared/config.yml c108894dc88b

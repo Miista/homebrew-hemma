@@ -119,6 +119,13 @@ type Auth struct {
 	// local_networks, so every request falls to the public policy — it fails
 	// toward MORE auth, never less.
 	Policy AuthPolicy
+	// ForwardGate puts a forward-auth gate in front of an oidc service for
+	// requests from outside local_networks (§4.9). An oidc app's own session
+	// outlives the provider's, so without it a tunnelled app stays logged in
+	// from the internet for as long as the app likes. Valid only with mode oidc
+	// and tunnel (plan refuses anything else); named for the mechanism, the
+	// horizon follows from the tunnel requirement.
+	ForwardGate bool
 }
 
 // AuthPolicy is the per-horizon auth requirement. An empty level means "not
@@ -169,6 +176,39 @@ func (p AuthPolicy) ForService(tunnel bool) AuthPolicy {
 		p.Public = p.Local
 	}
 	return p
+}
+
+// GateScope is where Caddy asks the auth provider for a service (§4.9). One rule covers every mode: Caddy asks only on a
+// horizon where the provider has something to check, so a horizon whose effective level is bypass is never sent to it.
+type GateScope int
+
+const (
+	GateNone    GateScope = iota // never: no provider gate in Caddy (none, external, oidc without forward_gate, bypass on both horizons)
+	GateAll                      // every request (`import auth`)
+	GateOutside                  // only requests from outside local_networks
+)
+
+// GateScope returns the service's scope. Without local_networks there is no local horizon to leave out, so a gate that would
+// skip it asks everyone instead — toward more auth, never less.
+func (s Service) GateScope(hasLocalNetworks bool) GateScope {
+	outside := GateAll
+	if hasLocalNetworks {
+		outside = GateOutside
+	}
+	switch {
+	case s.Auth.Mode == AuthOIDC && s.Auth.ForwardGate:
+		return outside
+	case s.Auth.Mode != AuthForward:
+		return GateNone
+	}
+	pol := s.Auth.Policy.ForService(s.Tunnel)
+	switch {
+	case pol.ResolveLocal() != PolicyBypass:
+		return GateAll // the public level is never weaker than the local one, so both horizons are asked
+	case pol.ResolvePublic() == PolicyBypass:
+		return GateNone // bypass on both horizons: nothing to ask anyone (and doctor flags it, §6.4)
+	}
+	return outside
 }
 
 // strictness orders the levels by how much they ask of a request: bypass asks
@@ -262,6 +302,7 @@ type authWire struct {
 	Groups      []string   `yaml:"groups,omitempty"`
 	BypassPaths []string   `yaml:"bypass_paths,omitempty"`
 	Policy      AuthPolicy `yaml:"policy,omitempty"`
+	ForwardGate bool       `yaml:"forward_gate,omitempty"`
 }
 
 // authRead is the same mapping as read; Mode is a pointer so a missing key can be told from an empty one.
@@ -270,6 +311,7 @@ type authRead struct {
 	Groups      []string   `yaml:"groups,omitempty"`
 	BypassPaths []string   `yaml:"bypass_paths,omitempty"`
 	Policy      AuthPolicy `yaml:"policy,omitempty"`
+	ForwardGate bool       `yaml:"forward_gate,omitempty"`
 }
 
 // UnmarshalYAML accepts three forms, oldest first:
@@ -303,7 +345,7 @@ func (a *Auth) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("auth object form requires a mode (forward, oidc, external, or none)")
 		}
 		mode, err := parseAuthMode(*w.Mode)
-		a.Mode, a.Groups, a.BypassPaths, a.Policy = mode, w.Groups, w.BypassPaths, w.Policy
+		a.Mode, a.Groups, a.BypassPaths, a.Policy, a.ForwardGate = mode, w.Groups, w.BypassPaths, w.Policy, w.ForwardGate
 		return err
 	}
 	var s string
@@ -319,7 +361,7 @@ func (a *Auth) UnmarshalYAML(value *yaml.Node) error {
 // nor bypass paths are set, and the mapping form only when one of them carries
 // data — the YAML stays as terse as before this field grew structure.
 func (a Auth) MarshalYAML() (any, error) {
-	if len(a.Groups) == 0 && len(a.BypassPaths) == 0 && a.Policy.IsZero() {
+	if len(a.Groups) == 0 && len(a.BypassPaths) == 0 && a.Policy.IsZero() && !a.ForwardGate {
 		return string(a.Mode), nil
 	}
 	// The none mode is the empty string internally; in the mapping form it is spelled out, because the
@@ -328,13 +370,13 @@ func (a Auth) MarshalYAML() (any, error) {
 	if a.Mode == AuthNone {
 		mode = "none"
 	}
-	return authWire{Mode: mode, Groups: a.Groups, BypassPaths: a.BypassPaths, Policy: a.Policy}, nil
+	return authWire{Mode: mode, Groups: a.Groups, BypassPaths: a.BypassPaths, Policy: a.Policy, ForwardGate: a.ForwardGate}, nil
 }
 
 // IsZero lets yaml's omitempty drop `auth:` entirely for unprotected services
 // (mode none, no groups, no bypass paths), matching the pre-struct behavior.
 func (a Auth) IsZero() bool {
-	return a.Mode == AuthNone && len(a.Groups) == 0 && len(a.BypassPaths) == 0 && a.Policy.IsZero()
+	return a.Mode == AuthNone && len(a.Groups) == 0 && len(a.BypassPaths) == 0 && a.Policy.IsZero() && !a.ForwardGate
 }
 
 // Host is one host in the homelab, owning a directory in the repo. The

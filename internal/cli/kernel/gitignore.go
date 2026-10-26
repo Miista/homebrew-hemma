@@ -214,7 +214,8 @@ func authWiringWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 		if !s.Auth.Mode.UsesProvider() || s.Disabled {
 			continue
 		}
-		svcs = append(svcs, auth.Service{Name: name, FQDN: s.FQDN, Mode: string(s.Auth.Mode), Groups: s.Auth.Groups, BypassPaths: s.Auth.BypassPaths})
+		svcs = append(svcs, auth.Service{Name: name, FQDN: s.FQDN, Mode: string(s.Auth.Mode), Groups: s.Auth.Groups, BypassPaths: s.Auth.BypassPaths,
+			ForwardGate: s.Auth.Mode == config.AuthOIDC && s.Auth.ForwardGate})
 	}
 	return auth.Default().ValidateWiring(hostDir, cfg.Defaults.AuthService, svcs)
 }

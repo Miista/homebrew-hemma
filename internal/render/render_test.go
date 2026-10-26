@@ -31,7 +31,7 @@ func TestDNSRecord_SuppressesAAAAWithUnspecified(t *testing.T) {
 }
 
 func TestCaddySite(t *testing.T) {
-	got := CaddySite("docs.example.com", "tls_example_com", "docsapp:8000", config.AuthNone, false)
+	got := CaddySite("docs.example.com", "tls_example_com", "docsapp:8000", config.GateNone, nil, false)
 	want := Header + "\n" +
 		"docs.example.com {\n" +
 		"\timport tls_example_com\n" +
@@ -45,7 +45,7 @@ func TestCaddySite(t *testing.T) {
 // oidc renders a PLAIN reverse_proxy with NO `import auth` — the app does OIDC
 // itself, so hemma adds no Caddy-level auth gate.
 func TestCaddySite_OIDC(t *testing.T) {
-	got := CaddySite("app.example.com", "tls_example_com", "app:3000", config.AuthOIDC, false)
+	got := CaddySite("app.example.com", "tls_example_com", "app:3000", config.Service{Auth: config.Auth{Mode: config.AuthOIDC}}.GateScope(true), nil, false)
 	if strings.Contains(got, "import auth") {
 		t.Errorf("oidc must NOT import auth: %q", got)
 	}
@@ -55,7 +55,7 @@ func TestCaddySite_OIDC(t *testing.T) {
 }
 
 func TestCaddySite_Auth(t *testing.T) {
-	got := CaddySite("docs.example.com", "tls_example_com", "docsapp:8000", config.AuthForward, false)
+	got := CaddySite("docs.example.com", "tls_example_com", "docsapp:8000", config.GateAll, nil, false)
 	want := Header + "\n" +
 		"docs.example.com {\n" +
 		"\timport tls_example_com\n" +
@@ -75,7 +75,7 @@ func TestCaddySite_Auth(t *testing.T) {
 // via a header_up inside reverse_proxy, so post-login redirects target the
 // original service. It is never itself behind auth (auth=false here).
 func TestCaddySite_AuthBackend(t *testing.T) {
-	got := CaddySite("auth.example.com", "tls_example_com", "authelia:9091", config.AuthNone, true)
+	got := CaddySite("auth.example.com", "tls_example_com", "authelia:9091", config.GateNone, nil, true)
 	want := Header + "\n" +
 		"auth.example.com {\n" +
 		"\timport tls_example_com\n" +
@@ -93,7 +93,7 @@ func TestCaddySite_AuthBackend(t *testing.T) {
 // service renders one uniform gated shape — no handle blocks, no per-path
 // branches — regardless of its public_paths.
 func TestCaddySite_ForwardIsUniform_NoPublicPathBranches(t *testing.T) {
-	got := CaddySite("status.example.com", "tls_example_com", "gatus:8080", config.AuthForward, false)
+	got := CaddySite("status.example.com", "tls_example_com", "gatus:8080", config.GateAll, nil, false)
 	want := Header + "\n" +
 		"status.example.com {\n" +
 		"\timport tls_example_com\n" +
@@ -192,8 +192,8 @@ func TestAuthSnippet_UnresolvedTargetStubs(t *testing.T) {
 // `list`, which is the point — identical Caddy output must not collapse into an
 // identical-LOOKING service.
 func TestCaddySite_ExternalRendersPlain(t *testing.T) {
-	site := func(m config.AuthMode) string {
-		return CaddySite("app.example.com", "tls_example_com", "app:3000", m, false)
+	site := func(m config.AuthMode) string { // the scope as the plan derives it from the mode alone
+		return CaddySite("app.example.com", "tls_example_com", "app:3000", config.Service{Auth: config.Auth{Mode: m}}.GateScope(true), []string{"10.0.0.0/8"}, false)
 	}
 	none, oidc, ext := site(config.AuthNone), site(config.AuthOIDC), site(config.AuthExternal)
 	if ext != none {
@@ -240,5 +240,27 @@ func TestCloudflaredConfig_Empty(t *testing.T) {
 	want := Header + "\ningress:\n  - service: http_status:404\n"
 	if got != want {
 		t.Fatalf("CloudflaredConfig(nil) = %q, want %q", got, want)
+	}
+}
+
+// GateOutside (§4.9) scopes the user's (auth) snippet to requests from outside local_networks with a matcher and a route:
+// the snippet is imported as is, and a local request never reaches the provider. The form passes `caddy validate` on 2.11.
+func TestCaddySite_GateOutside(t *testing.T) {
+	got := CaddySite("docs.example.com", "tls_example_com", "paperless:8000", config.GateOutside, []string{"10.0.0.0/8", "192.168.1.0/24"}, false)
+	want := Header + "\n" +
+		"docs.example.com {\n" +
+		"\timport tls_example_com\n" +
+		"\t@hemma_outside not client_ip 10.0.0.0/8 192.168.1.0/24\n" +
+		"\troute @hemma_outside {\n" +
+		"\t\timport auth\n" +
+		"\t}\n" +
+		"\treverse_proxy paperless:8000\n" +
+		"}\n"
+	if got != want {
+		t.Fatalf("CaddySite(GateOutside) mismatch:\n got: %q\nwant: %q", got, want)
+	}
+	// with no local networks there is nothing to leave out: everyone is asked, never no one
+	if all := CaddySite("docs.example.com", "tls_example_com", "paperless:8000", config.GateOutside, nil, false); all != CaddySite("docs.example.com", "tls_example_com", "paperless:8000", config.GateAll, nil, false) {
+		t.Errorf("GateOutside without local networks must gate every request:\n%s", all)
 	}
 }

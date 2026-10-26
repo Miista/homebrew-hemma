@@ -7,14 +7,19 @@ Synced 16/17 services.
 ⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
 
 ⚠ could not verify OIDC client for wikijs: open core/authelia/data/config/configuration.yml: no such file or directory
+  • wiki
 1 disabled:
   • shelf
 1 with no local horizon (local_networks not set):
   • wiki
+
+To make changes live, run 'hemma apply' on each host:
+  on edge:  hemma apply
 --- stderr ---
 Set the home network with 'hemma defaults set local-networks <cidr,...>' — until then these services apply their public policy to every request, including from the LAN.
 --- files ---
 ~ core/authelia/data/config/hemma.access_control.generated.yml 78804e4d1506
+~ edge/caddy/data/sites/wiki.caddy 4125521cfb05
 ~ services.yaml 1432e3c501fc
 --- services.yaml ---
 hosts:

@@ -239,6 +239,34 @@ more auth than asked for, never less. Two notes worth knowing: `bypass` and `gro
 public horizon; and if `local_networks` is unset while a service asks for a differing local policy,
 hemma reports it and applies the public policy everywhere.
 
+A local `bypass` is decided in Caddy: the site only sends requests from outside `local_networks` to
+Authelia (`@hemma_outside not client_ip …` around `import auth`), so at home the service neither waits
+for nor depends on Authelia.
+
+### OIDC apps from the internet: `forward_gate`
+
+An `oidc` app runs its own login and then keeps its **own** session, often for weeks — Authelia is
+only asked at login. From the internet that means a phone stays signed in for as long as the app
+likes, whatever Authelia's session lifetime or your `two_factor` public policy say. For an `oidc`
+service on the tunnel, `forward_gate` puts Authelia's forward auth in front of it for requests from
+outside `local_networks`:
+
+```yaml
+    paperless:
+        tunnel: true
+        auth:
+            mode: oidc
+            forward_gate: true
+            policy: {public: two_factor}
+```
+
+Every request from outside then needs a live Authelia session (with the public policy and the
+groups); at home nothing changes. The app's own OIDC login still runs on top — from the same Authelia
+session. Set it with `hemma update service <name> --forward-gate`, in the editor, or with the
+"Forward auth on internet requests" switch in hemma-ui. How long that Authelia session lasts
+(`session.inactivity`, `expiration`, and `remember_me` when ticked) is how strict it really is.
+Mobile and API clients can't follow a login: exempt their paths with `bypass_paths`.
+
 ### Local-only or also reachable from the internet? The `TUNNEL` column
 
 hemma generates the **internal** horizon (Pi-hole record + Caddy site block) *and* the **public**

@@ -76,6 +76,7 @@ func cmdAddInteractive(env *Env, repoRoot, cfgPath, name string) int {
 	var selGroups []string
 	newGroup := ""
 	tunnel := false
+	forwardGate := false
 	bypass := ""
 
 	// Group options come from reality (users db ∪ services.yaml), not from a
@@ -162,6 +163,7 @@ func cmdAddInteractive(env *Env, repoRoot, cfgPath, name string) int {
 			).WithHideFunc(func() bool {
 				return mode == "none" || !slices.Contains(selGroups, newGroupSentinel)
 			}),
+			forwardGatePage(&forwardGate).WithHideFunc(func() bool { return mode != "oidc" || !tunnel }),
 		)
 	}
 
@@ -205,6 +207,7 @@ func cmdAddInteractive(env *Env, repoRoot, cfgPath, name string) int {
 			Local:  policyLevelFromChoice(policyLocal),
 			Public: policyLevelFromChoice(policyPublic),
 		}
+		svc.Auth.ForwardGate = forwardGate && svc.Auth.Mode == config.AuthOIDC && tunnel // the page was only shown then
 	}
 
 	for _, l := range summarizeNewService(svc) {
@@ -237,6 +240,20 @@ func summarizeNewService(svc config.Service) []string {
 			lines = append(lines, fmt.Sprintf("  auth policy: local=%s public=%s",
 				svc.Auth.Policy.ResolveLocal(), svc.Auth.Policy.ResolvePublic()))
 		}
+		if svc.Auth.ForwardGate {
+			lines = append(lines, "  forward gate: yes")
+		}
 	}
 	return lines
+}
+
+// forwardGatePage is the editors' follow-up page for auth.forward_gate (§4.9), shown only for an oidc service on the
+// tunnel (the callers' hide funcs) — the one combination it is valid for.
+func forwardGatePage(v *bool) *huh.Group {
+	return huh.NewGroup(
+		huh.NewConfirm().Title("forward gate").
+			Description("Forward auth on requests from outside local_networks too? Every such request then needs a live session with the auth provider, so the app's own session cannot keep someone logged in from the internet.").
+			Affirmative("yes").Negative("no").
+			Value(v),
+	)
 }
