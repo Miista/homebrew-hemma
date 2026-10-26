@@ -783,7 +783,8 @@ too, so the same two horizons apply. Authelia's OIDC policies only know `one_fac
 and `deny`: `bypass` with `oidc` is a validation error. `external`/`none` have no gate here at
 all, so a policy on those is a per-entry validation error (§7), like `groups` with mode `none`.
 Caveat from Authelia: an OIDC rule is evaluated when consent is given, so a client whose address
-changes afterwards is not re-checked until its tokens expire.
+changes afterwards is not re-checked until its tokens expire. (§4.9 proposes the fix for tunnelled
+OIDC services, `forward_gate`, and rendering a local `bypass` in Caddy so the provider is not asked.)
 
 *Considered and rejected (for now)*: per-horizon **groups** (`public: {policy: one_factor, groups:
 [remote-media]}`) — a different audience per horizon, not just a different strictness. Rejected as
@@ -792,6 +793,95 @@ one level deeper than `auth` already has, and the motivating cases (media open l
 hardened remotely) all want the *same* audience at *different* strictness. Groups answer "who",
 horizons answer "how hard". It stays addable without a break, since a string level can grow into a
 mapping via the same accept-both-then-re-emit approach used elsewhere.
+
+### 4.9 The forward gate, and `bypass` rendered in Caddy — PROPOSED (2026-10-26, not implemented)
+
+**The gap.** An `oidc` service renders a plain `reverse_proxy` (§4.5): the auth provider is asked
+once, when the app signs the user in, and its `authorization_policy` is evaluated only then (the
+caveat in §4.8). After that the **app's own session** decides, and many apps keep one for weeks. So a
+tunnelled OIDC app stays logged in from the internet for as long as the app likes — the provider's
+session lifetime, logging out of the provider, and a public `two_factor` do not reach it. A `forward`
+service has no such gap: the provider is asked on every request, so its session bounds access.
+
+**The field.** `auth.forward_gate: true` puts a forward-auth gate in front of an OIDC service **for
+requests from outside `local_networks`**:
+
+```yaml
+services:
+    paperless:
+        fqdn: docs.example.com
+        tunnel: true
+        auth:
+            mode: oidc
+            forward_gate: true
+            policy: {public: two_factor}
+```
+
+- **Only with `mode: oidc` and `tunnel: true`**; anything else is a per-entry validation error (§7):
+  `forward` is already asked on every request; `external` exists precisely because the app's own
+  clients need to reach it directly; `none` has nothing to gate; a service off the tunnel is not
+  reachable from the internet. Per service and off by default, like everything in §4.8.
+- Named for the **mechanism** (§2): a gate of the same forward-auth kind `mode: forward` uses. No
+  horizon word is needed in the name — the tunnel requirement already says where it applies. CLI:
+  `--forward-gate`; the UI offers it as a checkbox only for that combination ("Forward auth on
+  internet requests") and clears it when the mode or the tunnel changes away from it.
+- `bypass_paths` take effect with the gate, since mobile and API clients of a gated app cannot follow
+  a provider login. (Today they are accepted on an `oidc` service but enforced only for `forward`:
+  the access-control rules that carry them are generated for forward services alone, §4.6.)
+
+**One rendering rule: Caddy asks the auth provider only on a horizon where it has something to
+check.** This also changes what `policy.local: bypass` means in Caddy: today the site always imports
+`auth` and the provider answers a local request with its `bypass` rule; under this rule the local
+request never reaches the provider. Both cases render the same way:
+
+```caddy
+docs.example.com {
+	import tls_example_com
+	@hemma_outside not client_ip 10.0.0.0/8        # defaults.local_networks
+	route @hemma_outside {
+		import auth
+	}
+	reverse_proxy paperless:8000
+}
+```
+
+`route` keeps the user-supplied `(auth)` snippet (§4.5) untouched — hemma does not rewrite its
+content, it scopes it. (The form passes `caddy validate` on Caddy 2.11, the version the hosts run;
+the behaviour per horizon is to verify end to end when implemented.)
+
+| Service | Caddy site | Local request | Internet request |
+|---|---|---|---|
+| `forward` | `import auth` | provider on every request (`policy.local`) | provider on every request (`policy.public`) |
+| `forward`, `policy.local: bypass` | `route @hemma_outside { import auth }` | **provider not asked** (was: asked, answered bypass) | provider on every request (`policy.public`) |
+| `oidc` + tunnel | plain `reverse_proxy` | provider at login only, then the app's session | provider at login only, then the app's session |
+| `oidc` + tunnel + `forward_gate` | `route @hemma_outside { import auth }` | provider at login only, then the app's session; no round trip | provider on every request (`policy.public`) + the app's OIDC login |
+
+- **The access-control artifact (§4.6)** gets, for a gated OIDC service, the same rules a `forward`
+  service with `local: bypass` gets: the networks-scoped `bypass` rule and the catch-all with
+  `policy.public` (and `groups` as its subject), after any path bypasses. The local rule is now
+  unused in practice — Caddy sends no local request — and stays as the provider-side statement of
+  the same intent, so the artifact for existing `forward` services does not change. The OIDC
+  `authorization_policy` is untouched: it still governs the app's own login.
+- **Fails toward more auth.** The matcher is generated from `defaults.local_networks`, the same list
+  the provider's rules use, so there is one source of truth. `client_ip` honours the host's
+  `trusted_proxies` (§4.7); if client-IP resolution ever broke, tunnel traffic would appear as the
+  tunnel's own address — outside `local_networks` — and **get** the gate. With `local_networks`
+  unset, every request is "outside": the gate applies everywhere (and §4.8's
+  `UnresolvedLocalPolicy` report already covers a forward `local: bypass` in that state).
+- **No local dependency on the provider** for these sites: an outage of the auth provider does not
+  stop them at home, and a local request costs no provider round trip.
+- **The list icons (hemma-ui)**: a gated OIDC service is a plain filled padlock — protected; the
+  rendered local `bypass` of the gate is hemma's own and never counts as the user's `policy.local`
+  for the amber padlock or `doctor`'s both-horizons advisory. `forward` + `local: bypass` stays
+  amber, as now.
+- **How strict it really is** is the provider's session lifetime (Authelia: `session.inactivity`,
+  `expiration`, and `remember_me` when ticked) — the gate makes that lifetime apply; it does not
+  shorten it.
+- **Rollout.** Kernel change (config, plan, render, auth): both releases (`cli-v`, `ui-v`). The new
+  field is purely additive, but the rendering of every `forward` + `local: bypass` site changes, so
+  after the upgrade `apply` refuses on drift until the repo is synced (§9) — the switch happens on
+  that sync. Every host must run the new CLI before a config uses `forward_gate` (an old one skips
+  the entry).
 
 ## 5. Manifest
 
