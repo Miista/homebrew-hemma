@@ -207,7 +207,10 @@ authy). It is NOT a second implementation of hemma:
   server re-checks every value — the browser is a convenience, not the control.
 - **Git is the change tracker.** Edits land in the repo immediately; the working tree is the "unsaved changes"
   list, `/api/diff` renders it as things (services, hosts, defaults — current vs changed), hemma's generated
-  files are only counted, and other files are listed by name, never interpreted. `apply`/`deploy` are refused
+  files are listed in a fold where each opens to its diff (`GET /api/filediff?path=`, read-only: it answers only for a
+  path in the current changed-files list, and never reads a new file through a symlink), and other files are listed by
+  name, never interpreted. With `services.yaml` unchanged but files re-rendered (a new hemma renders differently), the
+  dialog says so instead of "No changes.". `apply`/`deploy` are refused
   server-side while the tree is dirty, so everything that goes live carries a commit message.
 - **Two phases, deliberately separate:** *saving* (the warn bar at the bottom while there are unsaved changes: Discard —
   which asks inline, Keep / Discard N changes — and Review & save, which commits with a message) and *deploying*: an

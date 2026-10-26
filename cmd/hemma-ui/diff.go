@@ -304,3 +304,53 @@ func (s *server) handleDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, d)
 }
+
+// fileDiffLimit caps one file's diff: a generated file is small, so anything this big is not worth drawing in a dialog.
+const fileDiffLimit = 200 << 10
+
+// handleFileDiff shows one generated file's change against the last save, for the Save dialog's list of generated files
+// (read-only). It only answers for a path in the current list of hemma's changed files — the same list /api/diff draws —
+// so it is not a way to read the repo: anything else is 404. A changed or removed file is `git diff HEAD -- <path>`; a new
+// one (untracked) is its content, read only when it is a regular file — never through a symlink out of the repo.
+func (s *server) handleFileDiff(w http.ResponseWriter, r *http.Request) {
+	want := r.URL.Query().Get("path")
+	var hit *change
+	for _, f := range s.changesCached().Files {
+		if want != "" && f.Path == want {
+			hit = &f
+			break
+		}
+	}
+	if hit == nil {
+		writeJSON(w, 404, map[string]any{"error": "not one of the changed files"})
+		return
+	}
+	path := unquoteRename(hit.Path)
+	var out string
+	if hit.Status == "??" {
+		full := filepath.Join(s.repo, path)
+		if fi, err := os.Lstat(full); err != nil || !fi.Mode().IsRegular() {
+			writeJSON(w, 404, map[string]any{"error": "not a regular file"})
+			return
+		}
+		b, err := os.ReadFile(full)
+		if err != nil {
+			writeJSON(w, 500, map[string]any{"error": err.Error()})
+			return
+		}
+		lines := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+		out = "@@ new file @@\n+" + strings.Join(lines, "\n+") + "\n"
+	} else {
+		d, err := s.git(10*time.Second, "diff", "--no-color", "--no-ext-diff", "HEAD", "--", path)
+		if err != nil {
+			writeJSON(w, 500, map[string]any{"error": strings.TrimSpace(d)})
+			return
+		}
+		out = d
+	}
+	truncated := len(out) > fileDiffLimit
+	if truncated {
+		out = out[:fileDiffLimit]
+	}
+	writeJSON(w, 200, map[string]any{"path": path, "status": hit.Status, "diff": out, "truncated": truncated})
+}

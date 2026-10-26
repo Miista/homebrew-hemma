@@ -987,11 +987,19 @@ async function discard() {
 }
 
 // renderDiff: what changed in what hemma manages, entity by entity — current against after-save, one fold each.
-// Hemma's generated files are only counted. Files that are not hemma's are not part of any change here.
+// Hemma's generated files are listed in their own fold, each opening to its diff (fileDiffRow). Files that are not hemma's are
+// not part of any change here.
 let openEnt = new Set();
 function renderDiff(d) {
   const root = el("div", null, { style: "display:contents" });
-  if (!d.entities.length) { root.append(el("p", d.reformatted ? "services.yaml was rewritten by hemma, but no value in it changed — only its formatting. You can commit it or discard it." : "No changes.", { className: "meta" })); return root; }
+  if (!d.entities.length) {
+    // Nothing in services.yaml changed, but hemma may still have re-rendered files from it (a new hemma version renders
+    // differently): say so, rather than "No changes." above a list of changed files.
+    const n = (d.generated || []).length;
+    root.append(el("p", d.reformatted ? "services.yaml was rewritten by hemma, but no value in it changed — only its formatting. You can commit it or discard it."
+      : n ? `services.yaml is unchanged — hemma re-rendered ${plural(n, "generated file")} from it. Open ${n === 1 ? "it" : "them"} below to see what changed.` : "No changes.", { className: "meta" }));
+    return root;
+  }
   const key = e => e.kind + ":" + e.name;
   if (d.entities.length === 1) openEnt = new Set([key(d.entities[0])]);
   const heads = [];   // [head button, table, entity]: toggled in place, so the chevrons turn
@@ -1039,9 +1047,37 @@ function fillAdvanced(d) {
   head.append(el("span", null, { className: "chev" }), `Generated files (${n})`);
   const note = el("p", "Saving records every file below together with this change.", { className: "meta", hidden: true, style: "margin-top:8px" });
   const files = el("div", null, { className: "flist", hidden: true });
-  d.generated.forEach(p => files.append(el("div", p)));
+  d.generated.forEach(p => files.append(fileDiffRow(p)));
   head.onclick = () => { const o = files.hidden; files.hidden = !o; note.hidden = !o; head.setAttribute("aria-expanded", String(o)); };
   adv.append(head, note, files);
+}
+
+// fileDiffRow: one generated file, which opens on a click to its diff against the last save (/api/filediff, fetched the first
+// time it opens). The diff's own header lines are left out; what stays is drawn as removed / added / context, never as HTML.
+function fileDiffRow(path) {
+  const row = el("div", null, { className: "fd" });
+  const head = el("button", null, { type: "button", className: "fh" }); head.setAttribute("aria-expanded", "false");
+  head.append(el("span", null, { className: "chev" }), el("span", path, { className: "fp" }));
+  const body = el("div", null, { className: "fdiff", hidden: true });
+  let loaded = false;
+  head.onclick = async () => {
+    const open = body.hidden; body.hidden = !open; head.setAttribute("aria-expanded", String(open));
+    if (!open || loaded) return;
+    loaded = true; body.replaceChildren(el("div", "Loading…", { className: "meta" }));
+    let j;
+    try { const r = await fetch("/api/filediff?path=" + encodeURIComponent(path)); j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); }
+    catch (e) { loaded = false; body.replaceChildren(el("div", "Could not load the diff: " + (e.message || e), { className: "err small" })); return; }
+    const pre = el("pre");
+    for (const l of (j.diff || "").split("\n")) {
+      if (/^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode|similarity index|rename (from|to) )/.test(l) || l === "") continue;
+      pre.append(el("span", l, { className: l.startsWith("@@") ? "hunk" : l[0] === "+" ? "add" : l[0] === "-" ? "del" : "" }));   // one block per line
+    }
+    if (!pre.childNodes.length) pre.append(el("span", "(no difference in content — only the file mode or name changed)", { className: "hunk" }));
+    body.replaceChildren(pre);
+    if (j.truncated) body.append(el("div", "The diff is cut off here: it is very long.", { className: "meta" }));
+  };
+  row.append(head, body);
+  return row;
 }
 
 const SAVE_DRAFT = "hemma.saveDraft";
