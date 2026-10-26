@@ -64,7 +64,7 @@
 <!-- Deploy as a checklist: each step as it happens (syncing hosts, restarting services, …), then the outcome. -->
 <dialog id="pdlg" tabindex="-1" autofocus aria-labelledby="ptitle">
   <div class="dhd"><div class="tt"><h2 id="ptitle">Deploying…</h2></div></div>
-  <div class="dbd"><ul id="psteps" class="steps" aria-live="polite"></ul><p class="meta" id="pnote">You can close this: the deploy carries on.</p></div>
+  <div class="dbd"><ul id="psteps" class="steps" aria-live="polite"></ul><p class="meta" id="pnote">You can close this: the deploy carries on, and stays in the menu above Tools.</p></div>
   <div class="dft"><div class="grp"><button type="button" id="pdetails" hidden>Details</button><button type="button" id="pclose" class="primary">Hide</button></div></div>
 </dialog>
 
@@ -263,6 +263,7 @@ closeOnBackdrop($("#cdlg"), () => false);   // the Save dialog keeps what you ty
 closeOnBackdrop($("#edlg"), () => rawDirty());
 closeOnBackdrop($("#rdlg"), () => false);
 closeOnBackdrop($("#pdlg"), () => false);   // Hide: the deploy carries on either way
+$("#pdlg").addEventListener("close", () => renderMenus());   // however it was closed, a running deploy goes to the menus (deployItem)
 // ⌘↩ (Mac) / Ctrl+↩ (everywhere else) submits a form dialog from anywhere inside it — including the message box,
 // where a plain Enter has to stay a newline. Only the dialogs that SAVE something: never the confirmations, so a
 // destructive question can't be answered by a stray shortcut. A disabled button (nothing to save yet) is respected.
@@ -910,7 +911,7 @@ async function deployNow(key, done, failed) {
   const dlg = $("#pdlg");
   renderSteps([]); $("#ptitle").textContent = "Deploying…"; $("#pdetails").hidden = true; $("#pnote").hidden = false;
   $("#pclose").textContent = "Hide"; $("#pclose").onclick = () => dlg.close();
-  openModal(dlg);
+  openModal(dlg); renderMenus();   // open: the menus drop their "Deploying…" item
   try {
     const since = Date.now();
     let res = await streamDeploy(key, renderSteps);
@@ -921,7 +922,7 @@ async function deployNow(key, done, failed) {
       $("#pnote").textContent = "The deploy carries on on the server. Reconnecting to get the result…";
       if (!dlg.open) toast("Connection lost during deploy: reconnecting…", "warn");
       res = await awaitDeploy(res.id, renderSteps, since);
-      $("#pnote").textContent = "You can close this: the deploy carries on.";
+      $("#pnote").textContent = "You can close this: the deploy carries on, and stays in the menu above Tools.";
       if (res.interrupted) res = { ok: false, output: "", title: "Deploy interrupted (hemma-ui restarted) — check the servers" };
       else if (res.unknown) res = { ok: false, output: "", title: "Couldn't get the deploy's result — check the servers" };
       else if (res.notStarted) res = { ok: false, output: "", title: "The deploy did not start: the connection dropped first" };
@@ -937,7 +938,10 @@ async function deployNow(key, done, failed) {
 }
 // renderSteps draws the checklist: a step is waiting (an empty ring), under way (a spinner), done (✓) or failed (✗); the servers of
 // a step are listed beneath it.
+let deploySteps = [];   // the latest checklist, for the menus' "Deploying…" item while the dialog is closed
 function renderSteps(steps) {
+  deploySteps = steps;
+  if (deploying && !$("#pdlg").open) renderMenus();
   const ul = $("#psteps"); ul.replaceChildren();
   const icon = st => { const i = el("span", st === "done" ? "✓" : st === "failed" ? "✗" : "", { className: "sicon " + st }); i.setAttribute("aria-hidden", "true"); return i; };
   const label = st => ({ pending: "waiting", running: "in progress", done: "done", failed: "failed" })[st];
@@ -1400,16 +1404,22 @@ function svcRow(s, ent) {
   }
   return r;
 }
-function drawGroups(box) {
-  const em = entMap(), needle = q.trim().toLowerCase();
+// The rows the Services list draws: every service, plus those removed but not saved yet (shown struck through, so the page
+// agrees with the bar). serviceMatches is the search; the list and Enter in the search box both use these two.
+function serviceRows() {
   const rows = state.services.map(s => ({ ...s }));
-  // services removed but not saved yet: shown struck through, so the page agrees with the bar ("1 unsaved change")
   (pending ? pending.entities : []).filter(e => e.kind === "Service" && e.status === "removed").forEach(e =>
     rows.push({ name: e.name, host: fieldBefore(e, "Host"), fqdn: fieldBefore(e, "Address"), ghost: true, ent: e }));
+  return rows;
+}
+const serviceMatches = (s, needle) => !needle || s.name.toLowerCase().includes(needle) || (s.fqdn || "").toLowerCase().includes(needle);
+function drawGroups(box) {
+  const em = entMap(), needle = q.trim().toLowerCase();
+  const rows = serviceRows();
   const hosts = [...new Set(rows.map(s => s.host).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const groups = hosts.map(h => {
     const all = rows.filter(s => s.host === h);
-    const items = all.filter(s => !needle || s.name.toLowerCase().includes(needle) || (s.fqdn || "").toLowerCase().includes(needle)).sort((a, b) => a.name.localeCompare(b.name));
+    const items = all.filter(s => serviceMatches(s, needle)).sort((a, b) => a.name.localeCompare(b.name));
     return { h, all, items };
   }).filter(g => g.items.length);
   box.replaceChildren();
@@ -1443,7 +1453,15 @@ const VIEWS = {
     const groups = el("div", null, { style: "display:flex;flex-direction:column;gap:22px" });
     search.oninput = () => { q = search.value; drawGroups(groups); };
     search.setAttribute("enterkeyhint", "search");
-    search.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); search.blur(); } else if (e.key === "Escape") { if (q) { q = ""; search.value = ""; drawGroups(groups); } else search.blur(); } };   // Enter is "done": it puts the phone's keyboard away
+    // Enter is "done": it puts the phone's keyboard away — and when the search leaves exactly one row, opens it (unless that
+    // row is a service removed but not saved, which has no form).
+    search.onkeydown = e => {
+      if (e.key === "Enter") {
+        e.preventDefault(); search.blur();
+        const needle = q.trim().toLowerCase(), hits = needle ? serviceRows().filter(s => s.host && serviceMatches(s, needle)) : [];
+        if (hits.length === 1 && !hits[0].ghost) openCmd("update service", { ...hits[0], __lock: "name" });
+      } else if (e.key === "Escape") { if (q) { q = ""; search.value = ""; drawGroups(groups); } else search.blur(); }
+    };
     const add = btn("Add service", () => openCmd("add service"), "primary");
     drawGroups(groups);
     const sub = el("span"), info = el("button", null, { type: "button", className: "info", title: "What the icons mean", onclick: openLegend });
@@ -1798,15 +1816,27 @@ function renderTabs() {
 }
 // The menus that carry Tools and Sign out: the sidebar's foot on a wide screen, the burger in the phone's top bar.
 const signOut = () => Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" });
+// A deploy whose dialog was closed (Hide, ×, Esc) sits in the menus just above Tools, with the step it is on; a click
+// opens the dialog again. It goes when the deploy ends — a toast says how it ended then (deployNow).
+function deployItem(onOpen) {
+  if (!deploying || $("#pdlg").open) return null;
+  const now = deploySteps.find(s => s.status === "running") || deploySteps.find(s => s.status === "pending");
+  const b = el("button", null, { type: "button", className: "deployitem", title: "Show the deploy", onclick: () => { onOpen(); openModal($("#pdlg")); renderMenus(); } });
+  const txt = el("span", null, { className: "dtx" });
+  txt.append(el("b", "Deploying…"), el("span", now ? now.title : "", { className: "dstep" }));
+  b.append(el("span", null, { className: "sicon running" }), txt);
+  return b;
+}
 function renderMenus() {
   const tools = btn("Tools", () => openTools(), "sidetools");
-  $("#sidefoot").replaceChildren(tools, el("div", null, { className: "ver" }));
+  $("#sidefoot").replaceChildren(...[deployItem(() => {}), tools].filter(Boolean), el("div", null, { className: "ver" }));
   $("#sidefoot .ver").append(state.version || "", " · ", signOut());
   const menu = $("#bmenu"); menu.replaceChildren();
   const item = el("button", "Tools", { type: "button", onclick: () => { closeBurger(); openTools(); } }); item.setAttribute("role", "menuitem");
   const ver = el("div", null, { className: "mver" }); ver.append(state.version || "");
   const out = signOut(); out.setAttribute("role", "menuitem"); out.className = "only-with-gate mout";
-  menu.append(item, el("hr"), ver, out);
+  const dep = deployItem(closeBurger); if (dep) dep.setAttribute("role", "menuitem");
+  menu.append(...[dep, item].filter(Boolean), el("hr"), ver, out);
 }
 function closeBurger() { const m = $("#bmenu"); if (m.hidden) return; m.hidden = true; $("#burger").setAttribute("aria-expanded", "false"); document.removeEventListener("click", burgerAway, true); }
 const burgerAway = e => { if (!$("#bmenu").contains(e.target) && !$("#burger").contains(e.target)) closeBurger(); };
