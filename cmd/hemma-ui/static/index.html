@@ -64,7 +64,7 @@
 <!-- Deploy as a checklist: each step as it happens (syncing hosts, restarting services, …), then the outcome. -->
 <dialog id="pdlg" tabindex="-1" autofocus aria-labelledby="ptitle">
   <div class="dhd"><div class="tt"><h2 id="ptitle">Deploying…</h2></div></div>
-  <div class="dbd"><ul id="psteps" class="steps" aria-live="polite"></ul><p class="meta" id="pnote">You can close this: the deploy carries on, and stays in the menu above Tools.</p></div>
+  <div class="dbd"><ul id="psteps" class="steps" aria-live="polite"></ul><p class="meta" id="pnote">You can close this: the deploy carries on, and you can open it again from "Deploying…".</p></div>
   <div class="dft"><div class="grp"><button type="button" id="pdetails" hidden>Details</button><button type="button" id="pclose" class="primary">Hide</button></div></div>
 </dialog>
 
@@ -263,7 +263,7 @@ closeOnBackdrop($("#cdlg"), () => false);   // the Save dialog keeps what you ty
 closeOnBackdrop($("#edlg"), () => rawDirty());
 closeOnBackdrop($("#rdlg"), () => false);
 closeOnBackdrop($("#pdlg"), () => false);   // Hide: the deploy carries on either way
-$("#pdlg").addEventListener("close", () => renderMenus());   // however it was closed, a running deploy goes to the menus (deployItem)
+$("#pdlg").addEventListener("close", () => { renderMenus(); renderBars(); });   // however it was closed, a running deploy goes to the sidebar item (deployItem) or the phone's bottom bar
 // ⌘↩ (Mac) / Ctrl+↩ (everywhere else) submits a form dialog from anywhere inside it — including the message box,
 // where a plain Enter has to stay a newline. Only the dialogs that SAVE something: never the confirmations, so a
 // destructive question can't be answered by a stray shortcut. A disabled button (nothing to save yet) is respected.
@@ -870,7 +870,10 @@ let pending = null;   // /api/diff summary of the unsaved changes (null when the
 const dirty = () => changes.git && changes.files.length > 0;
 // "Saved, not live yet": a save that was not deployed (remembered across reloads), or unpushed commits that change a file hemma owns. A commit to anything else (a compose file) is ahead of origin too, but hemma has nothing to make live for it.
 const undeployed = () => !deploying && !dirty() && (localStorage.getItem("hemma.undeployed") === "1" || (changes.has_remote && changes.ahead_hemma));
-const barsUp = () => dirty() || deploying || undeployed();
+// A running deploy whose dialog was closed: on a phone the bottom bar carries it ("Deploying…" is the way back to the dialog);
+// on a wide screen the sidebar's item does (deployItem), so no bar.
+const deployClosed = () => deploying && isPhone() && !$("#pdlg").open;
+const barsUp = () => dirty() || undeployed() || deployClosed();
 // Without a deploy host nothing can go live: this page deploys from that host and does not guess which one it runs on (the server
 // refuses too, host.go). /api/state's apply.host is the host it resolved, empty when there is none. An unloadable file shows the
 // recovery screen instead, so it is not asked about here.
@@ -881,6 +884,8 @@ function renderHint() {
   const [text, cls] = deploying ? ["Deploying…", "busy"] : dirty() ? ["Save changes to deploy", "warn"] : undeployed() ? ["Saved, not live yet", "busy"] : ["No unsaved changes", ""];
   $("#hinttext").textContent = text; $("#hint .dot").className = "dot " + cls;
 }
+// Bring a closed deploy's dialog back (the sidebar's "Deploying…" item and the phone's bottom bar both call this).
+const openDeploy = () => { if (deploying && !$("#pdlg").open) { openModal($("#pdlg")); renderMenus(); renderBars(); } };
 // The Deploy question is one short sentence, the same everywhere: what happens (your saved changes go live) and the one
 // thing worth knowing (services restart briefly). Which services, on which host, is for the Details after a failure.
 // With a shared copy (an origin) Deploy reaches every server; without one it is just this one. Saved changes origin
@@ -911,7 +916,7 @@ async function deployNow(key, done, failed) {
   const dlg = $("#pdlg");
   renderSteps([]); $("#ptitle").textContent = "Deploying…"; $("#pdetails").hidden = true; $("#pnote").hidden = false;
   $("#pclose").textContent = "Hide"; $("#pclose").onclick = () => dlg.close();
-  openModal(dlg); renderMenus();   // open: the menus drop their "Deploying…" item
+  openModal(dlg); renderMenus(); renderBars();   // open: the sidebar and the bottom bar drop their "Deploying…"
   try {
     const since = Date.now();
     let res = await streamDeploy(key, renderSteps);
@@ -922,7 +927,7 @@ async function deployNow(key, done, failed) {
       $("#pnote").textContent = "The deploy carries on on the server. Reconnecting to get the result…";
       if (!dlg.open) toast("Connection lost during deploy: reconnecting…", "warn");
       res = await awaitDeploy(res.id, renderSteps, since);
-      $("#pnote").textContent = "You can close this: the deploy carries on, and stays in the menu above Tools.";
+      $("#pnote").textContent = "You can close this: the deploy carries on, and you can open it again from \"Deploying…\".";
       if (res.interrupted) res = { ok: false, output: "", title: "Deploy interrupted (hemma-ui restarted) — check the servers" };
       else if (res.unknown) res = { ok: false, output: "", title: "Couldn't get the deploy's result — check the servers" };
       else if (res.notStarted) res = { ok: false, output: "", title: "The deploy did not start: the connection dropped first" };
@@ -1218,14 +1223,22 @@ function renderBars() {
     }
     sb.replaceChildren(inner);
   } else { confirmDiscard = false; sb.replaceChildren(); }
-  const ds = !d && (deploying || undeployed());
+  // A running deploy is the dialog; closed, it is the "Deploying…" item above Tools on a wide screen (deployItem) and this bar
+  // on a phone, where the button brings the dialog back.
+  const closed = deployClosed(), ds = !d && (closed || undeployed());
   db.classList.toggle("show", ds); db.setAttribute("aria-hidden", String(!ds));
   if (ds) {
     const inner = el("div", null, { className: "in" }), m = el("div", null, { className: "msg" });
-    const noHost = !deploying && needsDeployHost();
-    m.append(el("b", deploying ? "Deploying…" : "Saved, not live yet"), el("span", deploying ? "Sending your saved changes to the servers" : noHost ? "Set the deploy host to make it live." : "Deploy to make it live."));
-    inner.append(el("span", null, { className: "dot" }), m);
-    const go = btn(deploying ? "Deploying…" : noHost ? "Set deploy host" : "Deploy", () => deploy(), "primary"); go.disabled = deploying; inner.append(go);   // deploy() opens the setting when there is none
+    if (closed) {
+      const now = deploySteps.find(s => s.status === "running") || deploySteps.find(s => s.status === "pending");
+      m.append(el("b", "Deploying…"), el("span", now ? now.title : "Sending your saved changes to the servers"));
+      inner.append(el("span", null, { className: "dot" }), m, btn("Deploying…", openDeploy, "primary"));
+    } else {
+      const noHost = needsDeployHost();
+      m.append(el("b", "Saved, not live yet"), el("span", noHost ? "Set the deploy host to make it live." : "Deploy to make it live."));
+      inner.append(el("span", null, { className: "dot" }), m);
+      inner.append(btn(noHost ? "Set deploy host" : "Deploy", () => deploy(), "primary"));   // deploy() opens the setting when there is none
+    }
     db.replaceChildren(inner);
   } else db.replaceChildren();
   $("#toast").classList.toggle("up", barsUp());
@@ -1816,12 +1829,13 @@ function renderTabs() {
 }
 // The menus that carry Tools and Sign out: the sidebar's foot on a wide screen, the burger in the phone's top bar.
 const signOut = () => Object.assign(document.createElement("a"), { href: "/auth/logout", textContent: "Sign out", className: "only-with-gate" });
-// A deploy whose dialog was closed (Hide, ×, Esc) sits in the menus just above Tools, with the step it is on; a click
-// opens the dialog again. It goes when the deploy ends — a toast says how it ended then (deployNow).
-function deployItem(onOpen) {
+// A deploy whose dialog was closed (Hide, ×, Esc) sits in the sidebar just above Tools, with the step it is on; a click
+// opens the dialog again. It goes when the deploy ends — a toast says how it ended then (deployNow). On a phone the same
+// job is the bottom bar's "Deploying…" button (renderBars), so the burger menu does not carry it.
+function deployItem() {
   if (!deploying || $("#pdlg").open) return null;
   const now = deploySteps.find(s => s.status === "running") || deploySteps.find(s => s.status === "pending");
-  const b = el("button", null, { type: "button", className: "deployitem", title: "Show the deploy", onclick: () => { onOpen(); openModal($("#pdlg")); renderMenus(); } });
+  const b = el("button", null, { type: "button", className: "deployitem", title: "Show the deploy", onclick: openDeploy });
   const txt = el("span", null, { className: "dtx" });
   txt.append(el("b", "Deploying…"), el("span", now ? now.title : "", { className: "dstep" }));
   b.append(el("span", null, { className: "sicon running" }), txt);
@@ -1829,14 +1843,13 @@ function deployItem(onOpen) {
 }
 function renderMenus() {
   const tools = btn("Tools", () => openTools(), "sidetools");
-  $("#sidefoot").replaceChildren(...[deployItem(() => {}), tools].filter(Boolean), el("div", null, { className: "ver" }));
+  $("#sidefoot").replaceChildren(...[deployItem(), tools].filter(Boolean), el("div", null, { className: "ver" }));
   $("#sidefoot .ver").append(state.version || "", " · ", signOut());
   const menu = $("#bmenu"); menu.replaceChildren();
   const item = el("button", "Tools", { type: "button", onclick: () => { closeBurger(); openTools(); } }); item.setAttribute("role", "menuitem");
   const ver = el("div", null, { className: "mver" }); ver.append(state.version || "");
   const out = signOut(); out.setAttribute("role", "menuitem"); out.className = "only-with-gate mout";
-  const dep = deployItem(closeBurger); if (dep) dep.setAttribute("role", "menuitem");
-  menu.append(...[dep, item].filter(Boolean), el("hr"), ver, out);
+  menu.append(item, el("hr"), ver, out);
 }
 function closeBurger() { const m = $("#bmenu"); if (m.hidden) return; m.hidden = true; $("#burger").setAttribute("aria-expanded", "false"); document.removeEventListener("click", burgerAway, true); }
 const burgerAway = e => { if (!$("#bmenu").contains(e.target) && !$("#burger").contains(e.target)) closeBurger(); };

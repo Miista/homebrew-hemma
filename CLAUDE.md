@@ -258,9 +258,10 @@ authy). It is NOT a second implementation of hemma:
 - **The Services page** groups services by host (collapsible, searchable with ⌘K / Ctrl+K); a row opens the service's
   form directly. Enter in the search box puts the phone's keyboard away and, when exactly one row is left (and it is not a
   removed-but-unsaved one), opens it — `serviceRows`/`serviceMatches` are the one match rule for the list and Enter.
-  **A deploy whose dialog is closed** (Hide, ×, Esc) sits just above Tools — the sidebar's foot, or the top of the phone's
-  burger menu — as "Deploying…" with the step it is on (`deployItem`); a click opens the dialog again, and it goes when the
-  deploy ends (a toast reports the outcome then). Every row ends in two fixed icon columns (`svcMarks`), so they line up for scanning: **reach** (house = local only,
+  **A deploy whose dialog is closed** (Hide, ×, Esc) shows as "Deploying…" with the step it is on, and a click opens the
+  dialog again: on a wide screen in the sidebar just above Tools (`deployItem`), on a phone as the bottom bar
+  (`renderBars`, `deployClosed`): "Deploying…" with the step and a "Deploying…" button that opens the dialog again — not in the
+  burger menu. It goes when the deploy ends (a toast reports the outcome then). While the dialog is open there is no bar. Every row ends in two fixed icon columns (`svcMarks`), so they line up for scanning: **reach** (house = local only,
   globe = `tunnel`) and **sign-in**, which answers only "is it fronted by the auth provider?" (labels name the role, never the product: providers are pluggable): filled padlock = `forward`/`oidc`, outline
   padlock = `external`, key = the `auth_service` itself, red ⚠ = `none`. A bypass policy comes from the server as `auth-bypass`
   (resolved with `AuthPolicy.ForService`, never re-derived in the page): `local` is an amber filled padlock, `everywhere` is the red
