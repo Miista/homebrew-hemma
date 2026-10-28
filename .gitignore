@@ -35,3 +35,5 @@ id_*
 *.swo
 *~
 /hemma-ui
+# `go build` inside cmd/hemma-ui leaves its binary here: it embeds the builder's home path in every dependency path.
+/cmd/hemma-ui/hemma-ui
