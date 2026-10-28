@@ -175,6 +175,46 @@ func TestRunCommand_RefusesBadAuthComboWithoutSaving(t *testing.T) {
 	}
 }
 
+// An update carries only what it changes (a role toggled on the Access page sends just the groups). The auth check judges the
+// service as it would end up: the stored mode fills in what the request leaves out, so the same request is fine on a forward
+// service and refused on one that does not go through the auth provider.
+func TestRunCommand_UpdateChecksTheMergedService(t *testing.T) {
+	s := repoWithConfig(t)
+	post := func(body string) (int, string) {
+		rec := httptest.NewRecorder()
+		s.runCommand(rec, httptest.NewRequest("POST", "/api/run", strings.NewReader(body)))
+		return rec.Code, rec.Body.String()
+	}
+	add := func(name, mode string) {
+		t.Helper()
+		b := `{"command":"add service","values":{"name":"` + name + `","fqdn":"` + name + `.example.com","host":"appbox","backend":"test:80","auth-mode":"` + mode + `"}}`
+		if code, out := post(b); code != 200 {
+			t.Fatalf("add %s: %d %s", name, code, out)
+		}
+	}
+	add("gated", "forward")
+	add("open", "none")
+
+	if code, out := post(`{"command":"update service","values":{"name":"gated","auth-groups":"admins,family"}}`); code != 200 {
+		t.Fatalf("groups only, forward service: want 200, got %d %s", code, out)
+	}
+	if b, _ := os.ReadFile(filepath.Join(s.repo, "services.yaml")); !strings.Contains(string(b), "- admins") || !strings.Contains(string(b), "- family") {
+		t.Errorf("the groups were not written:\n%s", b)
+	}
+	// still as strict: groups on a service whose mode does not use the provider
+	if code, out := post(`{"command":"update service","values":{"name":"open","auth-groups":"admins"}}`); code != 400 || !strings.Contains(out, "Auth groups need an auth mode") {
+		t.Errorf("groups only, none service: want 400 with the reason, got %d %s", code, out)
+	}
+	// and stricter than before in one case: leaving the provider while the groups stay would be saved and then skipped
+	if code, out := post(`{"command":"update service","values":{"name":"gated","auth-mode":"none"}}`); code != 400 || !strings.Contains(out, "Auth groups need an auth mode") {
+		t.Errorf("mode none, groups left: want 400 with the reason, got %d %s", code, out)
+	}
+	// a present key wins, even an empty one: the form's way of clearing groups while it changes the mode
+	if code, out := post(`{"command":"update service","values":{"name":"gated","auth-mode":"none","auth-groups":""}}`); code != 200 {
+		t.Errorf("mode none, groups cleared: want 200, got %d %s", code, out)
+	}
+}
+
 // The response says whether services.yaml moved, so the page can tell "refused" from "saved, with problems".
 func TestRunCommand_ReportsWhetherTheConfigChanged(t *testing.T) {
 	s := repoWithConfig(t)

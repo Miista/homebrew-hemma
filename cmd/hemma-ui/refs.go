@@ -117,6 +117,36 @@ func checkAuthFields(c *command, vals map[string]any) error {
 	return nil
 }
 
+// effectiveValues is what checkAuthFields should judge: for an `update service` the service AS IT WOULD END UP. The kernel
+// overrides only the flags that were given, so a request may carry just the one thing it changes (a role toggled on the Access
+// page sends only `auth-groups`); a key that is absent takes the service's current value, one that is present — even empty,
+// which clears — wins, exactly as the kernel applies it. Anything else (another command, an unknown service, a file that
+// does not load) is returned as it came: checkState reports the missing service, and the check stays as strict as it was.
+func (s *server) effectiveValues(c *command, vals map[string]any) map[string]any {
+	if c.Key != "update service" {
+		return vals
+	}
+	name, _ := vals["name"].(string)
+	cfg, err := config.Load(filepath.Join(s.repo, "services.yaml"))
+	if err != nil {
+		return vals
+	}
+	svc, ok := cfg.Services[strings.TrimSpace(name)]
+	if !ok {
+		return vals
+	}
+	out := map[string]any{
+		"auth-mode": string(svc.Auth.Mode), "auth-groups": strings.Join(svc.Auth.Groups, ","),
+		"bypass-paths":       strings.Join(svc.Auth.BypassPaths, ","),
+		"auth-policy-local":  string(svc.Auth.Policy.Local),
+		"auth-policy-public": string(svc.Auth.Policy.Public), "tunnel": svc.Tunnel,
+	}
+	for k, v := range vals {
+		out[k] = v
+	}
+	return out
+}
+
 // checkState verifies every state-dependent value of a command against services.yaml.
 func (s *server) checkState(c *command, vals map[string]any) error {
 	need := false

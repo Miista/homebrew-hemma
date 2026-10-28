@@ -30,6 +30,7 @@
   <main id="main"><div id="page"><section id="view"></section></div></main>
   <div id="deploybar" class="bar" aria-live="polite"></div>
   <div id="savebar" class="bar" aria-live="polite"></div>
+  <div id="rolebar" class="bar" aria-live="polite"></div>
   <nav id="mtabs" aria-label="Pages"></nav>
   <div id="toast" class="toast" role="status" hidden></div>
 </div>
@@ -119,7 +120,7 @@ const $ = s => document.querySelector(s);
 let changes = { git: false, files: [] };
 let state = { services: [], hosts: [], domains: [], settings: [] };
 let cmds = {};
-const TABS = ["Services", "Infrastructure", "History", "Issues"];   // Infrastructure = hosts, domains and the repo-wide settings. Tools is a dialog, opened from the menu.
+const TABS = ["Services", "Access", "Infrastructure", "History", "Issues"];   // Access = which auth groups (roles) each service lets in. Infrastructure = hosts, domains and the repo-wide settings. Tools is a dialog, opened from the menu.
 // The page you are on lives in the URL (#/issues), so reload, back/forward and a pasted link all land on the same page.
 const tabFromHash = () => location.hash.startsWith("#/history") ? "History" : location.hash === "#/settings" ? "Infrastructure" : TABS.find(t => "#/" + t.toLowerCase() === location.hash) || "Services";   // Settings used to be a page of its own: an old link lands on Infrastructure
 let tab = tabFromHash();
@@ -142,6 +143,7 @@ const scrollToTop = () => { if (isPhone()) window.scrollTo(0, 0); else $("#main"
 const ICON = (inner) => `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 const ICONS = {
   Services: ICON('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>'),
+  Access: ICON('<rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M3.5 9.5h17M3.5 15h17M9.5 3.5v17"/>'),
   Infrastructure: ICON('<rect x="3" y="4" width="18" height="6.5" rx="1.8"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.8"/><path d="M7 7.25h.01M7 16.75h.01"/>'),
   History: ICON('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/>'),
   Issues: ICON('<path d="M12 3.5L2.5 20h19L12 3.5z"/><path d="M12 10v4M12 17h.01"/>'),
@@ -873,7 +875,8 @@ const undeployed = () => !deploying && !dirty() && (localStorage.getItem("hemma.
 // A running deploy whose dialog was closed: on a phone the bottom bar carries it ("Deploying…" is the way back to the dialog);
 // on a wide screen the sidebar's item does (deployItem), so no bar.
 const deployClosed = () => deploying && isPhone() && !$("#pdlg").open;
-const barsUp = () => dirty() || undeployed() || deployClosed();
+const roleBarOpen = () => !!accessDraft && tab === "Access";
+const barsUp = () => dirty() || undeployed() || deployClosed() || roleBarOpen();
 // Without a deploy host nothing can go live: this page deploys from that host and does not guess which one it runs on (the server
 // refuses too, host.go). /api/state's apply.host is the host it resolved, empty when there is none. An unloadable file shows the
 // recovery screen instead, so it is not asked about here.
@@ -1209,7 +1212,10 @@ function breakdown() {
   return [[by("Service"), "service"], [by("Host"), "host"], [by("Domain"), "domain"], [by("Setting"), "setting"]].filter(x => x[0]).map(x => plural(x[0], x[1])).join(" · ");
 }
 function renderBars() {
-  const sb = $("#savebar"), db = $("#deploybar"), d = dirty();
+  // While a new role is being drafted on the Access page its own bar (#rolebar, filled by the page) is the one at the bottom:
+  // the unsaved-changes and deploy bars wait, and a bar that is not needed is cleared here.
+  const roleOpen = roleBarOpen(), rb = $("#rolebar"), sb = $("#savebar"), db = $("#deploybar"), d = dirty() && !roleOpen;
+  if (!roleOpen) { rb.classList.remove("show"); rb.setAttribute("aria-hidden", "true"); rb.replaceChildren(); }
   sb.classList.toggle("show", d); sb.setAttribute("aria-hidden", String(!d));
   if (d) {
     const inner = el("div", null, { className: "in" }), m = el("div", null, { className: "msg" });
@@ -1217,7 +1223,11 @@ function renderBars() {
     inner.append(el("span", null, { className: "dot" }), m);
     if (confirmDiscard) {
       const n = pending ? pending.entities.length || changes.files.length : changes.files.length;
-      inner.append(btn("Keep", () => { confirmDiscard = false; renderBars(); }), btn(isPhone() ? "Discard all" : `Discard ${plural(n, "change")}`, () => { confirmDiscard = false; discardNow(); }, "danger"));
+      // The confirm sits where "Discard" was, and Keep where "Review & save" was, so the click lands on the same spot.
+      // For that reason it ignores clicks for a moment: a double-click on "Discard" must not confirm itself.
+      const yes = btn(isPhone() ? "Discard all" : `Discard ${plural(n, "change")}`, () => { confirmDiscard = false; discardNow(); }, "danger");
+      yes.disabled = true; setTimeout(() => { yes.disabled = false; }, 500);
+      inner.append(yes, btn("Keep", () => { confirmDiscard = false; renderBars(); }));
     } else {
       inner.append(btn("Discard", () => { confirmDiscard = true; renderBars(); }, "ghost"), btn("Review & save", openCommit, "primary"));
     }
@@ -1225,7 +1235,7 @@ function renderBars() {
   } else { confirmDiscard = false; sb.replaceChildren(); }
   // A running deploy is the dialog; closed, it is the "Deploying…" item above Tools on a wide screen (deployItem) and this bar
   // on a phone, where the button brings the dialog back.
-  const closed = deployClosed(), ds = !d && (closed || undeployed());
+  const closed = deployClosed(), ds = !d && !roleOpen && (closed || undeployed());
   db.classList.toggle("show", ds); db.setAttribute("aria-hidden", String(!ds));
   if (ds) {
     const inner = el("div", null, { className: "in" }), m = el("div", null, { className: "msg" });
@@ -1304,6 +1314,55 @@ function hlText(text, terms) {
   frag.append(text.slice(at));
   return frag;
 }
+let accessQ = "";   // the access page's search
+let accessSort = { by: null, dir: 1, first: new Set() };   // by: null = by name (dir 1 up / -1 down), or a role: those with it first (dir is their order), then the rest, always A→Z
+// The Access page's toggles. A click shows at once and waits here, per service (the groups the page shows for it); a short
+// pause after the last click it is written through `update service`, one command per service. Hidden or closed, it is sent
+// straight away. The overlay is dropped once the write is done and the page has reloaded what is on disk.
+// A new role is drafted in the page and only written on Apply: `accessDraft` is its name and the services ticked for it
+// (nothing on disk changes until then); `refreshDraft` is the open page's way to update its note and Apply button in place,
+// without redrawing under the cursor.
+let accessDraft = null, refreshDraft = null;
+async function startAccessDraft() {
+  await flushAccess();   // a toggle still waiting is written first: the page then holds one kind of pending change at a time
+  accessDraft = { name: "", ticks: new Set(), focus: true };
+  render();
+}
+// leaving the page with ticks in a draft would lose them
+window.addEventListener("beforeunload", e => { if (accessDraft && accessDraft.ticks.size) { e.preventDefault(); e.returnValue = ""; } });
+const accessEdits = new Map();
+let accessTimer = null, accessChain = Promise.resolve();
+const splitGroups = s => (s || "").split(",").filter(Boolean);
+const groupsNow = s => accessEdits.has(s.name) ? accessEdits.get(s.name) : splitGroups(s["auth-groups"]);
+// A toggle sends only the groups: the kernel overrides just what it is given, and the server's auth check judges the stored
+// service with that change applied (effectiveValues in refs.go).
+const accessUpdate = (name, groups) => ({ command: "update service", values: { name, "auth-groups": groups.join(",") } });
+const scheduleAccessFlush = () => { clearTimeout(accessTimer); accessTimer = setTimeout(flushAccess, 600); };
+function flushAccess() {
+  clearTimeout(accessTimer); accessTimer = null;
+  accessChain = accessChain.then(async () => {
+    const batch = [...accessEdits], failed = [];
+    for (const [name, groups] of batch) {
+      const cur = state.services.find(x => x.name === name);
+      if (!cur) continue;   // gone meanwhile
+      const was = splitGroups(cur["auth-groups"]);
+      if (groups.length === was.length && groups.every(g => was.includes(g))) continue;   // clicked back to what is on disk
+      const res = await post("/api/run", accessUpdate(name, groups));
+      if (!res.ok) failed.push({ name, res });
+    }
+    for (const [name, groups] of batch) if (accessEdits.get(name) === groups) accessEdits.delete(name);   // not one clicked again meanwhile
+    if (batch.length) await load();
+    failed.forEach(({ name, res }) => res.changed
+      ? toast(`${name}: saved, but hemma skipped it`, "warn", { title: name, text: res.output })
+      : toast(`${name}: could not change its roles`, "err", { title: name, text: res.output || res.error || "" }));
+  });
+  return accessChain;
+}
+// Leaving the page with a toggle still waiting: send it now (keepalive lets the request outlive the page).
+window.addEventListener("pagehide", () => {
+  for (const [name, groups] of accessEdits) fetch("/api/run", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify(accessUpdate(name, groups)) });
+});
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && accessEdits.size) flushAccess(); });
 let histQ = "";   // the history page's search
 
 // openHistory loads the History tab: everything (name null) or one service. It is reachable and linkable as #/history[/<name>].
@@ -1482,6 +1541,168 @@ const VIEWS = {
     info.innerHTML = ICON('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/>');   // static markup
     sub.append(`${plural(state.services.length, "service")} on ${plural(state.hosts.length, "host")} · ${on} enabled`, info);
     return [pageHead("Services", sub, search, add), groups];
+  },
+  // Access: a matrix of the auth groups (roles) each service lets in. Columns are the roles, rows the services, both alphabetical.
+  // It only reads what /api/state already says (auth-groups); a service with no groups lists none, so it is open to anyone the provider signs in.
+  Access() {
+    const groupsOf = s => (s["auth-groups"] || "").split(",").filter(Boolean);
+    const cmp = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base" });
+    // columns: the roles on disk, plus any just applied (shown at once, before the write is done)
+    const roles = [...new Set([...state.services.flatMap(groupsOf), ...[...accessEdits.values()].flat()])].sort(cmp);
+    const svcs = [...state.services].sort((a, b) => cmp(a.name, b.name));
+    const search = el("input", null, { type: "search", placeholder: isPhone() ? "Search service or role" : `Search service or role  ${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K"}`, value: accessQ, id: "search", autocomplete: "off" });
+    search.setAttribute("aria-label", "Search the access table"); search.setAttribute("aria-keyshortcuts", "Meta+K Control+K"); search.setAttribute("enterkeyhint", "search");
+    const addBtn = btn("Add role", () => startAccessDraft(), "primary"), applyBtn = btn("Apply", () => applyDraft(), "primary"), cancelBtn = btn("Cancel", () => cancelDraft());
+    const head = pageHead("Access", `${plural(roles.length, "role")} across ${plural(svcs.length, "service")}. Click a cell to give a service a role or take it away; click a name to edit the service.`, search, addBtn);
+    addBtn.disabled = !!accessDraft;   // while a role is being drafted, Apply and Cancel are in the bar at the bottom
+    if (!roles.length && !accessDraft) return [head, el("div", "No service lists a role yet. Use Add role to create the first one.", { className: "empty" })];
+    const table = el("table", null, { className: "matrix" });
+    // Sorting: the Service header flips the name order (from a role sort it goes back to by name); a role header puts the services
+    // that have that role first (a second click goes back). Whoever had the role is fixed at the click, so a row does not jump away
+    // while you toggle cells in that column. Within either group the order is by name.
+    const hr = el("tr");
+    const sortHead = (label, title, active, arrow, onclick) => {
+      const th = el("th", null, { scope: "col", title, className: "sort" + (active ? " on" : "") });
+      th.setAttribute("aria-sort", active ? (arrow === "▼" ? "descending" : "ascending") : "none");
+      const b = el("button", null, { type: "button", onclick }); b.append(el("span", label), el("span", active ? arrow : "", { className: "arr" }));
+      th.append(b); return th;
+    };
+    const paintHead = () => {
+      hr.replaceChildren(sortHead("Service", "Sort by name", accessSort.by === null, accessSort.dir > 0 ? "▲" : "▼", () => {
+        if (accessSort.by !== null) accessSort.by = null; else accessSort.dir = -accessSort.dir;
+        paintHead(); draw();
+      }));
+      roles.forEach(r => hr.append(sortHead(r, accessSort.by === r ? "Reverse the order" : `Show the services with ${r} first`, accessSort.by === r, accessSort.dir > 0 ? "▲" : "▼", () => {
+        if (accessSort.by === r) accessSort.dir = -accessSort.dir;
+        else { accessSort.by = r; accessSort.dir = 1; accessSort.first = new Set(svcs.filter(s => groupsNow(s).includes(r)).map(s => s.name)); }
+        paintHead(); draw();
+      })));
+      if (accessDraft) hr.append(draftTh);
+    };
+    table.append(el("thead", null, {}), el("tbody"));
+    table.tHead.append(hr);
+    const empty = el("div", "No service matches.", { className: "empty", hidden: true });
+    // A row matches on the service's name or address, or on any role it lists.
+    const draw = () => {
+      const needle = accessQ.trim().toLowerCase(), body = table.tBodies[0];
+      body.replaceChildren();
+      const shown = svcs.filter(s => !needle || s.name.toLowerCase().includes(needle) || (s.fqdn || "").toLowerCase().includes(needle) || groupsOf(s).some(g => g.toLowerCase().includes(needle)));
+      const { by, dir, first } = accessSort;
+      // by a role, `dir` turns only the services that have it; the others below stay A→Z
+      shown.sort((a, b) => (by === null ? 0 : first.has(b.name) - first.has(a.name)) || (by !== null && !first.has(a.name) ? 1 : dir) * cmp(a.name, b.name));
+      shown.forEach(s => {
+        const tr = el("tr", null, { className: s.disabled ? "off" : "" });
+        // the name opens the service's form, like a row on the Services page
+        const open = () => openCmd("update service", { ...s, __lock: "name" });
+        const th = el("th", null, { scope: "row", className: "click", tabIndex: 0, title: s.disabled ? s.name + " (disabled)" : s.name, onclick: open });
+        th.setAttribute("role", "button");
+        // a disabled service says so, as on the Services page
+        const cell = el("div", null, { className: "nmcell" }); cell.append(el("span", s.name, { className: "nmtxt" }));
+        if (s.disabled) cell.append(el("span", "Disabled", { className: "tag" }));
+        th.append(cell);
+        th.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
+        tr.append(th);
+        // A cell toggles the role for the service. Groups only mean something when the auth provider is asked (forward / oidc);
+        // for none / external the row is shown but its cells are inert.
+        const editable = s["auth-mode"] === "forward" || s["auth-mode"] === "oidc";
+        // while a new role is being drafted the existing columns are locked: one kind of change at a time
+        const locked = editable && !!accessDraft;
+        roles.forEach(r => {
+          const td = el("td");
+          const paint = () => {
+            const on = groupsNow(s).includes(r);
+            td.textContent = on ? "●" : ""; td.className = (on ? "yes" : "") + (!editable ? " na" : locked ? " frozen" : " tog");
+            td.setAttribute(editable ? "aria-checked" : "aria-hidden", editable ? String(on) : "true");
+          };
+          paint();
+          if (locked) { td.setAttribute("role", "switch"); td.setAttribute("aria-disabled", "true"); td.setAttribute("aria-label", `${s.name}: ${r}`); td.title = "Apply or cancel the new role first"; }
+          else if (editable) {
+            td.tabIndex = 0; td.setAttribute("role", "switch"); td.setAttribute("aria-label", `${s.name}: ${r}`);
+            const toggle = async () => {
+              const have = groupsNow(s), on = have.includes(r);
+              const next = on ? have.filter(g => g !== r) : [...have, r].sort(cmp);
+              if (on && !next.length && !await ask("Remove the last role?", `${s.name} would no longer be limited to any role, so anyone the auth provider signs in could open it.`, { ok: "Remove", danger: true })) return;
+              accessEdits.set(s.name, next); paint(); scheduleAccessFlush();
+            };
+            td.onclick = toggle;
+            td.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } };
+          } else td.title = `Auth mode ${s["auth-mode"] || "none"}: groups don't apply`;
+          tr.append(td);
+        });
+        if (accessDraft) {   // the new role's column: tick the services it applies to
+          const td = el("td");
+          if (!editable) { td.className = "na"; td.setAttribute("aria-hidden", "true"); td.title = `Auth mode ${s["auth-mode"] || "none"}: groups don't apply`; }
+          else {
+            const paint = () => {
+              const on = accessDraft.ticks.has(s.name);
+              td.textContent = on ? "●" : ""; td.className = "draft tog" + (on ? " yes" : ""); td.setAttribute("aria-checked", String(on));
+            };
+            paint(); td.tabIndex = 0; td.setAttribute("role", "switch"); td.setAttribute("aria-label", `${s.name}: the new role`);
+            const toggle = () => {
+              if (accessDraft.ticks.has(s.name)) accessDraft.ticks.delete(s.name); else accessDraft.ticks.add(s.name);
+              paint(); if (refreshDraft) refreshDraft();
+            };
+            td.onclick = toggle;
+            td.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } };
+          }
+          tr.append(td);
+        }
+        body.append(tr);
+      });
+      empty.hidden = shown.length > 0; wrap.hidden = !shown.length;
+    };
+    const wrap = el("div", null, { className: "matrix-wrap", tabIndex: 0 });
+    wrap.setAttribute("role", "region"); wrap.setAttribute("aria-label", "Roles by service");
+    wrap.append(table);
+    // ── a new role: name it in the header, tick services, Apply ──
+    const draftIn = el("input", null, { type: "text", placeholder: "new role", autocomplete: "off", spellcheck: false, value: accessDraft ? accessDraft.name : "" });
+    draftIn.setAttribute("aria-label", "Name of the new role"); draftIn.setAttribute("autocapitalize", "none");
+    const draftTh = el("th", null, { scope: "col", className: "draft" }); draftTh.append(draftIn);
+    // the bar at the bottom while drafting: what the draft would do, then Cancel / Apply (#rolebar sits where the unsaved-changes bar does)
+    const noteEl = el("span"), barMsg = el("div", null, { className: "msg" });
+    barMsg.append(el("b", "New role"), noteEl);
+    const barIn = el("div", null, { className: "in" });
+    barIn.append(el("span", null, { className: "dot" }), barMsg, cancelBtn, applyBtn);
+    // what the draft would do, as a message: { ok: may Apply, msg, warn }
+    const draftCheck = () => {
+      const n = accessDraft.name.trim(), k = accessDraft.ticks.size;
+      if (!n) return { ok: false, msg: "Name the role, then tick the services it applies to." };
+      if (!RX.name.test(n)) return { ok: false, msg: "A role name uses letters, digits, dots, dashes and underscores.", warn: true };
+      const taken = roles.find(r => r.toLowerCase() === n.toLowerCase());
+      if (taken) return { ok: false, msg: `“${taken}” already has a column: tick the services there instead.`, warn: true };
+      // Whether anyone is in the group is not said here: a new role has no users yet. `hemma doctor` (the Issues page) advises on a group nobody is in.
+      return { ok: k > 0, msg: k ? `${plural(k, "service")} will get “${n}”.` : `Tick the services “${n}” applies to.` };
+    };
+    refreshDraft = !accessDraft ? null : () => {
+      const c = draftCheck();
+      noteEl.textContent = c.msg; barMsg.classList.toggle("warn", !!c.warn);
+      applyBtn.disabled = !c.ok;
+    };
+    const applyDraft = () => {
+      if (!accessDraft || !draftCheck().ok) return;
+      const role = accessDraft.name.trim(), ticked = accessDraft.ticks;
+      svcs.filter(s => ticked.has(s.name)).forEach(s => accessEdits.set(s.name, [...groupsNow(s), role].sort(cmp)));
+      accessDraft = null; refreshDraft = null;
+      render(); flushAccess();   // the column shows at once; the writes follow (one `update service` per service, as a toggle)
+    };
+    const cancelDraft = () => { accessDraft = null; refreshDraft = null; render(); };
+    draftIn.oninput = () => { accessDraft.name = draftIn.value; refreshDraft(); };
+    draftIn.onkeydown = e => {
+      if (e.key === "Enter") { e.preventDefault(); applyDraft(); }
+      else if (e.key === "Escape") { e.preventDefault(); cancelDraft(); }
+    };
+    if (accessDraft) {
+      const rb = $("#rolebar"); rb.replaceChildren(barIn); rb.classList.add("show"); rb.setAttribute("aria-hidden", "false");
+      refreshDraft();
+    }
+    if (accessDraft) { if (accessDraft.focus) { accessDraft.focus = false; requestAnimationFrame(() => draftIn.focus()); } }
+    search.oninput = () => { accessQ = search.value; draw(); };
+    search.onkeydown = e => {
+      if (e.key === "Enter") { e.preventDefault(); search.blur(); }
+      else if (e.key === "Escape") { if (accessQ) { accessQ = ""; search.value = ""; draw(); } else search.blur(); }
+    };
+    paintHead(); draw();
+    return [head, wrap, empty];
   },
   Infrastructure() {
     const em = entMap();
@@ -1804,7 +2025,12 @@ function renderTabs() {
     TABS.forEach(t => {
       let b = nav.querySelector(`button[data-tab="${t}"]`);
       if (!b) {
-        b = el("button", null, { type: "button", onclick: () => {
+        b = el("button", null, { type: "button", onclick: async () => {
+          // a new role with services ticked is only in the page: leaving would lose it
+          if (tab === "Access" && t !== "Access" && accessDraft && accessDraft.ticks.size) {
+            if (!await ask("Discard the new role?", "The role has services ticked but is not applied yet. Leaving the page throws it away.", { ok: "Discard", danger: true })) return;
+            accessDraft = null; refreshDraft = null;
+          }
           if (t === "History") {   // History loads fresh each time you open it, and keeps the service it was filtered to ("All history" clears that)
             const name = hist ? hist.name : null;
             openHistory(name, location.hash !== "#/history" + (name ? "/" + encodeURIComponent(name) : ""));
@@ -1873,7 +2099,7 @@ window.addEventListener("keydown", e => {
   if (document.querySelector("dialog[open]")) return;
   e.preventDefault();
   const focus = () => { const s = $("#search"); if (s) { s.focus(); s.select(); } };
-  if (tab !== "Services" && tab !== "History") { tab = "Services"; history.pushState(null, "", "#/services"); render(); requestAnimationFrame(focus); } else focus();
+  if (tab !== "Services" && tab !== "History" && tab !== "Access") { tab = "Services"; history.pushState(null, "", "#/services"); render(); requestAnimationFrame(focus); } else focus();
 });
 // ── Recovery: services.yaml cannot be loaded ──────────────────────────────────────────────────────────────────
 // Every typed form needs a loadable file, so none of them can fix this. Offer what can: put back the last saved

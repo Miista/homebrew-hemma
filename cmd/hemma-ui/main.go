@@ -266,7 +266,7 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	argv, err := c.build(in.Values)
 	if err == nil {
-		err = checkAuthFields(c, in.Values)
+		err = checkAuthFields(c, s.effectiveValues(c, in.Values))
 	}
 	if err == nil {
 		err = s.checkState(c, in.Values)
