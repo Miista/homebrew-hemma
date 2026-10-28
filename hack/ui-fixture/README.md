@@ -59,3 +59,11 @@ mode for both commands: `--with-auth` without `--profile auth` makes `apply` fai
 Not covered: `hemma verify` (it digs against a real pihole), and the auth provider unless you use
 `--with-auth`. Requires ports/names `pihole`, `caddy`, `cloudflared`
 and subnet `172.28.0.0/24` to be free.
+
+**Seeing the Issues page with something on it.** `make fixture-advisories` puts a mock of (nearly) every finding
+`hemma doctor` can raise into the fixture repo as one commit; `make fixture-advisories-reset` reverts it. It refuses while the repo has
+unsaved changes. It needs a fixture with `auth_service` set and the auth provider's config on one host (it finds the hosts and files it edits
+by looking, and names none), and its header says which findings it mocks and which it leaves out because they would overlap or
+contradict one another (for example "access control not enforced" against "defined twice", or anything that needs `auth_service`
+unset). The commit goes straight to the fixture's own remote, so the UI does not offer to deploy the mocks. The deploy ssh-readiness
+finding needs no mock: remote hosts with an ssh destination already raise it.

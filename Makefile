@@ -10,7 +10,7 @@ GOFILES  = cmd internal tools
 .DEFAULT_GOAL := help
 .PHONY: help build hemma check fmt fmt-check vet test test-fast test-race \
         snapshots snapshots-update man completions \
-        ui-binary ui-image fixture-redeploy fixture-logs fixture-verify fixture-import fixture-import-authelia fixture-ps fixture-reset clean
+        ui-binary ui-image fixture-redeploy fixture-logs fixture-verify fixture-import fixture-import-authelia fixture-advisories fixture-advisories-reset fixture-ps fixture-reset clean
 
 help: ## list the targets
 	@awk 'BEGIN{FS=":.*## "} /^[a-zA-Z_-]+:.*## /{printf "  \033[1m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -105,6 +105,12 @@ fixture-import-authelia: ## give the fixture a SECRET-FREE Authelia config from 
 
 fixture-ps: ## fixture containers and their status
 	cd hack/ui-fixture && $(COMPOSE) ps
+
+fixture-advisories: ## put a mock of (nearly) every doctor finding into the fixture repo, as one commit: see hack/ui-fixture/advisories.sh
+	hack/ui-fixture/advisories.sh apply
+
+fixture-advisories-reset: ## undo fixture-advisories (reverts that commit)
+	hack/ui-fixture/advisories.sh reset
 
 fixture-reset: ui-binary ## DESTRUCTIVE: wipe and rebuild the fixture (repo + account). Needs CONFIRM=yes
 	@[ "$(CONFIRM)" = "yes" ] || { echo "This deletes the fixture repo and the UI account. Re-run with CONFIRM=yes."; exit 1; }
