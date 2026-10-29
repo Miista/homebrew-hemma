@@ -668,6 +668,13 @@ function svcFormIcons(byName, offered, enabled, prefill) {
   paint(); ask();
 }
 
+// The auth mode of the auth service: always none, shown as a fact instead of a picker (see openCmd).
+function portalMode() {
+  const node = el("div", null, { className: "hint" });
+  node.append(el("b", "None, always. "), "This is the auth service: it is the sign-in page itself, so gating it with itself would create a redirect loop.");
+  return { node, get: () => "none", check: () => "" };
+}
+
 // openCmd renders a form from the command's schema; prefill pre-populates it.
 function openCmd(key, prefill = {}) {
   const c = cmds[key];
@@ -679,8 +686,12 @@ function openCmd(key, prefill = {}) {
   const ctl = [];
   let card = box;
   const hideName = key === "update service" && prefill.__lock === "name";   // the title already is the name
+  // The auth service (defaults.auth_service) can never have an auth mode: gating the sign-in page with itself would loop
+  // (the kernel refuses it). So its form shows the mode as fixed text, not a choice — which also keeps groups, bypass paths
+  // and the policy hidden, since they only exist for a mode that asks the provider.
+  const portal = key === "update service" && !!prefill.name && prefill.name === (state.settings.find(x => x.key === "auth-service") || {}).value;
   for (const fd of c.fields) {
-    const k = control(fd, prefill, prefill.__lock === fd.name);
+    const k = portal && fd.name === "auth-mode" ? portalMode() : control(fd, prefill, prefill.__lock === fd.name);
     if (fd.name === "name" && k.node.tagName === "INPUT" && !k.node.readOnly) k.node.placeholder = key === "add host" ? "e.g. nas" : "e.g. docsapp";
     const title = fd.label;
     // A list holds buttons, so it must not live inside a <label> (tapping the title would press one).
