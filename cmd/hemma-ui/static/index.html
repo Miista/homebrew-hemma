@@ -135,7 +135,12 @@ window.addEventListener("popstate", () => {
   if (t === tab) return;
   tab = t; render(); if (t === "Issues") checkIssues();
 });
-const isPhone = () => matchMedia("(max-width: 719px)").matches;
+// The phone layout (top bar, bottom tabs, the page scrolls) is for a narrow screen AND for a phone held sideways: landscape is wider
+// than 720px but only ~400px tall, and a 236px sidebar would eat the width a table needs. style.css uses the same condition.
+const PHONE = "(max-width: 719px), (pointer: coarse) and (max-height: 500px)";
+const isPhone = () => matchMedia(PHONE).matches;
+// turning the phone: the CSS switches layout at once; what the page builds with isPhone() (placeholders, menus) follows
+matchMedia(PHONE).addEventListener("change", () => { if (!broken) render(); });
 // Back to the top of the page. On a phone the page itself scrolls (so that tapping the iOS status bar scrolls it to the top, which iOS does only
 // for the page, not for a scrolling box inside it); on a wide screen the content area scrolls beside the sidebar.
 const scrollToTop = () => { if (isPhone()) window.scrollTo(0, 0); else $("#main").scrollTop = 0; };

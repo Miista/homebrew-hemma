@@ -479,7 +479,9 @@ button.info svg { width: 17px; height: 17px; }
 #etext { width: 100%; height: min(52vh, 420px); padding: 12px; font: 13px/1.55 var(--mono); tab-size: 4; white-space: pre; overflow: auto; resize: vertical; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--field); color: var(--ink); }
 
 /* ---------- phone ---------- */
-@media (max-width: 719px) {
+/* "Phone" = a narrow screen, or a touch screen held sideways (wider than 720px, but ~400px tall: a sidebar would eat the width).
+   Every block below that says so repeats the same condition; the page script has it as PHONE. */
+@media (max-width: 719px), (pointer: coarse) and (max-height: 500px) {
   :root { --h: 44px; }
   body { flex-direction: column; }
   #side { display: none; }
@@ -569,8 +571,8 @@ button.primary.deploy:hover:not(:disabled) { background: var(--go); filter: brig
 #bmenu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--line); }
 #bmenu .mver { padding: 4px 12px 2px; font-size: 12.5px; color: var(--muted); }
 #top { position: relative; }
-@media (max-width: 719px) { #burger { display: grid; } #side { display: none; } }
-@media (min-width: 720px) { #bmenu { display: none !important; } }
+@media (max-width: 719px), (pointer: coarse) and (max-height: 500px) { #burger { display: grid; } #side { display: none; } }
+@media (min-width: 720px) and (not ((pointer: coarse) and (max-height: 500px))) { #bmenu { display: none !important; } }
 
 /* a commit in the history can hold several changes: each is told apart by a small header, then its own table */
 .cblk + .cblk { border-top: 1px solid var(--line); }
@@ -588,7 +590,7 @@ button.chgh:hover:not(:disabled) { background: var(--hover); }
 
 /* A phone scrolls the PAGE, not a box inside it: iOS scrolls to the top when the status bar is tapped, but only for the page. The header
    sticks to the top and the tab bar and the bars/toast are fixed to the bottom, as they were when #main scrolled. */
-@media (max-width: 719px) {
+@media (max-width: 719px), (pointer: coarse) and (max-height: 500px) {
   html, body { height: auto; }
   body { display: block; overflow: visible; }
   #app { display: block; min-height: 100dvh; }
@@ -598,6 +600,15 @@ button.chgh:hover:not(:disabled) { background: var(--hover); }
   #mtabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 12; }
   .bar, .toast { position: fixed; }
   html:has(dialog[open]), body:has(dialog[open]) { overflow: hidden; }   /* a dialog is open: the page behind does not scroll */
+}
+
+/* Held sideways there is ~400px of height, so the chrome has to be slim: each tab puts its label beside its icon (the bar is 44px, not 64), and
+   the page keeps less room under its last row. The width is what the phone layout is for. */
+@media (pointer: coarse) and (max-height: 500px) and (min-width: 720px) {
+  :root { --nav-h: 44px; }
+  #mtabs button { flex-direction: row; gap: 8px; }
+  #mtabs .count { position: static; margin-left: 2px; box-shadow: none; }
+  #page { padding: 14px 24px calc(var(--nav-h) + 72px + env(safe-area-inset-bottom)); }
 }
 
 /* the loading spinner: a clock face — the history — with a hand sweeping round, a faint trail behind it and a spark orbiting the rim */
