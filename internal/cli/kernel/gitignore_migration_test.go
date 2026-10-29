@@ -25,8 +25,13 @@ func TestCheckCaddyfileImports_RewritesLegacyLine(t *testing.T) {
 			}
 			cfg := &config.Config{Hosts: map[string]config.Host{"web": {IP: "192.0.2.1"}}}
 
-			if problems := checkCaddyfileImports(stdEnv(), root, cfg, true); problems != 0 {
-				t.Errorf("problems = %d, want 0", problems)
+			found := diagCaddyImports(root, cfg)
+			if Problems(found) != 1 || !found[0].Fixable {
+				t.Fatalf("an outdated import should be one fixable problem, got %+v", found)
+			}
+			runFixers(stdEnv(), found)
+			if problems := Problems(diagCaddyImports(root, cfg)); problems != 0 {
+				t.Errorf("problems after the fix = %d, want 0", problems)
 			}
 			got, _ := os.ReadFile(cf)
 			if strings.Contains(string(got), legacy) || !strings.Contains(string(got), "hemma.generated.caddy") {

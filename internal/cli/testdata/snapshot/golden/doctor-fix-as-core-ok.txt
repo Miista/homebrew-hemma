@@ -2,8 +2,10 @@ $ hemma doctor --fix
 # machine: host="core" tools="ok"
 exit: 0
 --- stdout ---
-✓ No generated files are gitignored.
 ✓ Reconciled 43 generated files (43 created, 0 updated, 0 removed).
+
+✓ No generated files are gitignored.
+✓ Generated files are in sync with services.yaml.
 ✓ Deploy readiness: 1 remote host in known_hosts.
 
 ⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
@@ -15,6 +17,8 @@ exit: 0
 These advisories require manual edits (see their fix: lines) — 'hemma doctor --fix' does not resolve them.
 --- stderr ---
 --- external commands ---
+git -C <repo> check-ignore --stdin
+ssh-keygen -F 192.0.2.20
 git -C <repo> check-ignore --stdin
 ssh-keygen -F 192.0.2.20
 --- files ---

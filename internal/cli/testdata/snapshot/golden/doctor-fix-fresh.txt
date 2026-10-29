@@ -1,8 +1,10 @@
 $ hemma doctor --fix
 exit: 0
 --- stdout ---
-Skipped gitignore check (git not available or not a repository).
 ✓ Reconciled 43 generated files (43 created, 0 updated, 0 removed).
+
+Skipped gitignore check (git not available or not a repository).
+✓ Generated files are in sync with services.yaml.
 
 ⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
 

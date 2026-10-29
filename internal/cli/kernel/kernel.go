@@ -568,28 +568,38 @@ func authConfigWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 // paths like /config/... are untouched). Dimming follows the same TTY /
 // NO_COLOR gate as the glyphs; piped output stays plain.
 func printAdvisories(env *Env, repoRoot string, advs []auth.Advisory) {
-	rel := func(s string) string {
-		return strings.ReplaceAll(s, repoRoot+string(filepath.Separator), "")
-	}
 	for i, a := range advs {
 		if i > 0 {
 			fmt.Fprintln(env.Out)
 		}
-		fmt.Fprintf(env.Out, "%s %s\n", warn, rel(a.Headline))
-		for _, b := range a.Body {
-			fmt.Fprintf(env.Out, "    %s%s%s\n", dimOn, rel(b), dimOff)
-		}
-		for j, f := range a.Fix {
-			if j == 0 {
-				fmt.Fprintf(env.Out, "    %sfix:  %s%s\n", dimOn, rel(f), dimOff)
-			} else {
-				fmt.Fprintf(env.Out, "          %s%s%s\n", dimOn, rel(f), dimOff)
-			}
-		}
-		if a.Then != "" {
-			fmt.Fprintf(env.Out, "    %sthen: %s%s\n", dimOn, a.Then, dimOff)
+		head, lines := advisoryText(repoRoot, a)
+		fmt.Fprintf(env.Out, "%s %s\n", warn, head)
+		for _, l := range lines {
+			fmt.Fprintln(env.Out, l)
 		}
 	}
+}
+
+// advisoryText is the house styling of one advisory: its headline (after the glyph) and the lines under it. doctor builds the
+// same text into its Findings, so the CLI prints an advisory the same way wherever it appears.
+func advisoryText(repoRoot string, a auth.Advisory) (headline string, lines []string) {
+	rel := func(s string) string {
+		return strings.ReplaceAll(s, repoRoot+string(filepath.Separator), "")
+	}
+	for _, b := range a.Body {
+		lines = append(lines, fmt.Sprintf("    %s%s%s", dimOn, rel(b), dimOff))
+	}
+	for j, f := range a.Fix {
+		if j == 0 {
+			lines = append(lines, fmt.Sprintf("    %sfix:  %s%s", dimOn, rel(f), dimOff))
+		} else {
+			lines = append(lines, fmt.Sprintf("          %s%s%s", dimOn, rel(f), dimOff))
+		}
+	}
+	if a.Then != "" {
+		lines = append(lines, fmt.Sprintf("    %sthen: %s%s", dimOn, a.Then, dimOff))
+	}
+	return rel(a.Headline), lines
 }
 
 // oidcClientWarnings delegates the read-only OIDC checks to the auth

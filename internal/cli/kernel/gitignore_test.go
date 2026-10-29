@@ -219,18 +219,24 @@ func writeAuthComposeFixture(t *testing.T, dir, composeYAML string) {
 	}
 }
 
-// The check reports the missing import (its return value is the count), but
-// cmdDoctor deliberately does NOT add it to the exit-code tally — see the
-// call site. Enforcement is apply's job (TestApply-side coverage below).
-func TestCheckTrustedProxiesImport_MissingReportsProblem(t *testing.T) {
+// The check reports the missing import, but it deliberately does NOT count toward
+// the exit code (see diagTrustedProxies). Enforcement is apply's job (TestApply-side coverage below).
+func TestDiagTrustedProxies_MissingIsReportedButDoesNotCount(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "appbox", config.DefaultCaddyDataDir), 0o755)
 	os.WriteFile(filepath.Join(dir, "appbox", config.DefaultCaddyDataDir, "Caddyfile"),
 		[]byte("import hemma.generated.caddy\n"), 0o644)
 	cfg := &config.Config{Hosts: map[string]config.Host{"appbox": {IP: "192.0.2.2"}}}
 
-	if got := checkTrustedProxiesImport(stdEnv(), dir, cfg, false); got != 1 {
-		t.Fatalf("expected 1 reported problem for missing import, got %d", got)
+	fs := diagTrustedProxies(dir, cfg)
+	if reported(fs) != 1 {
+		t.Fatalf("expected 1 reported problem for missing import, got %d", reported(fs))
+	}
+	if Problems(fs) != 0 || fs[0].Fixable {
+		t.Errorf("an advisory neither counts toward the exit code nor is fixable: %+v", fs[0])
+	}
+	if out := printed(t, fs); !strings.Contains(out, "add it inside your global options block") || !strings.Contains(out, "import hemma.trusted_proxies.generated.caddy") {
+		t.Errorf("the finding should say what to add and where:\n%s", out)
 	}
 }
 
@@ -248,14 +254,14 @@ func TestDoctor_TrustedProxiesImportDoesNotBlockCleanExit(t *testing.T) {
 	}
 }
 
-func TestCheckTrustedProxiesImport_PresentIsSilent(t *testing.T) {
+func TestDiagTrustedProxies_PresentIsFine(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "appbox", config.DefaultCaddyDataDir), 0o755)
 	os.WriteFile(filepath.Join(dir, "appbox", config.DefaultCaddyDataDir, "Caddyfile"),
 		[]byte("{\n\tservers {\n\t\timport hemma.trusted_proxies.generated.caddy\n\t}\n}\n"), 0o644)
 	cfg := &config.Config{Hosts: map[string]config.Host{"appbox": {IP: "192.0.2.2"}}}
 
-	if got := checkTrustedProxiesImport(stdEnv(), dir, cfg, false); got != 0 {
+	if got := reported(diagTrustedProxies(dir, cfg)); got != 0 {
 		t.Fatalf("expected 0 problems when import present, got %d", got)
 	}
 }
@@ -264,7 +270,7 @@ func TestCheckTrustedProxiesImport_PresentIsSilent(t *testing.T) {
 // global options block the import belongs in is hand-maintained territory
 // (Caddy allows exactly one per file). The finding still surfaces on every
 // mutation, so it stays discoverable without hemma editing that block.
-func TestCheckTrustedProxiesImport_FixNeverEditsCaddyfile(t *testing.T) {
+func TestDiagTrustedProxies_FixNeverEditsCaddyfile(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		content string
@@ -279,8 +285,12 @@ func TestCheckTrustedProxiesImport_FixNeverEditsCaddyfile(t *testing.T) {
 			os.WriteFile(cfPath, []byte(tc.content), 0o644)
 			cfg := &config.Config{Hosts: map[string]config.Host{"appbox": {IP: "192.0.2.2"}}}
 
-			// Still a problem in --fix mode: it is not mechanically fixable.
-			if got := checkTrustedProxiesImport(stdEnv(), dir, cfg, true); got != 1 {
+			// Still a problem after --fix: it is not mechanically fixable (no finding carries a fixer).
+			fs := diagTrustedProxies(dir, cfg)
+			if log := runFixers(stdEnv(), fs); len(log) != 0 {
+				t.Fatalf("--fix has nothing to run for it, got %v", log)
+			}
+			if got := reported(diagTrustedProxies(dir, cfg)); got != 1 {
 				t.Fatalf("expected the problem to persist under --fix, got %d", got)
 			}
 			b, _ := os.ReadFile(cfPath)
@@ -291,11 +301,11 @@ func TestCheckTrustedProxiesImport_FixNeverEditsCaddyfile(t *testing.T) {
 	}
 }
 
-func TestCheckTrustedProxiesImport_NoCaddyfileSkipped(t *testing.T) {
+func TestDiagTrustedProxies_NoCaddyfileSkipped(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{Hosts: map[string]config.Host{"appbox": {IP: "192.0.2.2"}}}
-	if got := checkTrustedProxiesImport(stdEnv(), dir, cfg, false); got != 0 {
-		t.Fatalf("host with no Caddyfile should be skipped, got %d problems", got)
+	if got := diagTrustedProxies(dir, cfg); len(got) != 0 {
+		t.Fatalf("host with no Caddyfile should be skipped, got %+v", got)
 	}
 }
 
@@ -448,7 +458,7 @@ func TestDoctor_AdvisoriesOnly_NoFixHint(t *testing.T) {
 // An older hemma wrote broad rules into its managed block. doctor notices a block that is not what
 // it would write now — even when every generated file is already tracked (so nothing is "ignored")
 // — and --fix rewrites it in place, leaving the rest of the file alone.
-func TestCheckManagedBlock_StaleBlockIsReportedAndFixed(t *testing.T) {
+func TestDiagManagedBlock_StaleBlockIsReportedAndFixed(t *testing.T) {
 	old := "*.env\n**/data/**\n" +
 		giBlockStart + "\n# old comment\n!**/data/\n!**/data/**/\n!**/data/**/*.generated.conf\n!**/caddy/data/**/*.caddy\n" + giBlockEnd + "\n" +
 		"# hand-written, after the block\n!edge/keep/me\n"
@@ -457,18 +467,20 @@ func TestCheckManagedBlock_StaleBlockIsReportedAndFixed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var problems int
-	out := captureStdout(t, func() { problems = checkManagedBlock(stdEnv(), gi, false) })
-	if problems != 1 || !strings.Contains(out, "out of date") {
-		t.Fatalf("stale block without --fix: problems=%d out=%q", problems, out)
+	fs := diagManagedBlock(gi)
+	if out := printed(t, fs); Problems(fs) != 1 || !fs[0].Fixable || !strings.Contains(out, "out of date") {
+		t.Fatalf("stale block: problems=%d fixable=%v out=%q", Problems(fs), fs[0].Fixable, out)
 	}
 	if b, _ := os.ReadFile(gi); string(b) != old {
-		t.Fatal("a check without --fix must not touch the file")
+		t.Fatal("a diagnosis must not touch the file")
 	}
 
-	out = captureStdout(t, func() { problems = checkManagedBlock(stdEnv(), gi, true) })
-	if problems != 0 || !strings.Contains(out, "Updated") {
-		t.Fatalf("stale block with --fix: problems=%d out=%q", problems, out)
+	log := runFixers(stdEnv(), fs)
+	if len(log) != 1 || !strings.Contains(log[0], "Updated") {
+		t.Fatalf("the fix should say what it did, got %v", log)
+	}
+	if problems := Problems(diagManagedBlock(gi)); problems != 0 {
+		t.Fatalf("stale block after the fix: problems=%d", problems)
 	}
 	b, _ := os.ReadFile(gi)
 	got, found := managedBlockRules(string(b))
@@ -481,34 +493,40 @@ func TestCheckManagedBlock_StaleBlockIsReportedAndFixed(t *testing.T) {
 		}
 	}
 	// A second run finds nothing to do, and the file does not change (idempotent).
-	out = captureStdout(t, func() { problems = checkManagedBlock(stdEnv(), gi, true) })
+	again := diagManagedBlock(gi)
+	out := printed(t, again)
+	if log := runFixers(stdEnv(), again); len(log) != 0 {
+		t.Errorf("a second run has nothing to fix, got %v", log)
+	}
 	b2, _ := os.ReadFile(gi)
-	if problems != 0 || string(b2) != string(b) || !strings.Contains(out, "current") {
-		t.Errorf("second run: problems=%d changed=%v out=%q", problems, string(b2) != string(b), out)
+	if Problems(again) != 0 || string(b2) != string(b) || !strings.Contains(out, "current") {
+		t.Errorf("second run: problems=%d changed=%v out=%q", Problems(again), string(b2) != string(b), out)
 	}
 }
 
 // Blanket rules outside hemma's block (the predecessor tool's) are advised about, never edited, and
 // do not count as a problem; a repo with no hemma block is left without one.
-func TestCheckManagedBlock_StrayBlanketRulesAreAdvisoryOnly(t *testing.T) {
+func TestDiagManagedBlock_StrayBlanketRulesAreAdvisoryOnly(t *testing.T) {
 	stray := "**/data/**\n# >>> shd managed >>>\n!**/data/\n!**/data/**/\n# <<< shd managed <<<\n"
 	gi := filepath.Join(t.TempDir(), ".gitignore")
 	if err := os.WriteFile(gi, []byte(stray), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	var problems int
-	out := captureStdout(t, func() { problems = checkManagedBlock(stdEnv(), gi, true) })
-	if problems != 0 {
-		t.Errorf("an advisory must not count as a problem, got %d", problems)
+	fs := diagManagedBlock(gi)
+	if Problems(fs) != 0 {
+		t.Errorf("an advisory must not count as a problem, got %d", Problems(fs))
 	}
-	if !strings.Contains(out, "blanket data/ rules") || !strings.Contains(out, "!**/data/") {
+	if out := printed(t, fs); !strings.Contains(out, "blanket data/ rules") || !strings.Contains(out, "!**/data/") {
 		t.Errorf("expected the advisory naming the rules, got %q", out)
+	}
+	if log := runFixers(stdEnv(), fs); len(log) != 0 {
+		t.Errorf("hemma has nothing to run for rules it does not own, got %v", log)
 	}
 	if b, _ := os.ReadFile(gi); string(b) != stray {
 		t.Errorf("hemma must not edit rules it does not own:\n%s", b)
 	}
 	// No file at all: nothing to check.
-	if n := checkManagedBlock(stdEnv(), filepath.Join(t.TempDir(), "absent"), true); n != 0 {
-		t.Errorf("missing .gitignore: problems = %d", n)
+	if fs := diagManagedBlock(filepath.Join(t.TempDir(), "absent")); len(fs) != 0 {
+		t.Errorf("missing .gitignore: %+v", fs)
 	}
 }
