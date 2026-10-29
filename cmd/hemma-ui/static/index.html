@@ -1343,6 +1343,9 @@ let accessDraft = null, refreshDraft = null;
 // for the rows scrolling beneath it to show through). `accessStuck` is set by the open Access page (render() clears it); the phone scrolls
 // the window, the wide screen scrolls #main, so both are listened to, once.
 let accessStuck = null;
+// How far the table is scrolled sideways. Toggling a role writes, reloads and RE-RENDERS the page, which builds the table's scroll box anew
+// (and a new box starts at the left), so the position is kept here and put back after each render.
+let accessScrollX = 0;
 window.addEventListener("scroll", () => { if (accessStuck) accessStuck(); }, { passive: true });
 $("#main").addEventListener("scroll", () => { if (accessStuck) accessStuck(); }, { passive: true });
 async function startAccessDraft() {
@@ -1697,7 +1700,9 @@ const VIEWS = {
     const headBox = el("div", null, { className: "matrix-head" });
     headBox.append(hTable);
     headBox.style.top = (isPhone() ? ($("#top") ? $("#top").offsetHeight : 0) : 0) + "px";
-    wrap.addEventListener("scroll", () => { headBox.scrollLeft = wrap.scrollLeft; });
+    wrap.addEventListener("scroll", () => { accessScrollX = wrap.scrollLeft; headBox.scrollLeft = wrap.scrollLeft; });
+    // the page is not in the document yet (render() puts it there after this returns): restore the position on the next frame, before it paints
+    requestAnimationFrame(() => { wrap.scrollLeft = accessScrollX; headBox.scrollLeft = accessScrollX; });
     // stuck = it has reached the line it sticks at (under the phone's top bar, or the top of the scrolling area)
     const stickAt = () => (isPhone() ? 0 : $("#main").getBoundingClientRect().top) + (parseFloat(headBox.style.top) || 0);
     // The corners follow the scroll: how far the header still is from that line sets its radius — the full radius from REACH px away,
@@ -2155,6 +2160,7 @@ $("#top").addEventListener("keydown", e => { if (e.key === "Escape" && !$("#bmen
 function render() {
   renderTabs();
   accessStuck = null;   // a page that sticks something sets it again below
+  if (tab !== "Access") accessScrollX = 0;   // leaving the table: coming back starts at the left again
   $("#view").replaceChildren(...VIEWS[tab]());
   renderMenus();
   renderHint();
