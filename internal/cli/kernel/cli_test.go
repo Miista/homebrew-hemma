@@ -407,6 +407,62 @@ func TestRun_SetAuthServiceRejectsUnknown(t *testing.T) {
 	}
 }
 
+// The auth_service can never have an auth mode: refused BEFORE anything is written (the planner would only skip the entry
+// afterwards), by update, by add, and by naming a service that already has one.
+func TestRun_AuthServiceNeverGetsAnAuthMode(t *testing.T) {
+	dir := t.TempDir()
+	mkdirs(t, dir, "resolver", "appbox")
+	seed(t, dir)
+	Run([]string{"-C", dir, "add", "service", "authelia", "--fqdn", "auth.example.com", "--host", "appbox", "--backend", "authelia:9091"})
+	Run([]string{"-C", dir, "add", "service", "wiki", "--fqdn", "wiki.example.com", "--host", "appbox", "--backend", "wiki:80", "--auth-mode", "forward"})
+	if code := Run([]string{"-C", dir, "defaults", "set", "auth-service", "authelia"}); code != 0 {
+		t.Fatalf("set auth-service: %d", code)
+	}
+	read := func() string { b, _ := os.ReadFile(filepath.Join(dir, configName)); return string(b) }
+	before := read()
+
+	for _, mode := range []string{"forward", "oidc", "external"} {
+		if code := Run([]string{"-C", dir, "update", "service", "authelia", "--auth-mode", mode}); code != 2 {
+			t.Errorf("update --auth-mode %s on the auth_service: want exit 2, got %d", mode, code)
+		}
+	}
+	if read() != before {
+		t.Errorf("a refused update changed services.yaml:\n%s", read())
+	}
+	// everything else about it can still be changed, and 'none' is what it already is
+	if code := Run([]string{"-C", dir, "update", "service", "authelia", "--backend", "authelia:9092"}); code != 0 {
+		t.Errorf("update --backend on the auth_service: want 0, got %d", code)
+	}
+	if code := Run([]string{"-C", dir, "update", "service", "authelia", "--auth-mode", "none"}); code != 0 {
+		t.Errorf("update --auth-mode none on the auth_service: want 0, got %d", code)
+	}
+
+	// naming a service that already has a mode as the auth_service
+	if code := Run([]string{"-C", dir, "defaults", "set", "auth-service", "wiki"}); code != 1 {
+		t.Errorf("set auth-service on a service with a mode: want exit 1, got %d", code)
+	}
+	if strings.Contains(read(), "auth_service: wiki") {
+		t.Errorf("a refused auth-service must not persist:\n%s", read())
+	}
+
+	// add of the (not yet defined) auth_service with a mode: the guard is on the shared tail of both add paths
+	seed(t, dir)
+	b := read()
+	if err := os.WriteFile(filepath.Join(dir, configName), []byte(strings.Replace(b, "dns_host: resolver\n", "dns_host: resolver\n  auth_service: portal\n", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before = read()
+	if code := Run([]string{"-C", dir, "add", "service", "portal", "--fqdn", "portal.example.com", "--host", "appbox", "--backend", "portal:80", "--auth-mode", "forward"}); code != 2 {
+		t.Errorf("add of the auth_service with a mode: want exit 2, got %d", code)
+	}
+	if read() != before {
+		t.Errorf("a refused add changed services.yaml:\n%s", read())
+	}
+	if code := Run([]string{"-C", dir, "add", "service", "portal", "--fqdn", "portal.example.com", "--host", "appbox", "--backend", "portal:80"}); code != 0 {
+		t.Errorf("add of the auth_service without a mode: want 0, got %d", code)
+	}
+}
+
 // doctor is non-zero (footgun) when auth_snippet is set but auth_service isn't.
 func TestRun_DoctorWarnsSnippetWithoutService(t *testing.T) {
 	dir := t.TempDir()

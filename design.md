@@ -377,7 +377,12 @@ forward-auth portal (parallels `dns_host`: one repo-wide role, named by service,
 
 **Loop guard** (§7): a service with a non-none auth mode **and** `name == defaults.auth_service`
 is refused and skipped — protecting the portal with itself would recurse every auth subrequest.
-(The guard keys on the service name, not on parsing the opaque snippet body.)
+(The guard keys on the service name, not on parsing the opaque snippet body.) The planner's refusal is the
+backstop for a hand-edited file; the commands that could *create* the state refuse it up front, before
+anything is written (validate-before-persist, §6): `add service` and `update service` will not give the
+`auth_service` a mode (an entry that already has one can still be updated in other ways), and
+`defaults set auth-service <name>` refuses a service that has a mode, naming `hemma update service <name>
+--auth-mode none` as the way out. The interactive editors already never offer a mode for it.
 
 **Auth modes.** A service's `auth:` is a mode, not a bool (§4.2): `forward` emits `import auth`
 before the proxy line; `oidc` renders a plain `reverse_proxy` (the app

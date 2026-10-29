@@ -227,6 +227,11 @@ func cmdUpdateInteractive(env *Env, repoRoot, cfgPath, name string) int {
 // service goes through the targeted RemoveService primitive — the same one
 // `hemma disable service` uses — rather than a plain reconcile.
 func persistUpdatedService(env *Env, repoRoot string, cfg *config.Config, name string, svc config.Service) int {
+	// The auth_service can never GET an auth mode. An entry that already has one (edited by hand) may still be updated in
+	// other ways — the planner reports it — so only a change of the mode is refused.
+	if svc.Auth.Mode != cfg.Services[name].Auth.Mode && refuseAuthOnPortal(env, cfg, name, svc.Auth.Mode) {
+		return 2
+	}
 	// Groups only make sense with an auth gate — refuse the resulting combo
 	// before persisting (validate-before-persist), whichever flag caused it.
 	if svc.Auth.Mode == config.AuthNone && len(svc.Auth.Groups) > 0 {

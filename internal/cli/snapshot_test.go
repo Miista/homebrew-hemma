@@ -160,7 +160,8 @@ func snapshotCases() []snapCase {
 		sc("defaults-set-deploy-host-unknown", "defaults set deploy-host nowhere"),
 		sc("defaults-set-auth-snippet", "defaults set auth-snippet shared/other.caddy", synced),
 		sc("defaults-set-auth-snippet-clear", "defaults set auth-snippet -", synced),
-		sc("defaults-set-auth-service", "defaults set auth-service status", synced),
+		sc("defaults-set-auth-service", "defaults set auth-service registry", synced),
+		sc("defaults-set-auth-service-with-mode", "defaults set auth-service status", synced), // refused: the auth_service can never have a mode
 		sc("defaults-set-auth-service-clear", "defaults set auth-service -", synced),
 		sc("defaults-set-auth-service-unknown", "defaults set auth-service nowhere"),
 		sc("defaults-set-local-networks", "defaults set local-networks 198.51.100.0/24,203.0.113.0/24", synced),
@@ -204,6 +205,7 @@ func snapshotCases() []snapCase {
 		sc("update-service-auth-none", "update service dash --auth-mode none", synced),
 		sc("update-service-auth-none-with-groups", "update service robot --auth-mode none", synced),
 		sc("update-service-auth-forward", "update service dash --auth-mode forward --auth-groups admins", synced),
+		sc("update-service-auth-service-mode", "update service sso --auth-mode forward", synced), // refused: sso is the auth_service
 		sc("update-service-auth-groups", "update service robot --auth-groups ops,admins", synced),
 		sc("update-service-all-fields", "update service dash --fqdn d.home.example --host core --backend d:1 --auth-mode external", synced),
 		sc("update-service-fresh", "update service dash --backend dash:4000"),

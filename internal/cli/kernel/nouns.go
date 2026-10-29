@@ -585,8 +585,16 @@ func cmdSetAuthService(env *Env, cfgPath string, args []string) int {
 	}
 	// The named service must exist, else its block can't be rendered specially
 	// (mirrors set dns-host refusing an unknown host).
-	if _, exists := cfg.Services[name]; !exists {
+	svc, exists := cfg.Services[name]
+	if !exists {
 		errf(env, "Service %q does not exist — add it first with: hemma add service %s ...", name, name)
+		return 1
+	}
+	// Naming a service that already has an auth mode would make the very state the planner refuses (the portal protected by
+	// itself), so the mode comes off first.
+	if svc.Auth.Mode != config.AuthNone {
+		errf(env, "Service %q has auth mode %s, and the auth_service (the forward-auth backend) can never have one.", name, svc.Auth.Mode)
+		hint(env, "Set it to none first: hemma update service "+name+" --auth-mode none")
 		return 1
 	}
 	cfg.Defaults.AuthService = name

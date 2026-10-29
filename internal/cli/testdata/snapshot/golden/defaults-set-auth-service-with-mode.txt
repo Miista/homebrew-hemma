@@ -1,0 +1,8 @@
+$ hemma defaults set auth-service status
+# setup: doctor --fix
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Service "status" has auth mode forward, and the auth_service (the forward-auth backend) can never have one.
+Set it to none first: hemma update service status --auth-mode none
+--- files ---

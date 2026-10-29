@@ -1,28 +1,27 @@
-$ hemma defaults set auth-service status
+$ hemma defaults set auth-service registry
 # setup: doctor --fix
-exit: 1
+exit: 0
 --- stdout ---
-Set auth_service to "status".
-Synced 15/17 services.
+Set auth_service to "registry".
+Synced 16/17 services.
 ⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
 
 ⚠ could not verify OIDC client for wikijs: open core/authelia/data/config/configuration.yml: no such file or directory
+  • registry
   • sso
 1 disabled:
   • shelf
-1 skipped:
-  • status: auth refused: "status" is the auth_service (the forward-auth backend) — protecting it would create a redirect loop
+
+To make changes live, run 'hemma apply' on each host:
+  on core:  hemma apply
+  on edge:  hemma apply
 --- stderr ---
 --- files ---
-- core/caddy/data/sites/status.caddy
-- core/pihole/data/dnsmasq.d/status.generated.conf
-~ core/authelia/data/config/hemma.access_control.generated.yml c1c8de82be08
-~ core/caddy/data/hemma.auth.generated.caddy b524408912f7
+~ core/caddy/data/hemma.auth.generated.caddy 44ab6beff912
+~ core/caddy/data/sites/registry.caddy c25da66b9f7e
 ~ core/caddy/data/sites/sso.caddy 21f224508e83
-~ core/cloudflared/config.yml 33c1ff630ba6
-~ edge/caddy/data/hemma.auth.generated.caddy bde941e93cd0
-~ hemma-manifest.yaml 9931807208e8
-~ services.yaml 72f0331791db
+~ edge/caddy/data/hemma.auth.generated.caddy d9d8331e55ab
+~ services.yaml 906c881605b9
 --- services.yaml ---
 hosts:
     core:
@@ -39,7 +38,7 @@ domains:
 defaults:
     dns_host: core
     auth_snippet: shared/auth.caddy
-    auth_service: status
+    auth_service: registry
     tunnel_dir: cloudflared
     deploy_host: core
     local_networks:

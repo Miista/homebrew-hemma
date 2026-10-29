@@ -434,6 +434,9 @@ func persistNewService(env *Env, repoRoot string, cfg *config.Config, name strin
 			return 1
 		}
 	}
+	if refuseAuthOnPortal(env, cfg, name, svc.Auth.Mode) {
+		return 2
+	}
 	// fqdn must fall under a defined domain — catch typos (e.g. .dl for .dk)
 	// before persisting, not as a skip at sync time.
 	if _, ok := cfg.MatchDomain(svc.FQDN); !ok {
@@ -622,6 +625,20 @@ func oidcClientWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 		svcs = append(svcs, as)
 	}
 	return provider.ValidateConfig(cfgPath, svcs)
+}
+
+// refuseAuthOnPortal is the validate-before-persist twin of the planner's loop guard (plan.go): the service that IS the
+// forward-auth backend (defaults.auth_service, e.g. an Authelia portal) can never have an auth mode — every auth subrequest
+// would recurse through the portal it is protecting. The planner refuses and skips such an entry at sync time, which is too
+// late: the change is already in services.yaml. So every command that can SET a mode asks here first and reports whether
+// it refused (nothing has been written yet).
+func refuseAuthOnPortal(env *Env, cfg *config.Config, name string, mode config.AuthMode) bool {
+	if mode == config.AuthNone || cfg.Defaults.AuthService == "" || name != cfg.Defaults.AuthService {
+		return false
+	}
+	errf(env, "%q is the auth_service (the forward-auth backend) — it can never have an auth mode: protecting it with itself would create a redirect loop.", name)
+	hint(env, "Leave its auth mode at none.")
+	return true
 }
 
 // resolveAuthMode reconciles the two auth flags into a single AuthMode.

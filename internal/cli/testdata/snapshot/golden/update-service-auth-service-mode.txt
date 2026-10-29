@@ -1,0 +1,8 @@
+$ hemma update service sso --auth-mode forward
+# setup: doctor --fix
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: "sso" is the auth_service (the forward-auth backend) — it can never have an auth mode: protecting it with itself would create a redirect loop.
+Leave its auth mode at none.
+--- files ---
