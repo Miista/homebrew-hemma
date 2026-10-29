@@ -1339,9 +1339,9 @@ let accessSort = { by: null, dir: 1, first: new Set() };   // by: null = by name
 // (nothing on disk changes until then); `refreshDraft` is the open page's way to update its note and Apply button in place,
 // without redrawing under the cursor.
 let accessDraft = null, refreshDraft = null;
-// The Access table's header square-cornered while it is stuck to the top: its rounded corners would leave gaps for the rows scrolling
-// beneath it to show through. `accessStuck` is set by the open Access page (render() clears it); the phone scrolls the window, the wide
-// screen scrolls #main, so both are listened to, once.
+// The Access table's header corners follow the scroll and are square once it is stuck to the top (rounded corners there would leave gaps
+// for the rows scrolling beneath it to show through). `accessStuck` is set by the open Access page (render() clears it); the phone scrolls
+// the window, the wide screen scrolls #main, so both are listened to, once.
 let accessStuck = null;
 window.addEventListener("scroll", () => { if (accessStuck) accessStuck(); }, { passive: true });
 $("#main").addEventListener("scroll", () => { if (accessStuck) accessStuck(); }, { passive: true });
@@ -1700,7 +1700,16 @@ const VIEWS = {
     wrap.addEventListener("scroll", () => { headBox.scrollLeft = wrap.scrollLeft; });
     // stuck = it has reached the line it sticks at (under the phone's top bar, or the top of the scrolling area)
     const stickAt = () => (isPhone() ? 0 : $("#main").getBoundingClientRect().top) + (parseFloat(headBox.style.top) || 0);
-    accessStuck = () => headBox.classList.toggle("stuck", headBox.getBoundingClientRect().top <= stickAt() + 0.5);
+    // The corners follow the scroll: how far the header still is from that line sets its radius — the full radius from REACH px away,
+    // shrinking in step with the scroll as it comes closer, none once it sits at the line — and it plays back as you scroll up.
+    // Someone who asked for less motion gets the two states without the in-between.
+    const fullR = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--r2")) || 16, REACH = 32;
+    const snap = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    accessStuck = () => {
+      const d = Math.max(0, headBox.getBoundingClientRect().top - stickAt());
+      const f = snap ? (d > 0.5 ? 1 : 0) : Math.min(1, d / REACH);
+      headBox.style.setProperty("--hr", (fullR * f).toFixed(1) + "px");
+    };
     requestAnimationFrame(accessStuck);
     // one box around both, so the page's spacing between its parts does not open a gap between the header and the first row
     const box = el("div", null, { className: "matrix-box" });
