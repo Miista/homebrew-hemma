@@ -1891,16 +1891,28 @@ const VIEWS = {
   Issues() {
     // Only what is wrong. A check that passed is never shown.
     const failing = issues.items.filter(it => it.status === "warn" || it.status === "err");
-    const summary = !issues.loaded ? "Checking…" : issues.error ? "Could not run the checks" : failing.length === 0 ? "No issues found" : `${plural(failing.length, "problem")} to fix before deploying`;
+    // Two groups: what `hemma doctor --fix` repairs (the Fix button sits with them: it fixes exactly these), and what needs you.
+    const auto = failing.filter(it => it.fixable), manual = failing.filter(it => !it.fixable);
+    const summary = !issues.loaded ? "Checking…" : issues.error ? "Could not run the checks" : failing.length === 0 ? "No issues found"
+      : auto.length && manual.length ? `${plural(failing.length, "problem")} to fix before deploying: ${auto.length} automatic, ${manual.length} manual`
+      : auto.length ? `${plural(failing.length, "problem")} to fix before deploying, all automatic`
+      : `${plural(failing.length, "problem")} to fix before deploying`;
     // while a check runs: a spinner to the left of the button, and the button itself is off (its label does not change)
     const re = btn("Re-check", () => checkIssues()); re.disabled = issues.busy || issues.fixing;
     const tools = [];
     if (issues.busy) { const sp = el("span", null, { className: "sicon running" }); sp.setAttribute("role", "status"); sp.setAttribute("aria-label", "Checking"); tools.push(sp); }
     tools.push(re);
-    if (issues.fixable) { const fx = btn(issues.fixing ? "Fixing…" : "Fix automatically", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing; tools.push(fx); }
-    const body = el("div", null, { style: "display:flex;flex-direction:column;gap:10px" });
+    const body = el("div", null, { style: "display:flex;flex-direction:column;gap:22px" });
     if (issues.error) body.append(el("p", issues.error, { className: "err" }));
-    failing.forEach(it => body.append(issueRow(it, failing.length === 1)));
+    const group = (title, items, ...tools) => {
+      if (!items.length) return;
+      const sec = el("section", null, { className: "section" }), list = el("div", null, { style: "display:flex;flex-direction:column;gap:10px" });
+      items.forEach(it => list.append(issueRow(it, failing.length === 1)));
+      sec.append(sectionHead(`${title} (${items.length})`, ...tools), list); body.append(sec);
+    };
+    const fx = btn(issues.fixing ? "Fixing…" : "Fix automatically", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing;
+    group("Can be fixed automatically", auto, fx);
+    group("Needs manual changes", manual);
     return [pageHead("Issues", summary, ...tools), body];
   },
 };
@@ -1967,7 +1979,6 @@ function issueRow(it, only) {
   const head = el("button", null, { type: "button", className: "ihead" }); head.setAttribute("aria-expanded", String(open));
   const ttl = el("div", null, { className: "ttl" }), line = el("div", null, { className: "line" });
   line.append(el("span", it.status === "err" ? "Error" : "Warning", { className: "sev" + (it.status === "err" ? " err" : "") }), el("span", it.title, { className: "it" }));
-  if (it.fixable) line.append(el("span", "Can be fixed automatically", { className: "fixchip" }));
   ttl.append(line); head.append(ttl, el("span", null, { className: "chev" }));
   const body = el("div", null, { className: "ibody", hidden: !open });
   head.onclick = () => {   // toggled in place, so the chevron turns instead of being replaced
@@ -1992,11 +2003,6 @@ function issueRow(it, only) {
       fix.append(row);
     });
     body.append(fix);
-  }
-  if (it.fixable) {
-    const fx = btn(issues.fixing ? "Fixing…" : "Fix automatically", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing;
-    const row = el("div", null, { className: "fixrow" }); row.append(fx, el("span", "Fixes everything on this page that can be fixed automatically.", { className: "hint" }));
-    body.append(row);
   }
   if (!body.children.length) body.append(el("p", "Nothing more to show for this one."));
   card.append(body);

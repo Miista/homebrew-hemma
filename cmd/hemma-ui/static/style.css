@@ -282,7 +282,6 @@ button.undo:hover:not(:disabled) { background: var(--accent-soft); }
 .sev { flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--p-warn-bg); color: var(--p-warn-fg); }
 .sev.err { background: var(--p-error-bg); color: var(--p-error-fg); }
 .ihead .it { font-weight: 600; font-size: 15px; text-wrap: pretty; }
-.fixchip { height: 22px; padding: 0 8px; border-radius: 999px; background: var(--p-accent-bg); color: var(--p-accent-fg); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; }
 .ibody { padding: 0 16px 18px; display: flex; flex-direction: column; gap: 14px; }
 .ibody p { margin: 0; color: var(--ink-2); line-height: 1.7; text-wrap: pretty; }
 .ibody code { font-size: .9em; padding: 2px 6px; border-radius: 4px; background: var(--code-bg); border: 1px solid var(--line); white-space: normal; }
