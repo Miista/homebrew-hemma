@@ -294,10 +294,13 @@ func checkCaddyfileImports(env *Env, repoRoot string, cfg *config.Config, fix bo
 			}
 		}
 		if !fix {
+			// Both are what --fix repairs, so both say so: the UI reads that hint to tell what it can fix for you.
 			if legacy != "" {
 				fmt.Fprintf(env.Out, cross+" %s: Caddyfile has outdated `%s`\n", hostName, legacy)
+				fmt.Fprintln(env.Out, "  Run 'hemma doctor --fix' to rewrite it.")
 			} else {
 				fmt.Fprintf(env.Out, cross+" %s: Caddyfile missing `%s`\n", hostName, importLine)
+				fmt.Fprintln(env.Out, "  Run 'hemma doctor --fix' to add it.")
 			}
 			continue
 		}
