@@ -1907,7 +1907,7 @@ const VIEWS = {
     const group = (title, items, ...tools) => {
       if (!items.length) return;
       const sec = el("section", null, { className: "section" }), list = el("div", null, { style: "display:flex;flex-direction:column;gap:10px" });
-      items.forEach(it => list.append(issueRow(it, failing.length === 1)));
+      items.forEach(it => list.append(issueRow(it)));
       sec.append(sectionHead(`${title} (${items.length})`, ...tools), list); body.append(sec);
     };
     const fx = btn(issues.fixing ? "Fixing…" : "Fix automatically", fixIssues, "primary"); fx.disabled = issues.busy || issues.fixing;
@@ -1973,8 +1973,8 @@ function withCode(text) {
 const withText = (tag, cls, text) => { const e = el(tag, null, { className: cls }); e.append(withCode(text)); return e; };
 // A failing check: its title is the card's header; what is behind it shows when it is expanded. Which cards are open
 // survives a re-check (kept by title), so running the checks again does not fold away what you were reading.
-function issueRow(it, only) {
-  const open = issues.open.has(it.title) || (only && !issues.open.has("-" + it.title));
+function issueRow(it) {
+  const open = issues.open.has(it.title);   // every finding starts folded, even a lone one: the title says what it is
   const card = el("div", null, { className: "issue" });
   const head = el("button", null, { type: "button", className: "ihead" }); head.setAttribute("aria-expanded", String(open));
   const ttl = el("div", null, { className: "ttl" }), line = el("div", null, { className: "line" });
@@ -1983,7 +1983,7 @@ function issueRow(it, only) {
   const body = el("div", null, { className: "ibody", hidden: !open });
   head.onclick = () => {   // toggled in place, so the chevron turns instead of being replaced
     const o = body.hidden;
-    if (o) { issues.open.add(it.title); issues.open.delete("-" + it.title); } else { issues.open.delete(it.title); if (only) issues.open.add("-" + it.title); }
+    if (o) issues.open.add(it.title); else issues.open.delete(it.title);
     body.hidden = !o; head.setAttribute("aria-expanded", String(o));
   };
   card.append(head);
