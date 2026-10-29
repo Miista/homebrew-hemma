@@ -1339,6 +1339,12 @@ let accessSort = { by: null, dir: 1, first: new Set() };   // by: null = by name
 // (nothing on disk changes until then); `refreshDraft` is the open page's way to update its note and Apply button in place,
 // without redrawing under the cursor.
 let accessDraft = null, refreshDraft = null;
+// The Access table's header square-cornered while it is stuck to the top: its rounded corners would leave gaps for the rows scrolling
+// beneath it to show through. `accessStuck` is set by the open Access page (render() clears it); the phone scrolls the window, the wide
+// screen scrolls #main, so both are listened to, once.
+let accessStuck = null;
+window.addEventListener("scroll", () => { if (accessStuck) accessStuck(); }, { passive: true });
+$("#main").addEventListener("scroll", () => { if (accessStuck) accessStuck(); }, { passive: true });
 async function startAccessDraft() {
   await flushAccess();   // a toggle still waiting is written first: the page then holds one kind of pending change at a time
   accessDraft = { name: "", ticks: new Set(), focus: true };
@@ -1573,7 +1579,17 @@ const VIEWS = {
     const head = pageHead("Access", `${plural(roles.length, "role")} across ${plural(svcs.length, "service")}. Click a cell to give a service a role or take it away; click a name to edit the service.`, search, addBtn);
     addBtn.disabled = !!accessDraft;   // while a role is being drafted, Apply and Cancel are in the bar at the bottom
     if (!roles.length && !accessDraft) return [head, el("div", "No service lists a role yet. Use Add role to create the first one.", { className: "empty" })];
-    const table = el("table", null, { className: "matrix" });
+    // The header row is a table of its own, stuck to the top of the page; the body scrolls sideways in a box of its own and the header
+    // follows it. (A row cannot stick to the PAGE from inside a box that scrolls sideways, so the two are told apart.) Both tables
+    // share one fixed column layout — the first column takes what is left, every role is the same width — so they line up.
+    const ncols = roles.length + (accessDraft ? 1 : 0);
+    const mkTable = () => {
+      const t = el("table", null, { className: "matrix" }), cols = el("colgroup");
+      t.style.setProperty("--ncols", String(ncols));
+      cols.append(el("col")); for (let i = 0; i < ncols; i++) cols.append(el("col", null, { className: "role" }));
+      t.append(cols); return t;
+    };
+    const hTable = mkTable(), bTable = mkTable();
     // Sorting: the Service header flips the name order (from a role sort it goes back to by name); a role header puts the services
     // that have that role first (a second click goes back). Whoever had the role is fixed at the click, so a row does not jump away
     // while you toggle cells in that column. Within either group the order is by name.
@@ -1596,12 +1612,12 @@ const VIEWS = {
       })));
       if (accessDraft) hr.append(draftTh);
     };
-    table.append(el("thead", null, {}), el("tbody"));
-    table.tHead.append(hr);
+    hTable.append(el("thead")); hTable.tHead.append(hr);
+    bTable.append(el("tbody"));
     const empty = el("div", "No service matches.", { className: "empty", hidden: true });
     // A row matches on the service's name or address, or on any role it lists.
     const draw = () => {
-      const needle = accessQ.trim().toLowerCase(), body = table.tBodies[0];
+      const needle = accessQ.trim().toLowerCase(), body = bTable.tBodies[0];
       body.replaceChildren();
       const shown = svcs.filter(s => !needle || s.name.toLowerCase().includes(needle) || (s.fqdn || "").toLowerCase().includes(needle) || groupsOf(s).some(g => g.toLowerCase().includes(needle)));
       const { by, dir, first } = accessSort;
@@ -1619,9 +1635,11 @@ const VIEWS = {
         const editable = s["auth-mode"] === "forward" || s["auth-mode"] === "oidc";
         const why = editable ? "" : s.name === authSvc ? "Auth portal" : s["auth-mode"] === "external" ? "External auth" : "No auth";
         // a disabled service says so, as on the Services page
-        const cell = el("div", null, { className: "nmcell" }); cell.append(el("span", s.name, { className: "nmtxt" }));
-        if (s.disabled) cell.append(el("span", "Disabled", { className: "tag" }));
-        if (why) cell.append(el("span", why, { className: "tag" }));
+        // the pills sit beside the name on a wide screen and under it on a phone (style.css), where beside it costs a column its width
+        const cell = el("div", null, { className: "nmcell" }), tags = el("span", null, { className: "nmtags" });
+        cell.append(el("span", s.name, { className: "nmtxt" }), tags);
+        if (s.disabled) tags.append(el("span", "Disabled", { className: "tag" }));
+        if (why) tags.append(el("span", why, { className: "tag" }));
         const whyTip = { "Auth portal": "The auth portal cannot be gated by itself, so it has no groups.", "External auth": "The app handles its own sign-in and hemma adds no gate, so there are no groups.", "No auth": "Nothing asks anyone to sign in, so there are no groups. Open the service to change its auth mode." }[why];
         th.append(cell);
         th.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
@@ -1670,11 +1688,23 @@ const VIEWS = {
         }
         body.append(tr);
       });
-      empty.hidden = shown.length > 0; wrap.hidden = !shown.length;
+      empty.hidden = shown.length > 0; box.hidden = !shown.length;
     };
     const wrap = el("div", null, { className: "matrix-wrap", tabIndex: 0 });
     wrap.setAttribute("role", "region"); wrap.setAttribute("aria-label", "Roles by service");
-    wrap.append(table);
+    wrap.append(bTable);
+    // the header box sticks under the phone's top bar (which sticks to the page), or at the very top of the wide screen's scrolling area
+    const headBox = el("div", null, { className: "matrix-head" });
+    headBox.append(hTable);
+    headBox.style.top = (isPhone() ? ($("#top") ? $("#top").offsetHeight : 0) : 0) + "px";
+    wrap.addEventListener("scroll", () => { headBox.scrollLeft = wrap.scrollLeft; });
+    // stuck = it has reached the line it sticks at (under the phone's top bar, or the top of the scrolling area)
+    const stickAt = () => (isPhone() ? 0 : $("#main").getBoundingClientRect().top) + (parseFloat(headBox.style.top) || 0);
+    accessStuck = () => headBox.classList.toggle("stuck", headBox.getBoundingClientRect().top <= stickAt() + 0.5);
+    requestAnimationFrame(accessStuck);
+    // one box around both, so the page's spacing between its parts does not open a gap between the header and the first row
+    const box = el("div", null, { className: "matrix-box" });
+    box.append(headBox, wrap);
     // ── a new role: name it in the header, tick services, Apply ──
     const draftIn = el("input", null, { type: "text", placeholder: "new role", autocomplete: "off", spellcheck: false, value: accessDraft ? accessDraft.name : "" });
     draftIn.setAttribute("aria-label", "Name of the new role"); draftIn.setAttribute("autocapitalize", "none");
@@ -1723,7 +1753,7 @@ const VIEWS = {
       else if (e.key === "Escape") { if (accessQ) { accessQ = ""; search.value = ""; draw(); } else search.blur(); }
     };
     paintHead(); draw();
-    return [head, wrap, empty];
+    return [head, box, empty];
   },
   Infrastructure() {
     const em = entMap();
@@ -2115,6 +2145,7 @@ $("#burger").onclick = () => {
 $("#top").addEventListener("keydown", e => { if (e.key === "Escape" && !$("#bmenu").hidden) { e.preventDefault(); closeBurger(); $("#burger").focus(); } });
 function render() {
   renderTabs();
+  accessStuck = null;   // a page that sticks something sets it again below
   $("#view").replaceChildren(...VIEWS[tab]());
   renderMenus();
   renderHint();

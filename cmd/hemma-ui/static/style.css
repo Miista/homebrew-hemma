@@ -212,8 +212,13 @@ button.deployitem .dstep { font-size: 12.5px; color: var(--muted); overflow: hid
 .svc.off .mark.warn, .svc.off .mark.check { color: inherit; }   /* a disabled service is not served: nothing to warn about */
 .svc.off .marks, .svc.gone .marks { opacity: .55; }
 .svc.off .nm, .svc.gone .nm { color: var(--muted); } .svc.gone { cursor: default; } .svc.gone .nm { text-decoration: line-through; }
-.matrix-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r2); background: var(--surface); }
-.matrix { border-collapse: separate; border-spacing: 0; min-width: 100%; font-size: 14px; }
+/* The table is two: the header (stuck to the top of the page, see matrix-head in index.html) and the body (scrolls sideways in its own box).
+   Both use one fixed layout — the first column takes what is left, each role is 140px — so their columns line up. */
+.matrix-head { position: sticky; z-index: 5; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r2) var(--r2) 0 0; background: var(--surface); }
+.matrix-head.stuck { border-radius: 0; }   /* stuck to the top: square, so the rows passing beneath cannot show through the corners */
+.matrix-wrap { overflow-x: auto; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--r2) var(--r2); background: var(--surface); }
+.matrix { --svc-w: 240px; table-layout: fixed; border-collapse: separate; border-spacing: 0; width: 100%; min-width: calc(var(--svc-w) + var(--ncols, 0) * 140px); font-size: 14px; }
+.matrix col.role { width: 140px; }
 .matrix th, .matrix td { padding: 9px 14px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
 .matrix thead th { background: var(--surface); font-size: 12.5px; font-weight: 600; color: var(--muted); }
 .matrix tbody th { position: sticky; left: 0; z-index: 1; background: var(--surface); text-align: left; font-weight: 600; border-right: 1px solid var(--line); max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
@@ -221,7 +226,6 @@ button.deployitem .dstep { font-size: 12.5px; color: var(--muted); overflow: hid
 .matrix td, .matrix thead th:not(:first-child) { border-left: 1px solid var(--line); }
 .matrix tbody tr:last-child > * { border-bottom: 0; }
 /* every role column is the same width (the Service column takes what is left), so the header buttons line up and none looks lopsided */
-.matrix thead th:not(:first-child), .matrix td { width: 140px; min-width: 140px; max-width: 140px; }
 .matrix thead th:not(:first-child) > button > span:first-child { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .matrix th.sort { padding: 0; }
 .matrix th.sort > button { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 9px 14px; cursor: pointer; font: inherit; color: inherit; white-space: nowrap; }
@@ -241,7 +245,15 @@ button.deployitem .dstep { font-size: 12.5px; color: var(--muted); overflow: hid
 #rolebar .msg.warn span { color: var(--p-warn-fg); }
 .matrix .nmcell { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .matrix .nmtxt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.matrix .nmtags { display: flex; gap: 6px; flex: none; }
 .matrix tr.off .tag { flex: none; }
+/* on a phone the pills go under the name, smaller: beside it they cost the first column a third of the screen */
+@media (max-width: 719px), (pointer: coarse) and (max-height: 500px) {
+  .matrix { --svc-w: 170px; }
+  .matrix .nmcell { flex-direction: column; align-items: flex-start; gap: 3px; }
+  .matrix .nmtxt { max-width: 100%; }
+  .matrix .nmcell .tag { height: 18px; padding: 0 6px; font-size: 11px; }
+}
 .matrix tbody th.click { cursor: pointer; }
 .matrix tbody th.click:hover { background: var(--hover); }
 .matrix td.tog { cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
