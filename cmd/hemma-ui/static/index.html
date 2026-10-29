@@ -1550,6 +1550,7 @@ const VIEWS = {
     // columns: the roles on disk, plus any just applied (shown at once, before the write is done)
     const roles = [...new Set([...state.services.flatMap(groupsOf), ...[...accessEdits.values()].flat()])].sort(cmp);
     const svcs = [...state.services].sort((a, b) => cmp(a.name, b.name));
+    const authSvc = (state.settings.find(x => x.key === "auth-service") || {}).value || "";   // the auth portal: never gated by itself
     const search = el("input", null, { type: "search", placeholder: isPhone() ? "Search service or role" : `Search service or role  ${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K"}`, value: accessQ, id: "search", autocomplete: "off" });
     search.setAttribute("aria-label", "Search the access table"); search.setAttribute("aria-keyshortcuts", "Meta+K Control+K"); search.setAttribute("enterkeyhint", "search");
     const addBtn = btn("Add role", () => startAccessDraft(), "primary"), applyBtn = btn("Apply", () => applyDraft(), "primary"), cancelBtn = btn("Cancel", () => cancelDraft());
@@ -1596,15 +1597,19 @@ const VIEWS = {
         const open = () => openCmd("update service", { ...s, __lock: "name" });
         const th = el("th", null, { scope: "row", className: "click", tabIndex: 0, title: s.disabled ? s.name + " (disabled)" : s.name, onclick: open });
         th.setAttribute("role", "button");
+        // A cell toggles the role for the service. Groups only mean something when the auth provider is asked (forward / oidc);
+        // for the others the row is shown but its cells are inert — and a pill by the name says why, so it is never a guess:
+        // the auth portal cannot be gated by itself (a redirect loop), none asks no one, external is the app's own sign-in.
+        const editable = s["auth-mode"] === "forward" || s["auth-mode"] === "oidc";
+        const why = editable ? "" : s.name === authSvc ? "Auth portal" : s["auth-mode"] === "external" ? "External auth" : "No auth";
         // a disabled service says so, as on the Services page
         const cell = el("div", null, { className: "nmcell" }); cell.append(el("span", s.name, { className: "nmtxt" }));
         if (s.disabled) cell.append(el("span", "Disabled", { className: "tag" }));
+        if (why) cell.append(el("span", why, { className: "tag" }));
+        const whyTip = { "Auth portal": "The auth portal cannot be gated by itself, so it has no groups.", "External auth": "The app handles its own sign-in and hemma adds no gate, so there are no groups.", "No auth": "Nothing asks anyone to sign in, so there are no groups. Open the service to change its auth mode." }[why];
         th.append(cell);
         th.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
         tr.append(th);
-        // A cell toggles the role for the service. Groups only mean something when the auth provider is asked (forward / oidc);
-        // for none / external the row is shown but its cells are inert.
-        const editable = s["auth-mode"] === "forward" || s["auth-mode"] === "oidc";
         // while a new role is being drafted the existing columns are locked: one kind of change at a time
         const locked = editable && !!accessDraft;
         roles.forEach(r => {
@@ -1626,12 +1631,12 @@ const VIEWS = {
             };
             td.onclick = toggle;
             td.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } };
-          } else td.title = `Auth mode ${s["auth-mode"] || "none"}: groups don't apply`;
+          } else td.title = whyTip;
           tr.append(td);
         });
         if (accessDraft) {   // the new role's column: tick the services it applies to
           const td = el("td");
-          if (!editable) { td.className = "na"; td.setAttribute("aria-hidden", "true"); td.title = `Auth mode ${s["auth-mode"] || "none"}: groups don't apply`; }
+          if (!editable) { td.className = "na"; td.setAttribute("aria-hidden", "true"); td.title = whyTip; }
           else {
             const paint = () => {
               const on = accessDraft.ticks.has(s.name);
