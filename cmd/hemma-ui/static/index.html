@@ -2014,7 +2014,7 @@ async function checkIssues() {
   try {
     const r = await fetch("/api/issues"); const j = await r.json();
     const items = j.items || [];
-    issues = { ...issues, loaded: true, error: j.error || "", fixable: !!j.fixable, items, count: items.filter(g => g.status === "warn" || g.status === "err").length };
+    issues = { ...issues, loaded: true, error: j.error || "", items, count: items.filter(g => g.status === "warn" || g.status === "err").length };
   } catch (e) { issues = { ...issues, loaded: true, error: String(e) }; }
   issues.busy = false;
   if (tab === "Issues") render(); else renderTabs();   // off the Issues page only the badge changes: don't redraw (and disturb) the page you are on

@@ -7,13 +7,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+
+	"hemma/internal/cli/kernel"
 )
 
-// The Issues page sorts findings into "can be fixed automatically" and "needs manual changes" by reading doctor's text: a
-// finding that carries the `hemma doctor --fix` hint is fixable. That hint is prose, so nothing ties it to what --fix
-// does — except this test. It builds a repo with a mix of problems, lets --fix loose on it, and holds both directions:
-// every finding marked fixable is gone afterwards, and every finding that went away was marked fixable. A new check
-// that --fix repairs but does not announce (or announces but does not repair) fails here instead of misleading the page.
+// A finding is fixable exactly when it carries a fixer, which is what `doctor --fix` runs. That is true by construction, but
+// a fixer can still fail to fix what its finding describes. So this builds a repo with a mix of problems, lets --fix loose on
+// it, and holds both directions: every finding marked fixable is gone afterwards, and every finding that went away was
+// marked fixable (a repair that happens without being announced would hide the Fix button).
 func TestIssues_FixableMatchesWhatFixDoes(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is needed: doctor asks it which generated files are ignored")
@@ -68,14 +69,17 @@ func TestIssues_FixableMatchesWhatFixDoes(t *testing.T) {
 	digits := regexp.MustCompile(`[0-9]+`)
 	findings := func() (fixable, manual map[string]bool) {
 		t.Helper()
-		_, out := s.runKernel(ctx, []string{"doctor"})
+		fs, err := kernel.Diagnose(kernel.StdEnv(), filepath.Join(s.repo, "services.yaml"))
+		if err != nil {
+			t.Fatal(err)
+		}
 		fixable, manual = map[string]bool{}, map[string]bool{}
-		for _, it := range parseDoctorItems(out) {
-			if it.Status != "warn" && it.Status != "err" {
+		for _, f := range fs {
+			if f.Status != "warn" && f.Status != "err" {
 				continue
 			}
-			key := digits.ReplaceAllString(it.Title, "N")
-			if it.Fixable {
+			key := digits.ReplaceAllString(f.Title, "N")
+			if f.Fixable {
 				fixable[key] = true
 			} else {
 				manual[key] = true

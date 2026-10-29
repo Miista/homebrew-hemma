@@ -356,25 +356,45 @@ func TestRunCommand_ChangesFinishWhenTheBrowserLeaves_ReadsDoNot(t *testing.T) {
 	}
 }
 
-// The Issues page lists exactly what `hemma doctor` says, and offers `doctor --fix` ONLY where doctor itself says
-// --fix can help. This runs the real doctor over real situations so a change to its wording breaks a test, instead of
-// quietly hiding the Fix button or showing one that does nothing.
-func TestIssues_ListDoctorVerbatim_FixOnlyWhereDoctorSaysSo(t *testing.T) {
+// The Issues page lists the findings `hemma doctor` makes, and marks one fixable ONLY if it carries the fixer `doctor --fix`
+// runs. This runs the real doctor over real situations: the page's items are the CLI's findings (every title is in what
+// `hemma doctor` prints), and what is fixable changes as --fix does its work.
+func TestIssues_ListsDoctorsFindings_FixableOnlyWithAFixer(t *testing.T) {
 	s := repoWithConfig(t)
 	// no git on PATH: doctor then skips its gitignore check, which is fine here
 	t.Setenv("PATH", t.TempDir())
-	issues := func() (out string, ok, fixable bool) {
+	type item struct {
+		Status  string `json:"status"`
+		Title   string `json:"title"`
+		Fixable bool   `json:"fixable"`
+	}
+	issues := func() (items []item, ok bool) {
 		rec := httptest.NewRecorder()
 		s.handleIssues(rec, httptest.NewRequest("GET", "/api/issues", nil))
 		var j struct {
-			OK      bool   `json:"ok"`
-			Output  string `json:"output"`
-			Fixable bool   `json:"fixable"`
+			OK    bool   `json:"ok"`
+			Items []item `json:"items"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &j); err != nil {
 			t.Fatalf("%v\n%s", err, rec.Body.String())
 		}
-		return j.Output, j.OK, j.Fixable
+		return j.Items, j.OK
+	}
+	failing := func(items []item, title string) (found, fixable bool) {
+		for _, it := range items {
+			if (it.Status == "warn" || it.Status == "err") && strings.Contains(it.Title, title) {
+				return true, it.Fixable
+			}
+		}
+		return false, false
+	}
+	anyFixable := func(items []item) bool {
+		for _, it := range items {
+			if (it.Status == "warn" || it.Status == "err") && it.Fixable {
+				return true
+			}
+		}
+		return false
 	}
 	run := func(argv ...string) {
 		t.Helper()
@@ -383,46 +403,35 @@ func TestIssues_ListDoctorVerbatim_FixOnlyWhereDoctorSaysSo(t *testing.T) {
 		}
 	}
 
-	// 1. brand new repo: generated files are missing → doctor says so and offers --fix
-	out, ok, fixable := issues()
-	if ok || !fixable || !strings.Contains(out, "out of sync") || !strings.Contains(out, "doctor --fix") {
-		t.Errorf("missing files: ok=%v fixable=%v\n%s", ok, fixable, out)
+	// 1. brand new repo: generated files are missing → a fixable finding
+	items, ok := issues()
+	if found, fixable := failing(items, "out of sync"); ok || !found || !fixable {
+		t.Errorf("missing files: ok=%v found=%v fixable=%v %+v", ok, found, fixable, items)
 	}
-	// the output is doctor's, verbatim
-	if code, direct := s.runKernel(context.Background(), []string{"doctor"}); code == 0 || direct != out {
-		t.Errorf("the Issues output must be exactly what `hemma doctor` prints:\n--- issues\n%s\n--- doctor\n%s", out, direct)
-	}
-
-	// 2. after --fix: the drift is gone and --fix is no longer offered — but doctor STILL lists what --fix cannot do
-	// (here: no known_hosts entry for the deploy host, with doctor's own "connect once interactively" recipe), and the
-	// page lists it as it is, with no Fix button.
-	run("doctor", "--fix")
-	out, ok, fixable = issues()
-	if fixable || !strings.Contains(out, "in sync") || !strings.Contains(out, "known_hosts") || ok {
-		t.Errorf("after --fix: ok=%v fixable=%v (want: in sync, known_hosts still listed, nothing fixable)\n%s", ok, fixable, out)
-	}
-
-	// 3. only advisories (an oidc service with no Authelia config): listed, but --fix does NOT apply
-	run("add", "service", "sso-app", "--fqdn=sso-app.example.com", "--host=appbox", "--backend=app:80", "--auth-mode=oidc")
-	out, _, fixable = issues()
-	if !strings.Contains(out, "OIDC") || fixable {
-		t.Errorf("advisories only: fixable=%v (--fix does not resolve advisories)\n%s", fixable, out)
-	}
-	if !strings.Contains(out, "does not resolve them") {
-		t.Errorf("doctor's own note about advisories should be in the output:\n%s", out)
-	}
-}
-
-func TestDoctorFixable(t *testing.T) {
-	for out, want := range map[string]bool{
-		"✓ all good\n": false,
-		"⚠ x\n\nThese advisories require manual edits — 'hemma doctor --fix' does not resolve them.\n": false,
-		"✗ 3 generated files out of sync\n\nRun 'hemma doctor --fix' to reconcile.\n":                  true,
-		"⚠ 2 generated files are gitignored and won't deploy. Run 'hemma doctor --fix'.\n":             true,
-	} {
-		if got := doctorFixable(out); got != want {
-			t.Errorf("doctorFixable(%q) = %v, want %v", out, got, want)
+	// the items are doctor's findings: each failing title is something `hemma doctor` prints
+	_, direct := s.runKernel(context.Background(), []string{"doctor"})
+	for _, it := range items {
+		if (it.Status == "warn" || it.Status == "err") && !strings.Contains(direct, it.Title) {
+			t.Errorf("the page lists %q, which `hemma doctor` does not print:\n%s", it.Title, direct)
 		}
+	}
+
+	// 2. after --fix: the drift is gone and nothing is fixable — but what --fix cannot do is still listed (here: no
+	// known_hosts entry for the deploy host, with its own "connect once interactively" step), without a fixer
+	run("doctor", "--fix")
+	items, ok = issues()
+	if found, _ := failing(items, "out of sync"); found || ok || anyFixable(items) {
+		t.Errorf("after --fix: ok=%v, nothing should be fixable and the drift gone: %+v", ok, items)
+	}
+	if found, fixable := failing(items, "known_hosts"); !found || fixable {
+		t.Errorf("known_hosts should still be listed, unfixable: found=%v fixable=%v", found, fixable)
+	}
+
+	// 3. only advisories (an oidc service with no Authelia config): listed, but nothing fixable
+	run("add", "service", "sso-app", "--fqdn=sso-app.example.com", "--host=appbox", "--backend=app:80", "--auth-mode=oidc")
+	items, _ = issues()
+	if found, fixable := failing(items, "OIDC"); !found || fixable {
+		t.Errorf("an advisory is listed and is not fixable: found=%v fixable=%v %+v", found, fixable, items)
 	}
 }
 
