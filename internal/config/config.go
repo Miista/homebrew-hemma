@@ -541,15 +541,18 @@ type Service struct {
 	// actually is. Exposure that was never opted into is not reported, so
 	// adopting the field costs an existing repo nothing.
 	Tunnel bool `yaml:"tunnel,omitempty"`
-	// ExtraDirectives is an optional repo-relative path to a file of Caddy directives
-	// copied (each line indented one tab) into THIS service's generated site
-	// block, after the TLS import and any auth gate and before reverse_proxy. It
-	// is how a hand-written rule (a matcher plus uri, header, encode, ...) survives
-	// a regeneration without hand-editing a generated file. The body is opaque to
-	// hemma, like defaults.auth_snippet: `hemma apply` runs `caddy validate`
-	// before reloading, so a bad directive is refused there, not here. Named for
-	// the MECHANISM (extra Caddy directives), set via `hemma update service <name>
-	// --extra-directives <path>`; '' clears it.
+	// ExtraDirectives is an optional repo-relative path to a file of directives
+	// copied into THIS service's generated site block inside one `route { }` block,
+	// after the TLS import and any auth gate and before reverse_proxy (render.siteTemplate).
+	// The route block is what makes a rule run AFTER the gate, in the order written:
+	// bare directives would run in the proxy's own fixed order, which puts rewrite, uri
+	// and header before the gate. It is how a hand-written rule (a matcher plus uri,
+	// header, ...) survives a regeneration without hand-editing a generated file.
+	// Only handler directives belong in the file: the proxy refuses a site-level one
+	// (log, tls, ...) inside a route block. The body is otherwise opaque to hemma, like
+	// defaults.auth_snippet: `hemma apply` validates before reloading, so a bad
+	// directive is refused there, not here. Named for the MECHANISM, set via
+	// `hemma update service <name> --extra-directives <path>`; '' clears it.
 	ExtraDirectives string `yaml:"extra_directives,omitempty"`
 }
 

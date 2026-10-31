@@ -53,8 +53,10 @@ func TestExtraDirectives_Lifecycle(t *testing.T) {
 		t.Fatalf("update --extra-directives: exit %d", code)
 	}
 	got := readSite()
-	if !strings.Contains(got, "\t# extra_directives: extras/watch.caddy") || !strings.Contains(got, "\t@m {\n\t\tpath /a\n\t}\n\turi @m query x 1\n") {
-		t.Fatalf("the directives are missing from the site:\n%s", got)
+	// inside one route block (so they run in written order, after any gate), two tabs deep, matcher indentation kept on top
+	if !strings.Contains(got, "\t# extra_directives: extras/watch.caddy") ||
+		!strings.Contains(got, "\troute {\n\t\t@m {\n\t\t\tpath /a\n\t\t}\n\t\turi @m query x 1\n\t}\n\treverse_proxy jellyfin:8096\n") {
+		t.Fatalf("the directives are missing from the site, or not inside a route block:\n%s", got)
 	}
 	if strings.Index(got, "uri @m query x 1") > strings.Index(got, "reverse_proxy jellyfin:8096") {
 		t.Errorf("the directives must come before reverse_proxy:\n%s", got)
@@ -73,7 +75,7 @@ func TestExtraDirectives_Lifecycle(t *testing.T) {
 	if code := Run([]string{"-C", dir, "doctor", "--fix"}); code != 0 {
 		t.Fatalf("doctor --fix: exit %d", code)
 	}
-	if got := readSite(); !strings.Contains(got, "\tencode gzip\n") || strings.Contains(got, "uri @m") {
+	if got := readSite(); !strings.Contains(got, "\t\tencode gzip\n") || strings.Contains(got, "uri @m") {
 		t.Fatalf("--fix should have regenerated the site from the edited file:\n%s", got)
 	}
 

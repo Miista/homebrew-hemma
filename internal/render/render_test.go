@@ -265,9 +265,8 @@ func TestCaddySite_GateOutside(t *testing.T) {
 	}
 }
 
-// extra_directives directives sit between the gate and reverse_proxy, one tab deeper,
-// under a comment that names the source file. A nested block keeps its own
-// indentation on top of that tab.
+// The extra directives go inside ONE route block, between the gate and reverse_proxy, under a comment that names the source file.
+// Inside the block each line is two tabs deep (site block, route block); a nested matcher keeps its own indentation on top.
 func TestCaddySiteWithDirectives_PlainSite(t *testing.T) {
 	extra := SiteDirectives{Path: "optiplex/caddy/extras/watch.caddy", Body: "@m {\n\tpath /a\n}\nuri @m query x 1\n"}
 	got := CaddySiteWithDirectives("watch.example.com", "tls_example_com", "jellyfin:8096", config.GateNone, nil, false, extra)
@@ -275,10 +274,12 @@ func TestCaddySiteWithDirectives_PlainSite(t *testing.T) {
 		"watch.example.com {\n" +
 		"\timport tls_example_com\n" +
 		"\t# extra_directives: optiplex/caddy/extras/watch.caddy (edit that file, not this one)\n" +
-		"\t@m {\n" +
-		"\t\tpath /a\n" +
+		"\troute {\n" +
+		"\t\t@m {\n" +
+		"\t\t\tpath /a\n" +
+		"\t\t}\n" +
+		"\t\turi @m query x 1\n" +
 		"\t}\n" +
-		"\turi @m query x 1\n" +
 		"\treverse_proxy jellyfin:8096\n" +
 		"}\n"
 	if got != want {
@@ -286,26 +287,72 @@ func TestCaddySiteWithDirectives_PlainSite(t *testing.T) {
 	}
 }
 
-// The extra goes after the gate in every shape, never before it: a request must
-// face the gate first, and the extra must not be able to land inside the route.
-func TestCaddySiteWithDirectives_AfterTheGate(t *testing.T) {
-	extra := SiteDirectives{Path: "e.caddy", Body: "encode gzip\n"}
+// The exact site for every gate shape, with extra directives: the gate first, then the route block, then the proxy. This is the
+// guarantee the route block exists for. Caddy runs bare directives in its own fixed order (rewrite, uri and header BEFORE the auth
+// gate), so only inside a route block, which itself runs after the gate, does a rule run after authentication — checked against a
+// real Caddy: gate, then the rules, then the app, in both gated shapes.
+func TestCaddySiteWithDirectives_ExactShapes(t *testing.T) {
+	extra := SiteDirectives{Path: "e.caddy", Body: "uri /a\n"}
+	block := "\t# extra_directives: e.caddy (edit that file, not this one)\n\troute {\n\t\turi /a\n\t}\n"
 	for name, tc := range map[string]struct {
-		gate     config.GateScope
-		nets     []string
-		gateLine string
+		gate config.GateScope
+		nets []string
+		want string
 	}{
-		"all":     {config.GateAll, nil, "\timport auth\n"},
-		"outside": {config.GateOutside, []string{"10.0.0.0/8"}, "\t}\n"},
-		"nogate":  {config.GateNone, nil, "\timport tls_example_com\n"},
+		"gate for everyone": {config.GateAll, nil,
+			Header + "\na.example.com {\n\timport tls_example_com\n\timport auth\n" + block + "\treverse_proxy app:1\n}\n"},
+		"gate outside the local networks": {config.GateOutside, []string{"10.0.0.0/8", "192.168.1.0/24"},
+			Header + "\na.example.com {\n\timport tls_example_com\n\t@hemma_outside not client_ip 10.0.0.0/8 192.168.1.0/24\n\troute @hemma_outside {\n\t\timport auth\n\t}\n" + block + "\treverse_proxy app:1\n}\n"},
+		"outside gate but no local networks asks everyone": {config.GateOutside, nil,
+			Header + "\na.example.com {\n\timport tls_example_com\n\timport auth\n" + block + "\treverse_proxy app:1\n}\n"},
+		"no gate": {config.GateNone, nil,
+			Header + "\na.example.com {\n\timport tls_example_com\n" + block + "\treverse_proxy app:1\n}\n"},
 	} {
-		got := CaddySiteWithDirectives("a.example.com", "tls_example_com", "app:1", tc.gate, tc.nets, false, extra)
-		gateAt := strings.LastIndex(got[:strings.Index(got, "\t# extra_directives")], tc.gateLine)
-		if gateAt < 0 {
-			t.Errorf("%s: the gate line %q must come before the extra:\n%s", name, tc.gateLine, got)
+		if got := CaddySiteWithDirectives("a.example.com", "tls_example_com", "app:1", tc.gate, tc.nets, false, extra); got != tc.want {
+			t.Errorf("%s:\n got: %q\nwant: %q", name, got, tc.want)
 		}
-		if strings.Index(got, "\tencode gzip\n") > strings.Index(got, "\treverse_proxy app:1") {
-			t.Errorf("%s: the extra must come before reverse_proxy:\n%s", name, got)
+	}
+}
+
+// The forward-auth portal's multi-line reverse_proxy must survive being a template value, with extras in front of it.
+func TestCaddySiteWithDirectives_PortalProxyKeepsItsBlock(t *testing.T) {
+	got := CaddySiteWithDirectives("auth.example.com", "tls_example_com", "authelia:9091", config.GateNone, nil, true, SiteDirectives{Path: "e.caddy", Body: "header X 1\n"})
+	want := Header + "\nauth.example.com {\n\timport tls_example_com\n" +
+		"\t# extra_directives: e.caddy (edit that file, not this one)\n\troute {\n\t\theader X 1\n\t}\n" +
+		"\treverse_proxy authelia:9091 {\n\t\theader_up X-Forwarded-Host {header.X-Forwarded-Host}\n\t}\n}\n"
+	if got != want {
+		t.Errorf("portal with extras:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// The extra directives are DATA: whatever they contain is copied, never interpreted as template text, so a rule that happens to
+// hold `{{` — or the name of one of the template's own fields — comes out exactly as written.
+func TestCaddySiteWithDirectives_ExtrasAreNeverTemplateText(t *testing.T) {
+	body := "respond \"{{.Header}} {{.FQDN}} {{ }} {{define \"x\"}}\"\n"
+	got := CaddySiteWithDirectives("a.example.com", "tls_example_com", "app:1", config.GateNone, nil, false, SiteDirectives{Path: "e.caddy", Body: body})
+	if !strings.Contains(got, "\t\trespond \"{{.Header}} {{.FQDN}} {{ }} {{define \"x\"}}\"\n") {
+		t.Errorf("the body was altered by the template:\n%s", got)
+	}
+	// a hostile path is data too
+	got = CaddySiteWithDirectives("a.example.com", "tls_example_com", "app:1", config.GateNone, nil, false, SiteDirectives{Path: "{{.Proxy}}", Body: "header X 1\n"})
+	if !strings.Contains(got, "# extra_directives: {{.Proxy}} (edit") {
+		t.Errorf("the path was altered by the template:\n%s", got)
+	}
+}
+
+// The template is a constant parsed once; guard against it being edited into something that stops rendering.
+func TestSiteTemplate_EveryShapeRenders(t *testing.T) {
+	for _, gate := range []config.GateScope{config.GateNone, config.GateAll, config.GateOutside} {
+		for _, nets := range [][]string{nil, {"10.0.0.0/8"}} {
+			for _, extra := range []SiteDirectives{{}, {Path: "e", Body: "uri /a"}} {
+				for _, portal := range []bool{false, true} {
+					got := CaddySiteWithDirectives("a.example.com", "tls_x", "app:1", gate, nets, portal, extra)
+					if !strings.HasPrefix(got, Header+"\na.example.com {\n\timport tls_x\n") || !strings.HasSuffix(got, "\n}\n") ||
+						strings.Count(got, "{") != strings.Count(got, "}") || strings.Contains(got, "<no value>") || strings.Contains(got, "\n\n") {
+						t.Errorf("gate=%v nets=%v extra=%v portal=%v rendered badly:\n%s", gate, nets, extra.Path != "", portal, got)
+					}
+				}
+			}
 		}
 	}
 }

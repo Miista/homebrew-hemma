@@ -255,15 +255,30 @@ docs.example.com {
   Authelia treats itself as the post-login target and loops the redirect. The value is whatever
   the trusted outer Caddy hop computed, so preserving it is not a spoofing vector.
 - **Extra directives** (`extra_directives`, per service; `--extra-directives <file>`): a repo-relative
-  path to a file of Caddy directives that hemma copies, each line indented one tab, into this
-  service's site block — after the TLS import and any auth gate, before `reverse_proxy` — under a
-  `# extra_directives: <path> (edit that file, not this one)` comment. It exists for a rule hemma has
-  no field for (a matcher plus `uri`, `header`, `encode`, ...) so it survives regeneration instead of
-  being hand-edited into a generated file. Named for the mechanism, like `tunnel` and `bypass_paths`,
-  never for the proxy product. The body is **opaque** to hemma, as `defaults.auth_snippet` is
-  (§4.5): `hemma apply` runs `caddy validate` before reloading, so a bad directive is refused
-  there. A blank file adds nothing, and a service without the field renders byte-identically to
-  before.
+  path to a file of directives that hemma copies into this service's site block inside **one
+  `route { }` block** — after the TLS import and any auth gate, before `reverse_proxy` — under a
+  `# extra_directives: <path> (edit that file, not this one)` comment, each line two tabs deep. It
+  exists for a rule hemma has no field for (a matcher plus `uri`, `header`, ...) so it survives
+  regeneration instead of being hand-edited into a generated file. Named for the mechanism, like
+  `tunnel` and `bypass_paths`, never for the proxy product. A blank file adds nothing, and a service
+  without the field renders byte-identically to before.
+  - **Why a route block: so a rule runs after the gate.** Caddy runs bare directives in its own fixed
+    order, not the order written, and that order puts `rewrite`, `uri` and `header` BEFORE
+    `forward_auth`: a bare `uri` rule would change the path the gate judges, whether it is written
+    before or after `import auth`. Checked against a real Caddy (v2.11.7, `caddy adapt`): bare, the
+    rule runs before the gate in both gated shapes; inside a route block it runs gate, then the rules in
+    written order, then the app, in both gated shapes, and rules then app on a service without a gate —
+    so a rule means the same whether or not the service later gets a gate. The same Jellyfin rules
+    adapt to the same matchers and rewrites either way.
+  - **Handler directives only.** Caddy itself refuses a site-level directive (`log`, `tls`, ...)
+    inside a route block ("only handler directives can be used"), so a misplaced one is stopped at
+    `caddy validate`, which `hemma apply` runs before any reload; hemma does not parse the body
+    otherwise, as with `defaults.auth_snippet` (§4.5).
+  - **One template.** The site block is rendered from one constant template string
+    (`render.siteTemplate`, parsed once into `siteTmpl`; text in the code, not a file, and nothing in
+    services.yaml can change it) with a single slot for the extras. The extras are data handed to the
+    template, never parsed as template text, so a `{{` in a rule is copied as written
+    (`TestCaddySiteWithDirectives_ExtrasAreNeverTemplateText`).
   - The path must be plain and inside the repository: absolute paths, `..` escapes and symlinks that
     resolve outside it are refused (`config.ValidExtraDirectivesPath`, `LoadExtraDirectives`). The
     flag also requires the file to exist now (validate before persist), and `''` clears the field.

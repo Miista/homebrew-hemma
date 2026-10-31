@@ -5,6 +5,7 @@ package render
 import (
 	"fmt"
 	"strings"
+	"text/template"
 
 	"hemma/internal/config"
 )
@@ -158,12 +159,24 @@ func CaddySite(fqdn, tlsImport, backend string, gate config.GateScope, localNetw
 	return CaddySiteWithDirectives(fqdn, tlsImport, backend, gate, localNetworks, authBackend, SiteDirectives{})
 }
 
-// CaddySiteWithDirectives is CaddySite plus the service's extra_directives directives
-// (config.Service.ExtraDirectives): they are copied, each line indented one tab,
-// between the gate and the reverse_proxy line, whichever gate shape is used,
-// under a comment naming the source file so a reader of the generated site knows
-// where to edit. The zero SiteDirectives (or a blank body) adds nothing, so a service
-// without one renders byte-identically to CaddySite.
+// CaddySiteWithDirectives is CaddySite plus the service's extra_directives
+// (config.Service.ExtraDirectives). The whole site is one template (siteTemplate), and
+// the extra directives go into its one slot: inside a `route { }` block after the gate
+// and before the reverse_proxy line, under a comment naming the source file so a
+// reader of the generated site knows where to edit.
+//
+// The route block is the point. Caddy runs bare directives in its own fixed order, not
+// the order they are written in, and that order puts rewrite, uri and header BEFORE the
+// auth gate (forward_auth): a bare `uri` rule would change the path the gate judges.
+// Inside a route block the directives run in the order written, and the block itself
+// runs after the gate — in both gate shapes, and the same on a service without a gate,
+// so a rule means the same thing whether or not the service later gets one. Only
+// handler directives are allowed in a route block; Caddy itself refuses a site-level
+// one (log, tls, ...) there, which `hemma apply` meets at `caddy validate`, before any
+// reload.
+//
+// The zero SiteDirectives (or a blank body) adds nothing, so a service without one
+// renders byte-identically to CaddySite.
 func CaddySiteWithDirectives(fqdn, tlsImport, backend string, gate config.GateScope, localNetworks []string, authBackend bool, extra SiteDirectives) string {
 	// The forward-auth backend (e.g. an Authelia portal) must preserve the inbound
 	// X-Forwarded-Host through the reverse_proxy. When a protected service's
@@ -181,22 +194,62 @@ func CaddySiteWithDirectives(fqdn, tlsImport, backend string, gate config.GateSc
 	// AuthForward: one uniform shape — import auth, then proxy. No handle
 	// wrappers: with a single branch they add nothing, and per-path public
 	// branches are the auth provider's job now.
-	// The extra directives (if any) sit right before the proxy line, so every
-	// shape below ends in the same tail.
-	tail := extra.block() + "\t" + proxyLine
-	switch {
-	case gate == config.GateAll:
-		return fmt.Sprintf("%s\n%s {\n\timport %s\n\timport %s\n%s\n}\n",
-			Header, fqdn, tlsImport, AuthSnippetName, tail)
-	case gate == config.GateOutside && len(localNetworks) > 0:
-		return fmt.Sprintf("%s\n%s {\n\timport %s\n\t@%s not client_ip %s\n\troute @%s {\n\t\timport %s\n\t}\n%s\n}\n",
-			Header, fqdn, tlsImport, OutsideMatcher, strings.Join(localNetworks, " "), OutsideMatcher, AuthSnippetName, tail)
-	case gate == config.GateOutside:
-		// No local networks to leave out: everyone is asked (GateScope already says GateAll then; this is the backstop).
-		return fmt.Sprintf("%s\n%s {\n\timport %s\n\timport %s\n%s\n}\n",
-			Header, fqdn, tlsImport, AuthSnippetName, tail)
+	data := siteData{
+		Header: Header, FQDN: fqdn, TLS: tlsImport, Proxy: proxyLine,
+		AuthSnippet: AuthSnippetName, OutsideMatcher: OutsideMatcher, Networks: strings.Join(localNetworks, " "),
+		// GateOutside with no local networks has nobody to leave out: everyone is asked (GateScope already says GateAll then;
+		// this is the backstop).
+		GateAll:     gate == config.GateAll || (gate == config.GateOutside && len(localNetworks) == 0),
+		GateOutside: gate == config.GateOutside && len(localNetworks) > 0,
+		Extras:      extra.indented(), ExtrasPath: extra.Path,
 	}
-	return fmt.Sprintf("%s\n%s {\n\timport %s\n%s\n}\n", Header, fqdn, tlsImport, tail)
+	var b strings.Builder
+	// Cannot fail: the template and siteData are fixed in this file and every shape is rendered in the tests, so an error here is
+	// a programming mistake caught before release, not something a services.yaml can cause.
+	if err := siteTmpl.Execute(&b, data); err != nil {
+		panic("render: site template: " + err.Error())
+	}
+	return b.String()
+}
+
+// siteTemplate is the whole shape of a service's Caddy site block, in one place: the TLS import, then the gate (none, everyone, or
+// only requests from outside the local networks), then the service's extra directives inside a route block, then the proxy.
+// The extra directives can only land in that slot, so they can only run after the gate. It is a constant: nothing at run time,
+// and no services.yaml, can change it. The extra directives and every other field are DATA handed to Execute, never parsed as
+// template text, so a `{{` in someone's rules means nothing here.
+//
+// Whitespace: `{{-` swallows the newline before an action, so each optional part starts its own line itself.
+const siteTemplate = `{{.Header}}
+{{.FQDN}} {
+	import {{.TLS}}
+{{- if .GateAll}}
+	import {{.AuthSnippet}}
+{{- else if .GateOutside}}
+	@{{.OutsideMatcher}} not client_ip {{.Networks}}
+	route @{{.OutsideMatcher}} {
+		import {{.AuthSnippet}}
+	}
+{{- end}}
+{{- if .Extras}}
+	# extra_directives: {{.ExtrasPath}} (edit that file, not this one)
+	route {
+{{.Extras}}
+	}
+{{- end}}
+	{{.Proxy}}
+}
+`
+
+// siteTmpl is siteTemplate parsed once. template.Must panics at start-up if the text above is malformed.
+var siteTmpl = template.Must(template.New("site").Parse(siteTemplate))
+
+// siteData is everything siteTemplate refers to. Extras arrives already indented for its place inside the route block.
+type siteData struct {
+	Header, FQDN, TLS, Proxy string
+	AuthSnippet              string
+	OutsideMatcher, Networks string
+	GateAll, GateOutside     bool
+	Extras, ExtrasPath       string
 }
 
 // SiteDirectives is a service's extra_directives: the repo-relative Path it was read from
@@ -206,29 +259,24 @@ type SiteDirectives struct {
 	Body string
 }
 
-// block renders the extra directives for splicing into a site block: a comment
-// naming the source, then each non-empty line indented one tab (blank lines stay
-// empty, as in AuthSnippet), every line newline-terminated. Empty when the body
-// is blank. Trailing whitespace on a line is dropped so an editor's stray
-// spaces never make the generated file differ from run to run.
-func (e SiteDirectives) block() string {
+// indented renders the body for its place inside the route block of a site block: each non-empty line indented two tabs (one for
+// the site block, one for the route block; a line's own indentation stays on top, and blank lines stay empty, as in AuthSnippet),
+// joined by newlines with no trailing one. Empty when the body is blank. Trailing whitespace on a line is dropped, and CRLF
+// becomes LF, so an editor's stray spaces never make the generated file differ from run to run.
+func (e SiteDirectives) indented() string {
 	inner := strings.TrimRight(e.Body, " \t\r\n")
 	if strings.TrimSpace(inner) == "" {
 		return ""
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "\t# extra_directives: %s (edit that file, not this one)\n", e.Path)
-	for _, line := range strings.Split(strings.ReplaceAll(inner, "\r\n", "\n"), "\n") {
+	lines := strings.Split(strings.ReplaceAll(inner, "\r\n", "\n"), "\n")
+	for i, line := range lines {
 		line = strings.TrimRight(line, " \t")
-		if line == "" {
-			b.WriteString("\n")
-			continue
+		if line != "" {
+			line = "\t\t" + line
 		}
-		b.WriteString("\t")
-		b.WriteString(line)
-		b.WriteString("\n")
+		lines[i] = line
 	}
-	return b.String()
+	return strings.Join(lines, "\n")
 }
 
 // OutsideMatcher names the matcher for requests from outside defaults.local_networks in a GateOutside site.

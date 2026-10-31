@@ -82,11 +82,14 @@ Flags:
                           for clients that cannot follow a login.
       --extra-directives <f>
                           Repo-relative file of extra directives copied into THIS service's
-                          generated site block (after the TLS import and any auth gate,
-                          before reverse_proxy), for a rule hemma has no field for. The
-                          file must exist and stay inside the repository (no absolute
-                          path, no '..'). hemma does not parse it; 'hemma apply' validates
-                          the result before reloading. Like the (auth) snippet source, the
+                          generated site block, for a rule hemma has no field for. They go
+                          inside one route block after any auth gate, so they run AFTER
+                          the gate, in the order written (a bare directive would run in
+                          the proxy's own order, which is before the gate). Handler
+                          directives only: a site-level option such as a log or tls
+                          setting is refused when 'hemma apply' validates. The file must
+                          exist and stay inside the repository (no absolute path, no
+                          '..'). Like the (auth) snippet source, the
                           site is a normal generated file: if the file changes without a
                           re-sync, 'hemma doctor' reports drift ('hemma doctor --fix'
                           re-syncs). If the file later cannot be read, the existing site is

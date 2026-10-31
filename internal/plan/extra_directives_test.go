@@ -37,7 +37,7 @@ func TestBuild_RendersExtraDirectivesIntoThatServiceOnly(t *testing.T) {
 		t.Fatalf("unexpected skips: %v", p.Skipped)
 	}
 	watch := caddyFile(t, p, "watch").Content
-	if !strings.Contains(watch, "\t# extra_directives: extras/watch.caddy") || !strings.Contains(watch, "\tencode gzip\n") {
+	if !strings.Contains(watch, "\t# extra_directives: extras/watch.caddy") || !strings.Contains(watch, "\troute {\n\t\tencode gzip\n\t}\n") {
 		t.Errorf("the extra directives are missing from the watch site:\n%s", watch)
 	}
 	if strings.Index(watch, "\tencode gzip") > strings.Index(watch, "\treverse_proxy jellyfin:8096") {
