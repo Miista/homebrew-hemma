@@ -202,12 +202,23 @@ func diagnose(env *Env, repoRoot string, cfg *config.Config) []Finding {
 			Summary:  err.Error(),
 			headline: fmt.Sprintf("auth_snippet unreadable — keeping the existing generated auth snippet: %v", err)})
 	}
+	// A service's extra_directives that cannot be read is an error for the same reason: its generated site is kept as it is, so a
+	// rule in the file would otherwise silently stop applying.
+	for _, name := range sortedKeysOf(cfg.LoadExtraDirectives(repoRoot)) {
+		err := cfg.ExtraDirectivesFailed[name]
+		fs = append(fs, Finding{ID: "extra.directives." + name, Status: "err", counts: true, toStderr: true,
+			Title:    fmt.Sprintf("extra_directives unreadable for %s — keeping its existing generated site", name),
+			Summary:  err.Error(),
+			headline: fmt.Sprintf("extra_directives unreadable for %s — keeping its existing generated site: %v", name, err)})
+	}
 	p := plan.Build(cfg)
+	plan.PinExtraDirectivesToDisk(p, repoRoot, cfg.ExtraDirectivesFailed)
 	fs = append(fs, diagGitignore(env, repoRoot, p)...)
 	fs = append(fs, diagManagedBlock(filepath.Join(repoRoot, ".gitignore"))...)
 	fs = append(fs, diagCaddyImports(repoRoot, cfg)...)
 	fs = append(fs, diagTrustedProxies(repoRoot, cfg)...)
 	fs = append(fs, diagDrift(env, repoRoot, cfg)...)
+	fs = append(fs, diagDeployed(env, repoRoot, cfg)...)
 	fs = append(fs, diagDeployReadiness(env, cfg)...)
 	fs = append(fs, diagAuth(repoRoot, cfg)...)
 	return fs
@@ -569,7 +580,9 @@ func diagDrift(env *Env, repoRoot string, cfg *config.Config) []Finding {
 	lines = append(lines, "", "Run 'hemma doctor --fix' to reconcile (regenerate missing/modified, remove orphaned).")
 	return []Finding{Finding{ID: "drift", Status: "err", Title: title, List: entries, counts: true, headline: title + ":", lines: lines}.withFix(func(env *Env) ([]string, error) {
 		eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: loadManifest(env, repoRoot, cfg)}
-		res, err := eng.Reconcile(plan.Build(cfg), syncpkg.Complete)
+		fixPlan := plan.Build(cfg)
+		plan.PinExtraDirectivesToDisk(fixPlan, repoRoot, cfg.ExtraDirectivesFailed) // never regenerate a site without its extra directives
+		res, err := eng.Reconcile(fixPlan, syncpkg.Complete)
 		if err != nil {
 			return nil, err
 		}

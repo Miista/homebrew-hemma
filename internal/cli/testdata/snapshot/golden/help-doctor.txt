@@ -14,6 +14,12 @@ Flags:
 
 doctor audits THIS host's checkout only; the web UI's Issues page covers every host.
 
+On a host that serves sites it also checks that what changed on disk has been
+deployed: one advisory for the auth snippet, and one for each service that has
+extra directives, each saying whether the running proxy matches what is on disk.
+They never affect the exit code; the fix is 'hemma apply' on that host, or
+'hemma deploy'.
+
 The auth checks are read-only advisories (hemma never writes the provider's
 config, users database, or compose file); --fix cannot resolve them. Each
 advisory prints a headline (the consequence), the mechanism, and a fixed

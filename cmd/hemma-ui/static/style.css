@@ -429,6 +429,7 @@ button.info svg { width: 17px; height: 17px; }
 .fdiff pre span.del { background: var(--del-soft); color: var(--del-text); }
 .fdiff pre span.hunk { color: var(--muted); }
 .fdiff > .meta, .fdiff > .err { padding: 8px 14px; }
+.fd.fv { border: 1px solid var(--line); border-radius: var(--r2); overflow: hidden; }   /* a file's text on its own (the form, the file picker), not inside the Save dialog's list */
 .adv > button.ah { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 6px 0 0; border: 0; background: none; color: var(--ink-2); font-weight: 600; }
 .adv > button.ah:hover:not(:disabled) { background: none; }
 .adv .flist { display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r2); overflow: hidden; margin-top: 10px; }

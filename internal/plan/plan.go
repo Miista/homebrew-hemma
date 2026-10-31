@@ -484,8 +484,9 @@ func planService(c *config.Config, name string, svc config.Service, hostNames []
 
 	return []File{
 		{Path: dnsPath, Content: render.DNSRecord(svc.FQDN, hostM.IP)},
-		{Path: caddyPath, Content: render.CaddySite(svc.FQDN, tlsImport, svc.Backend,
-			svc.GateScope(len(c.Defaults.LocalNetworks) > 0), c.Defaults.LocalNetworks, name == c.Defaults.AuthService)},
+		{Path: caddyPath, Content: render.CaddySiteWithDirectives(svc.FQDN, tlsImport, svc.Backend,
+			svc.GateScope(len(c.Defaults.LocalNetworks) > 0), c.Defaults.LocalNetworks, name == c.Defaults.AuthService,
+			render.SiteDirectives{Path: svc.ExtraDirectives, Body: c.ExtraDirectivesBodies[name]})},
 	}, ""
 }
 
@@ -546,6 +547,27 @@ func PinAuthSnippetToDisk(p *Plan, repoRoot string) {
 	for i, f := range files {
 		if b, err := os.ReadFile(filepath.Join(repoRoot, f.Path)); err == nil {
 			files[i].Content = string(b)
+		}
+	}
+}
+
+// PinExtraDirectivesToDisk rewrites the planned Caddy site file of every service in
+// failed (those whose extra_directives file could not be loaded, see
+// config.LoadExtraDirectives) to whatever is currently on disk, so a sync writes it
+// back unchanged. The file stays planned and manifest-tracked (GC-safe) but is
+// NOT regenerated without its extra directives, which would silently drop a rule
+// — the same keep-last-good stance as PinAuthSnippetToDisk. A site file not yet
+// on disk keeps its planned content: there is nothing to preserve.
+func PinExtraDirectivesToDisk(p *Plan, repoRoot string, failed map[string]error) {
+	for name := range failed {
+		files := p.Files[name]
+		for i, f := range files {
+			if !strings.HasSuffix(filepath.ToSlash(filepath.Dir(f.Path)), config.DefaultCaddySitesDir) {
+				continue
+			}
+			if b, err := os.ReadFile(filepath.Join(repoRoot, f.Path)); err == nil {
+				files[i].Content = string(b)
+			}
 		}
 	}
 }

@@ -254,6 +254,30 @@ docs.example.com {
   Without this, the auth backend would reset `X-Forwarded-Host` to its own (auth) domain, so
   Authelia treats itself as the post-login target and loops the redirect. The value is whatever
   the trusted outer Caddy hop computed, so preserving it is not a spoofing vector.
+- **Extra directives** (`extra_directives`, per service; `--extra-directives <file>`): a repo-relative
+  path to a file of Caddy directives that hemma copies, each line indented one tab, into this
+  service's site block — after the TLS import and any auth gate, before `reverse_proxy` — under a
+  `# extra_directives: <path> (edit that file, not this one)` comment. It exists for a rule hemma has
+  no field for (a matcher plus `uri`, `header`, `encode`, ...) so it survives regeneration instead of
+  being hand-edited into a generated file. Named for the mechanism, like `tunnel` and `bypass_paths`,
+  never for the proxy product. The body is **opaque** to hemma, as `defaults.auth_snippet` is
+  (§4.5): `hemma apply` runs `caddy validate` before reloading, so a bad directive is refused
+  there. A blank file adds nothing, and a service without the field renders byte-identically to
+  before.
+  - The path must be plain and inside the repository: absolute paths, `..` escapes and symlinks that
+    resolve outside it are refused (`config.ValidExtraDirectivesPath`, `LoadExtraDirectives`). The
+    flag also requires the file to exist now (validate before persist), and `''` clears the field.
+  - **Keep-last-good on an unreadable file**, the same stance as `auth_snippet`: a service whose
+    file cannot be read is NOT regenerated without its directives — that would silently drop a rule.
+    Its existing site file is pinned to what is on disk (`plan.PinExtraDirectivesToDisk`, used by
+    sync, drift detection, `doctor` and `doctor --fix`), the failure is reported, and sync and
+    `doctor` exit non-zero. Other services are unaffected.
+  - Editing the file makes the generated site stale: drift detection plans with the file's current
+    content, so `hemma doctor` reports the site as modified and `hemma doctor --fix` regenerates it.
+    This is exactly how an edited `auth_snippet` source behaves today (§9, *Drift*; checked against the
+    real binary): nothing is rewritten on its own, and the UI's Issues tab and its Fix button are the same
+    two commands.
+    The interactive `update service` editor does not offer the field and leaves it as it is.
 
 ### 4.3 TLS snippet (per host × domain)
 Path: `<host>/caddy/data/tls/tls_<domain>.caddy`
@@ -1124,7 +1148,7 @@ SSH.
 hemma doctor [--fix]     (-f)
 ```
 
-`doctor` audits the repo (no docker needed, except where noted) and, with `--fix`, repairs it. Seven checks:
+`doctor` audits the repo (no docker needed, except where noted) and, with `--fix`, repairs it. Eight checks:
 
 1. **Gitignore**: are any generated output paths swallowed by a `.gitignore` rule (e.g. a broad
    `**/data/**`)? Such files generate fine but never commit/deploy. `--fix` writes a managed
@@ -1167,6 +1191,40 @@ hemma doctor [--fix]     (-f)
    unset/disabled or artifact-not-planned means silence. Warnings quote only the
    `X_AUTHELIA_CONFIG` value — never any other compose content (compose files carry secrets).
    Lives behind `auth.Provider.ValidateWiring`.
+8. **Changes on disk deployed** (§4.5, §4.2 extra directives; **advisory only** — never affects the exit
+   code; the one check that needs docker, and only on a host that serves sites). The proxy does not watch
+   files: an edited auth snippet or extra-directives file reaches the generated site through `doctor --fix`,
+   and goes live only through `apply` (on that host) or `deploy`. For each enabled service on THIS host that
+   carries extra directives, or imports `(auth)` while `defaults.auth_snippet` is set, it compares the
+   route(s) for that host name in the on-disk Caddyfile (adapted by the container's own `caddy adapt`) with
+   the config the running proxy hands out at its admin API (`http://127.0.0.1:2019/config/`, read from inside
+   the container; 127.0.0.1 because the image's busybox wget tries `::1` first). Both are canonicalised with
+   keys sorted — checked against a live proxy, where the two are byte-identical in size and equal once
+   sorted — so its marshalling order does not matter.
+
+   What a user needs to know is one thing: **something changed on disk and has not been deployed**. Nothing
+   user-facing names the proxy, says how it is behind (an older copy, or never loaded: the same message), or
+   explains how `apply` works; the fix is "hemma apply on <host>, or hemma deploy". The check is split by the
+   **source** of what was copied through (finding IDs `deployed.*`), and each reports deployed as well as not
+   (✓ in the CLI, ⚠ when not), so a run always says what was compared:
+   - `deployed.auth:<host>` — "the auth snippet changed on disk and not deployed". The snippet is **shared**,
+     so this is binary: no counts, no list of services. It is judged by the gated services that have no extra
+     directives of their own, whose route depends on the snippet alone (judging it by a service whose extras
+     changed would blame the wrong file); with no such service nothing is said about it.
+   - `deployed.extra.<service>:<host>` — "extra directives for <service> changed on disk and not deployed", one
+     per service that has them, with the source file as its body line. A service that also imports `(auth)` is
+     not reported on its own while the snippet is not deployed: the one deploy that fixes the snippet fixes it.
+   - `deployed.unreachable:<host>` — when the proxy could not be asked at all (container down, admin API not
+     answering, unreadable output): a soft finding, never a silent pass, and neither advisory above pretends
+     to be deployed.
+
+   A service whose site is not on disk at all is skipped (two empty answers are not agreement, and the drift
+   check — a missing generated file — and the Caddyfile-import check already report it). A problem is built as
+   an `auth.Advisory` (headline / body / `fix:`), like the auth advisories of §4.5, so the CLI prints it in the
+   same grammar and a UI gets the same structure; a check that passed is a plain ✓ line in the CLI (as "Auth
+   config is consistent." is), and the UI's Issues page, which keeps only warnings and errors, never shows it.
+   Nothing to compare means nothing is asked (no docker call). Each host's own doctor runs it — the UI's Issues
+   page runs every host's over ssh — because the admin API is reachable from that host only (`diagDeployed`).
 
 Exits non-zero if any problem remains.
 

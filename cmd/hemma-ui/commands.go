@@ -87,6 +87,10 @@ func serviceFields(add bool) []field {
 		withShows(field{Name: "forward-gate", Label: "Forward gate", Kind: "bool",
 			Help: "Every request from the internet needs a live session with the auth provider, so the app's own session can't keep someone logged in from outside. At home nothing changes."},
 			"auth-mode=oidc&tunnel=true"),
+		// A file in the repo whose lines are copied into THIS service's site (design §4.2). Picked from the repo tree, never
+		// typed: the server re-checks that it is a hand-written file inside the repo (checkState), and the kernel checks again.
+		inSection(field{Name: "extra-directives", Label: "Extra directives file", Kind: "file", Ref: "repo-file",
+			Help: "A file in the repo of extra directives, copied into this service's site. Editing the file does not change the site by itself: Issues lists it as out of date, and Fix regenerates it."}, "Extra directives"),
 	}
 }
 

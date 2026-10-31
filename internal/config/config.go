@@ -541,6 +541,16 @@ type Service struct {
 	// actually is. Exposure that was never opted into is not reported, so
 	// adopting the field costs an existing repo nothing.
 	Tunnel bool `yaml:"tunnel,omitempty"`
+	// ExtraDirectives is an optional repo-relative path to a file of Caddy directives
+	// copied (each line indented one tab) into THIS service's generated site
+	// block, after the TLS import and any auth gate and before reverse_proxy. It
+	// is how a hand-written rule (a matcher plus uri, header, encode, ...) survives
+	// a regeneration without hand-editing a generated file. The body is opaque to
+	// hemma, like defaults.auth_snippet: `hemma apply` runs `caddy validate`
+	// before reloading, so a bad directive is refused there, not here. Named for
+	// the MECHANISM (extra Caddy directives), set via `hemma update service <name>
+	// --extra-directives <path>`; '' clears it.
+	ExtraDirectives string `yaml:"extra_directives,omitempty"`
 }
 
 // serviceWire is the on-disk form of Service, carrying the legacy keys that are
@@ -553,6 +563,8 @@ type serviceWire struct {
 	Disabled bool   `yaml:"disabled,omitempty"`
 	Auth     Auth   `yaml:"auth,omitempty"`
 	Tunnel   bool   `yaml:"tunnel,omitempty"`
+	// ExtraDirectives mirrors Service.ExtraDirectives (no legacy name).
+	ExtraDirectives string `yaml:"extra_directives,omitempty"`
 	// Public is the pre-rename name of Tunnel. Accepted on load, re-emitted as
 	// `tunnel`.
 	Public bool `yaml:"public,omitempty"`
@@ -581,6 +593,8 @@ func (s *Service) UnmarshalYAML(value *yaml.Node) error {
 		Disabled: w.Disabled,
 		Auth:     w.Auth,
 		Tunnel:   w.Tunnel,
+
+		ExtraDirectives: w.ExtraDirectives,
 	}
 	if len(w.PublicPaths) > 0 && len(s.Auth.BypassPaths) == 0 {
 		s.Auth.BypassPaths = w.PublicPaths
@@ -609,6 +623,18 @@ type Config struct {
 	// the body of the generated (auth) snippet. Empty when no auth_snippet is
 	// configured. Populated by LoadAuthSnippet, not from services.yaml itself.
 	AuthSnippetBody string `yaml:"-"`
+
+	// ExtraDirectivesBodies holds each service's extra_directives file content, keyed by
+	// service name. Populated by LoadExtraDirectives, not from services.yaml itself;
+	// a service whose file could not be read has no entry.
+	ExtraDirectivesBodies map[string]string `yaml:"-"`
+
+	// ExtraDirectivesFailed is, per service name, why its extra_directives file could not
+	// be used on the last LoadExtraDirectives. Kept on the Config so every path that
+	// builds a plan from it (sync, drift, doctor and its --fix) can pin those
+	// services' site files to disk instead of regenerating them without their
+	// extra directives.
+	ExtraDirectivesFailed map[string]error `yaml:"-"`
 
 	path string `yaml:"-"`
 }
@@ -713,6 +739,71 @@ func (c *Config) LoadAuthSnippet(repoRoot string) error {
 	}
 	c.AuthSnippetBody = string(data)
 	return nil
+}
+
+// ValidExtraDirectivesPath reports why p is not an acceptable service extra_directives
+// path, or nil. It must be a plain repo-relative path that stays inside the
+// repository: unlike defaults.auth_snippet (one operator-set path), this is a
+// per-service value that ends up inside a generated config, so an absolute path
+// or a `..` escape is refused rather than read.
+func ValidExtraDirectivesPath(p string) error {
+	switch {
+	case p == "":
+		return fmt.Errorf("extra_directives path is empty")
+	case strings.ContainsRune(p, 0):
+		return fmt.Errorf("extra_directives path %q contains a NUL byte", p)
+	case filepath.IsAbs(p):
+		return fmt.Errorf("extra_directives %q must be a path relative to the repository, not an absolute one", p)
+	}
+	clean := filepath.Clean(p)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("extra_directives %q leaves the repository", p)
+	}
+	return nil
+}
+
+// LoadExtraDirectives reads every service's extra_directives file (resolved relative to
+// repoRoot) into ExtraDirectivesBodies and returns one error per service whose file
+// could not be used, keyed by service name; nil when all loaded. A failing
+// service gets NO body, so a caller must keep that service's existing generated
+// site file (plan.PinExtraDirectivesToDisk) rather than render it without its extra
+// directives: a path typo or a missing file must never silently drop a rule —
+// the same keep-last-good stance as LoadAuthSnippet (report-but-proceed, §8).
+// A file that resolves through a symlink to outside the repository is refused
+// too. Services without a extra_directives are untouched.
+func (c *Config) LoadExtraDirectives(repoRoot string) map[string]error {
+	c.ExtraDirectivesBodies = map[string]string{}
+	c.ExtraDirectivesFailed = nil
+	fail := func(name string, err error) {
+		if c.ExtraDirectivesFailed == nil {
+			c.ExtraDirectivesFailed = map[string]error{}
+		}
+		c.ExtraDirectivesFailed[name] = err
+	}
+	rootReal, rootErr := filepath.EvalSymlinks(repoRoot)
+	for name, svc := range c.Services {
+		if svc.ExtraDirectives == "" {
+			continue
+		}
+		if err := ValidExtraDirectivesPath(svc.ExtraDirectives); err != nil {
+			fail(name, err)
+			continue
+		}
+		full := filepath.Join(repoRoot, svc.ExtraDirectives)
+		if real, err := filepath.EvalSymlinks(full); err == nil && rootErr == nil {
+			if rel, err := filepath.Rel(rootReal, real); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				fail(name, fmt.Errorf("extra_directives %s resolves outside the repository", svc.ExtraDirectives))
+				continue
+			}
+		}
+		data, err := os.ReadFile(full)
+		if err != nil {
+			fail(name, fmt.Errorf("read extra_directives %s: %w", svc.ExtraDirectives, err))
+			continue
+		}
+		c.ExtraDirectivesBodies[name] = string(data)
+	}
+	return c.ExtraDirectivesFailed
 }
 
 // MatchDomain returns the longest registrable domain in the domains map that

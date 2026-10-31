@@ -22,6 +22,8 @@ Usage of add:
     	reverse_proxy upstream name:port
   -bypass-paths string
     	comma-separated request paths exempted from the auth gate (forward mode only)
+  -extra-directives string
+    	repo-relative file of extra directives copied into this service's site block
   -f string
     	alias for --fqdn
   -forward-gate

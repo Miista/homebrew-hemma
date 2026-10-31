@@ -4,7 +4,7 @@ exit: 0
 --- stderr ---
 hemma update service — change a service's fqdn, host, backend, or auth
 
-Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel] [--forward-gate[=false]]
+Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel] [--forward-gate[=false]] [--extra-directives <file>]
 
 With no flags (and stdin a terminal) an interactive editor opens instead:
 EVERY field is pre-filled with the service's current values and editable
@@ -53,6 +53,11 @@ Flags:
                           (oidc on the tunnel only); =false removes it. Changing the mode
                           away from oidc or the tunnel off clears it with a note. See
                           'hemma help add service'.
+      --extra-directives <f>
+                          Set the repo-relative file of extra directives copied into this
+                          service's site block; '' clears it. The file must exist and stay
+                          inside the repository. The interactive editor leaves it as it is.
+                          See 'hemma help add service' for the full semantics.
 
 Only the given flags change; regenerated files and apply-hints follow.
 --- files ---

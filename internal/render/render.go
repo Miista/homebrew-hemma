@@ -151,7 +151,20 @@ func DNSRecord(fqdn, hostIP string) string {
 // authBackend is orthogonal to the mode: when true (this service is the
 // forward-auth portal) the reverse_proxy preserves the inbound X-Forwarded-Host
 // so post-login redirects target the original service, not the portal.
+//
+// A service with no extra_directives is rendered by this function; see
+// CaddySiteWithDirectives for one that has it.
 func CaddySite(fqdn, tlsImport, backend string, gate config.GateScope, localNetworks []string, authBackend bool) string {
+	return CaddySiteWithDirectives(fqdn, tlsImport, backend, gate, localNetworks, authBackend, SiteDirectives{})
+}
+
+// CaddySiteWithDirectives is CaddySite plus the service's extra_directives directives
+// (config.Service.ExtraDirectives): they are copied, each line indented one tab,
+// between the gate and the reverse_proxy line, whichever gate shape is used,
+// under a comment naming the source file so a reader of the generated site knows
+// where to edit. The zero SiteDirectives (or a blank body) adds nothing, so a service
+// without one renders byte-identically to CaddySite.
+func CaddySiteWithDirectives(fqdn, tlsImport, backend string, gate config.GateScope, localNetworks []string, authBackend bool, extra SiteDirectives) string {
 	// The forward-auth backend (e.g. an Authelia portal) must preserve the inbound
 	// X-Forwarded-Host through the reverse_proxy. When a protected service's
 	// auth check hits this backend, Caddy's outer hop already set
@@ -168,19 +181,54 @@ func CaddySite(fqdn, tlsImport, backend string, gate config.GateScope, localNetw
 	// AuthForward: one uniform shape — import auth, then proxy. No handle
 	// wrappers: with a single branch they add nothing, and per-path public
 	// branches are the auth provider's job now.
+	// The extra directives (if any) sit right before the proxy line, so every
+	// shape below ends in the same tail.
+	tail := extra.block() + "\t" + proxyLine
 	switch {
 	case gate == config.GateAll:
-		return fmt.Sprintf("%s\n%s {\n\timport %s\n\timport %s\n\t%s\n}\n",
-			Header, fqdn, tlsImport, AuthSnippetName, proxyLine)
+		return fmt.Sprintf("%s\n%s {\n\timport %s\n\timport %s\n%s\n}\n",
+			Header, fqdn, tlsImport, AuthSnippetName, tail)
 	case gate == config.GateOutside && len(localNetworks) > 0:
-		return fmt.Sprintf("%s\n%s {\n\timport %s\n\t@%s not client_ip %s\n\troute @%s {\n\t\timport %s\n\t}\n\t%s\n}\n",
-			Header, fqdn, tlsImport, OutsideMatcher, strings.Join(localNetworks, " "), OutsideMatcher, AuthSnippetName, proxyLine)
+		return fmt.Sprintf("%s\n%s {\n\timport %s\n\t@%s not client_ip %s\n\troute @%s {\n\t\timport %s\n\t}\n%s\n}\n",
+			Header, fqdn, tlsImport, OutsideMatcher, strings.Join(localNetworks, " "), OutsideMatcher, AuthSnippetName, tail)
 	case gate == config.GateOutside:
 		// No local networks to leave out: everyone is asked (GateScope already says GateAll then; this is the backstop).
-		return fmt.Sprintf("%s\n%s {\n\timport %s\n\timport %s\n\t%s\n}\n",
-			Header, fqdn, tlsImport, AuthSnippetName, proxyLine)
+		return fmt.Sprintf("%s\n%s {\n\timport %s\n\timport %s\n%s\n}\n",
+			Header, fqdn, tlsImport, AuthSnippetName, tail)
 	}
-	return fmt.Sprintf("%s\n%s {\n\timport %s\n\t%s\n}\n", Header, fqdn, tlsImport, proxyLine)
+	return fmt.Sprintf("%s\n%s {\n\timport %s\n%s\n}\n", Header, fqdn, tlsImport, tail)
+}
+
+// SiteDirectives is a service's extra_directives: the repo-relative Path it was read from
+// and the file's Body. The zero value means none.
+type SiteDirectives struct {
+	Path string
+	Body string
+}
+
+// block renders the extra directives for splicing into a site block: a comment
+// naming the source, then each non-empty line indented one tab (blank lines stay
+// empty, as in AuthSnippet), every line newline-terminated. Empty when the body
+// is blank. Trailing whitespace on a line is dropped so an editor's stray
+// spaces never make the generated file differ from run to run.
+func (e SiteDirectives) block() string {
+	inner := strings.TrimRight(e.Body, " \t\r\n")
+	if strings.TrimSpace(inner) == "" {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\t# extra_directives: %s (edit that file, not this one)\n", e.Path)
+	for _, line := range strings.Split(strings.ReplaceAll(inner, "\r\n", "\n"), "\n") {
+		line = strings.TrimRight(line, " \t")
+		if line == "" {
+			b.WriteString("\n")
+			continue
+		}
+		b.WriteString("\t")
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // OutsideMatcher names the matcher for requests from outside defaults.local_networks in a GateOutside site.

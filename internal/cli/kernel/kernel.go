@@ -355,6 +355,7 @@ func cmdAdd(env *Env, repoRoot, cfgPath string, args []string) int {
 	policyLocal := fs.String("auth-policy-local", "", "auth requirement for local-horizon requests: bypass|one_factor|two_factor|deny")
 	policyPublic := fs.String("auth-policy-public", "", "auth requirement for public-horizon requests: bypass|one_factor|two_factor|deny")
 	forwardGate := fs.Bool("forward-gate", false, "forward auth on requests from outside local_networks (oidc + --tunnel only)")
+	extraDirectives := fs.String("extra-directives", "", "repo-relative file of extra directives copied into this service's site block")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -406,6 +407,9 @@ func cmdAdd(env *Env, repoRoot, cfgPath string, args []string) int {
 	if !ok {
 		return 2
 	}
+	if *extraDirectives != "" && !checkExtraDirectives(env, repoRoot, *extraDirectives) {
+		return 2
+	}
 
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
@@ -416,7 +420,25 @@ func cmdAdd(env *Env, repoRoot, cfgPath string, args []string) int {
 		config.Service{FQDN: *fqdn, Host: *host, Backend: *backend,
 			Auth: config.Auth{Mode: mode, Groups: groups, BypassPaths: paths,
 				Policy: config.AuthPolicy{Local: addLocal, Public: addPublic}, ForwardGate: *forwardGate},
-			Tunnel: *tunnel})
+			Tunnel: *tunnel, ExtraDirectives: *extraDirectives})
+}
+
+// checkExtraDirectives is the validate-before-persist check for --extra-directives: the
+// path must be a plain repo-relative one and the file must exist and be
+// readable now, so a typo is a usage error here and never a saved entry that
+// the next sync can only report. It prints the reason and returns false on a
+// bad value.
+func checkExtraDirectives(env *Env, repoRoot, path string) bool {
+	if err := config.ValidExtraDirectivesPath(path); err != nil {
+		errf(env, "--extra-directives: %v.", err)
+		return false
+	}
+	probe := &config.Config{Services: map[string]config.Service{"_": {ExtraDirectives: path}}}
+	if failed := probe.LoadExtraDirectives(repoRoot); failed["_"] != nil {
+		errf(env, "--extra-directives: %v.", failed["_"])
+		return false
+	}
+	return true
 }
 
 // persistNewService is the shared tail of `add service`: both the flags form
@@ -748,6 +770,7 @@ func cmdUpdate(env *Env, repoRoot, cfgPath string, args []string) int {
 	policyLocal := fs.String("auth-policy-local", "", "auth requirement for local-horizon requests ('' clears): bypass|one_factor|two_factor|deny")
 	policyPublic := fs.String("auth-policy-public", "", "auth requirement for public-horizon requests ('' clears): bypass|one_factor|two_factor|deny")
 	forwardGate := fs.Bool("forward-gate", false, "forward auth on requests from outside local_networks (oidc + tunnel only; '--forward-gate=false' removes it)")
+	extraDirectives := fs.String("extra-directives", "", "repo-relative file of extra directives copied into this service's site block ('' clears)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -769,6 +792,10 @@ func cmdUpdate(env *Env, repoRoot, cfgPath string, args []string) int {
 	}
 	newPublic, ok := resolvePolicyLevel(env, "auth-policy-public", *policyPublic)
 	if !ok {
+		return 2
+	}
+	// Only a non-empty path is checked: '' is how the extra is cleared.
+	if *extraDirectives != "" && !checkExtraDirectives(env, repoRoot, *extraDirectives) {
 		return 2
 	}
 
@@ -809,6 +836,9 @@ func cmdUpdate(env *Env, repoRoot, cfgPath string, args []string) int {
 			svc.Auth.Policy.Public = newPublic
 		case "forward-gate":
 			svc.Auth.ForwardGate = *forwardGate
+		case "extra-directives":
+			// Empty string clears the extra directives.
+			svc.ExtraDirectives = *extraDirectives
 		}
 	})
 	// The forward gate is only for an oidc app on the tunnel (§4.9). Asked for anywhere else, it is refused before anything
@@ -1015,11 +1045,21 @@ func runSync(env *Env, repoRoot string, cfg *config.Config, mode syncpkg.Mode) i
 	// (report-but-proceed), but the command exits non-zero (design §4.5/§8) so
 	// a deploy script notices the path typo.
 	authErr := cfg.LoadAuthSnippet(repoRoot)
+	// Same stance for a service's extra_directives: a file that cannot be read keeps
+	// that service's existing generated site (never rendered without its extra
+	// directives), is reported, and fails the command.
+	extraErrs := cfg.LoadExtraDirectives(repoRoot)
 
 	p := plan.Build(cfg)
 	if authErr != nil {
 		errf(env, "auth_snippet unreadable — keeping the existing generated auth snippet: %v", authErr)
 		plan.PinAuthSnippetToDisk(p, repoRoot)
+	}
+	if len(extraErrs) > 0 {
+		for _, name := range sortedKeysOf(extraErrs) {
+			errf(env, "extra_directives unreadable for %s — keeping its existing generated site: %v", name, extraErrs[name])
+		}
+		plan.PinExtraDirectivesToDisk(p, repoRoot, extraErrs)
 	}
 
 	// Before writing, warn if any output path would be gitignored — those
@@ -1124,7 +1164,8 @@ func runSync(env *Env, repoRoot string, cfg *config.Config, mode syncpkg.Mode) i
 	// proceeded around it (keep-last-good above): exit non-zero (design §8).
 	// An unresolved forward-auth target is the same class of problem — the files
 	// were written, but what they contain leaves `import auth` gating nothing.
-	if authErr != nil || p.UnresolvedAuthTarget {
+	// An unreadable extra_directives is the same class: the sync proceeded around it.
+	if authErr != nil || p.UnresolvedAuthTarget || len(extraErrs) > 0 {
 		return 1
 	}
 	return 0

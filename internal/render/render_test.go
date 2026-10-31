@@ -264,3 +264,74 @@ func TestCaddySite_GateOutside(t *testing.T) {
 		t.Errorf("GateOutside without local networks must gate every request:\n%s", all)
 	}
 }
+
+// extra_directives directives sit between the gate and reverse_proxy, one tab deeper,
+// under a comment that names the source file. A nested block keeps its own
+// indentation on top of that tab.
+func TestCaddySiteWithDirectives_PlainSite(t *testing.T) {
+	extra := SiteDirectives{Path: "optiplex/caddy/extras/watch.caddy", Body: "@m {\n\tpath /a\n}\nuri @m query x 1\n"}
+	got := CaddySiteWithDirectives("watch.example.com", "tls_example_com", "jellyfin:8096", config.GateNone, nil, false, extra)
+	want := Header + "\n" +
+		"watch.example.com {\n" +
+		"\timport tls_example_com\n" +
+		"\t# extra_directives: optiplex/caddy/extras/watch.caddy (edit that file, not this one)\n" +
+		"\t@m {\n" +
+		"\t\tpath /a\n" +
+		"\t}\n" +
+		"\turi @m query x 1\n" +
+		"\treverse_proxy jellyfin:8096\n" +
+		"}\n"
+	if got != want {
+		t.Fatalf("CaddySiteWithDirectives mismatch:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// The extra goes after the gate in every shape, never before it: a request must
+// face the gate first, and the extra must not be able to land inside the route.
+func TestCaddySiteWithDirectives_AfterTheGate(t *testing.T) {
+	extra := SiteDirectives{Path: "e.caddy", Body: "encode gzip\n"}
+	for name, tc := range map[string]struct {
+		gate     config.GateScope
+		nets     []string
+		gateLine string
+	}{
+		"all":     {config.GateAll, nil, "\timport auth\n"},
+		"outside": {config.GateOutside, []string{"10.0.0.0/8"}, "\t}\n"},
+		"nogate":  {config.GateNone, nil, "\timport tls_example_com\n"},
+	} {
+		got := CaddySiteWithDirectives("a.example.com", "tls_example_com", "app:1", tc.gate, tc.nets, false, extra)
+		gateAt := strings.LastIndex(got[:strings.Index(got, "\t# extra_directives")], tc.gateLine)
+		if gateAt < 0 {
+			t.Errorf("%s: the gate line %q must come before the extra:\n%s", name, tc.gateLine, got)
+		}
+		if strings.Index(got, "\tencode gzip\n") > strings.Index(got, "\treverse_proxy app:1") {
+			t.Errorf("%s: the extra must come before reverse_proxy:\n%s", name, got)
+		}
+	}
+}
+
+// A blank body, or none, adds nothing at all: byte-identical to CaddySite, so
+// turning the feature on for one service cannot change any other site.
+func TestCaddySiteWithDirectives_EmptyIsIdentical(t *testing.T) {
+	plain := CaddySite("a.example.com", "tls_example_com", "app:1", config.GateAll, nil, false)
+	for _, body := range []string{"", "\n", "  \t\n\n"} {
+		if got := CaddySiteWithDirectives("a.example.com", "tls_example_com", "app:1", config.GateAll, nil, false, SiteDirectives{Path: "e.caddy", Body: body}); got != plain {
+			t.Errorf("blank body %q changed the output:\n%s", body, got)
+		}
+	}
+}
+
+// Generated output must not depend on how an editor saved the file: CRLF and
+// trailing spaces are normalised, blank lines stay empty.
+func TestCaddySiteWithDirectives_Normalises(t *testing.T) {
+	a := CaddySiteWithDirectives("a.example.com", "tls_example_com", "app:1", config.GateNone, nil, false,
+		SiteDirectives{Path: "e.caddy", Body: "header X 1  \r\n\r\nheader Y 2\t\r\n\r\n\r\n"})
+	b := CaddySiteWithDirectives("a.example.com", "tls_example_com", "app:1", config.GateNone, nil, false,
+		SiteDirectives{Path: "e.caddy", Body: "header X 1\n\nheader Y 2"})
+	if a != b {
+		t.Errorf("CRLF/trailing whitespace changed the output:\n%q\nvs\n%q", a, b)
+	}
+	if strings.Contains(a, "\r") || strings.Contains(a, " \n") || strings.Contains(a, "\t\n") {
+		t.Errorf("stray whitespace left in the output: %q", a)
+	}
+}

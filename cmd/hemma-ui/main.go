@@ -108,6 +108,7 @@ func (s *server) routes(gate *authy.Gate) (http.Handler, error) {
 	mux.HandleFunc("GET /api/signin", s.signin)
 	mux.HandleFunc("GET /api/commands", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, commands) })
 	mux.HandleFunc("GET /api/browse", s.handleBrowse)
+	mux.HandleFunc("GET /api/file", s.handleFile)
 	mux.HandleFunc("GET /api/changes", s.handleChanges)
 	mux.HandleFunc("GET /api/diff", s.handleDiff)
 	mux.HandleFunc("GET /api/filediff", s.handleFileDiff)
@@ -213,6 +214,7 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 			"bypass-paths":       strings.Join(v.Auth.BypassPaths, ","),
 			"auth-policy-local":  string(v.Auth.Policy.Local),
 			"auth-policy-public": string(v.Auth.Policy.Public), "tunnel": v.Tunnel, "forward-gate": v.Auth.ForwardGate,
+			"extra-directives": v.ExtraDirectives,
 		})
 	}
 	hosts := []map[string]any{}

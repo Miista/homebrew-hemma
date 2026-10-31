@@ -71,6 +71,7 @@ func serviceKV(sv config.Service) []kv {
 		{"Policy: local", string(sv.Auth.Policy.Local)}, {"Policy: public", string(sv.Auth.Policy.Public)},
 		{"Reachable from the internet", yesNo(sv.Tunnel)},
 		{"Forward gate", yesNo(sv.Auth.ForwardGate)},
+		{"Extra directives", sv.ExtraDirectives},
 	}
 }
 

@@ -4,7 +4,7 @@ exit: 0
 --- stderr ---
 hemma add service — declare a service and generate its DNS/Caddy config
 
-Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel] [--forward-gate]
+Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel] [--forward-gate] [--extra-directives <file>]
 
 With no flags (and stdin a terminal) an interactive editor opens instead: the
 fqdn is pre-filled with <name>.<domain> when exactly one domain is defined and
@@ -67,6 +67,18 @@ Flags:
                           internet. Local requests go straight to the app. The public
                           policy and the groups apply; --bypass-paths exempt API paths
                           for clients that cannot follow a login.
+      --extra-directives <f>
+                          Repo-relative file of extra directives copied into THIS service's
+                          generated site block (after the TLS import and any auth gate,
+                          before reverse_proxy), for a rule hemma has no field for. The
+                          file must exist and stay inside the repository (no absolute
+                          path, no '..'). hemma does not parse it; 'hemma apply' validates
+                          the result before reloading. Like the (auth) snippet source, the
+                          site is a normal generated file: if the file changes without a
+                          re-sync, 'hemma doctor' reports drift ('hemma doctor --fix'
+                          re-syncs). If the file later cannot be read, the existing site is
+                          kept (never regenerated without its rules), the sync exits
+                          non-zero and 'hemma doctor' reports it.
 
 Regenerates files immediately, then prints which hosts need 'hemma apply'.
 --- files ---

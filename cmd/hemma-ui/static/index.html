@@ -83,6 +83,13 @@
   <div class="dft"><div class="grp"><button type="button" id="lclose">Close</button></div></div>
 </dialog>
 
+<!-- The repo file picker (a service's extra directives): opens over the form, so the tree never takes the form's place. -->
+<dialog id="fdlg" tabindex="-1" autofocus aria-labelledby="ftitle">
+  <div class="dhd"><div class="tt"><h2 id="ftitle">Choose a file</h2><p class="meta">A file in the repo. Folders open on a click.</p></div><button type="button" class="x" id="fx" aria-label="Close">×</button></div>
+  <div class="dbd" id="fbody"></div>
+  <div class="dft"><div class="grp"><button type="button" id="fcancel">Cancel</button><button type="button" id="fgo" class="primary" disabled>Choose</button></div></div>
+</dialog>
+
 <dialog id="dlg" tabindex="-1" autofocus aria-labelledby="dtitle">
   <form method="dialog" id="form">
     <div class="dhd"><div class="tt"><h2 id="dtitle"></h2><p class="meta" id="dhelp"></p></div><button type="button" class="x" id="dx" aria-label="Close">×</button></div>
@@ -548,6 +555,57 @@ function fileTree(selected, onpick) {
   return { node, get: () => sel };
 }
 
+// fileContentRow: a repo file's text, folded away like a file in the Save dialog (same row, same look) and fetched the first
+// time it opens (/api/file). Lines are drawn one block each, never as HTML.
+function fileContentRow(path) {
+  const row = el("div", null, { className: "fd fv" });
+  const head = el("button", null, { type: "button", className: "fh" }); head.setAttribute("aria-expanded", "false");
+  const label = el("span", "Show contents", { className: "fp" });
+  head.append(el("span", null, { className: "chev" }), label);
+  const body = el("div", null, { className: "fdiff", hidden: true });
+  let loaded = false;
+  head.onclick = async () => {
+    const open = body.hidden; body.hidden = !open; head.setAttribute("aria-expanded", String(open));
+    label.textContent = open ? "Hide contents" : "Show contents";
+    if (!open || loaded) return;
+    loaded = true; body.replaceChildren(el("div", "Loading…", { className: "meta" }));
+    let j;
+    try { const r = await fetch("/api/file?path=" + encodeURIComponent(path)); j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); }
+    catch (e) { loaded = false; body.replaceChildren(el("div", "Could not load the file: " + (e.message || e), { className: "err small" })); return; }
+    const lines = (j.content || "").split("\n"); if (lines[lines.length - 1] === "") lines.pop();
+    const pre = el("pre");
+    for (const l of lines) pre.append(el("span", l === "" ? " " : l));   // a blank line keeps its height
+    if (!lines.length) pre.append(el("span", "(the file is empty)", { className: "hunk" }));
+    body.replaceChildren(pre);
+    if (j.truncated) body.append(el("div", "Only the start of the file is shown: it is long.", { className: "meta" }));
+  };
+  row.append(head, body);
+  return row;
+}
+
+// chooseFile: the repo tree as a dialog of its own, over the form (so the tree never takes the form's place, least of all on a
+// phone). The file under the pointer can be read before it is chosen. Resolves with the chosen path, or null when it was left.
+function chooseFile(current) {
+  const d = $("#fdlg"), go = $("#fgo");
+  return new Promise(resolve => {
+    let sel = current || "", done = false;
+    const finish = v => { if (done) return; done = true; d.close(); resolve(v); };
+    const preview = el("div");
+    const showPreview = () => {
+      preview.replaceChildren(sel ? fileContentRow(sel) : el("p", "Click a file to choose it.", { className: "meta" }));
+      go.disabled = !sel;
+    };
+    const ft = fileTree(sel, p => { sel = p; showPreview(); });
+    $("#fbody").replaceChildren(ft.node, preview);
+    showPreview();
+    go.onclick = () => finish(sel);
+    $("#fx").onclick = $("#fcancel").onclick = () => finish(null);
+    d.onclose = () => finish(null);   // Esc, or the backdrop: after a choice finish() has already run and this does nothing
+    openModal(d);
+  });
+}
+closeOnBackdrop($("#fdlg"), () => false);
+
 // formError: what to say in a form when a command refused. The CLI's report starts "Error: …" and may carry
 // follow-up lines (usage, hints) — the form needs the reason, not the report.
 const formError = out => (out || "").trim().split(/\n\s*\n|\n(?=Usage:|Run |Hint)/)[0].replace(/^Error:\s*/, "");
@@ -589,6 +647,30 @@ function control(fd, prefill, locked) {
   if (fd.kind === "list") {
     const cl = listEditor(String(v || "").split(",").filter(Boolean), CHECK[fd.ref] || (() => true), HINT[fd.ref], () => formChanged(), fd.ref === "ipcidr" || fd.ref === "cidr");
     return { node: cl.node, get: () => cl.get(), check: () => cl.flush() ? "" : "fix or clear the value in the box" };
+  }
+  // An optional file from the repo (a service's extra directives). The form only shows which one is chosen, with its text
+  // folded away as in the Save dialog; choosing opens the repo tree in a dialog of its own (chooseFile), Clear leaves it out.
+  if (fd.kind === "file") {
+    let sel = v || "";
+    const wrap = el("div", null, { style: "display:flex;flex-direction:column;gap:8px" });
+    const picked = el("div", null, { className: "picked" }), view = el("div");
+    const choose = btn("Choose file…", async e => {
+      e.preventDefault();
+      const r = await chooseFile(sel);
+      if (r !== null && r !== sel) { sel = r; sync(); formChanged(); }
+    });
+    const clear = btn("Clear", e => { e.preventDefault(); sel = ""; sync(); formChanged(); });
+    choose.type = clear.type = "button";   // inside the form, a plain button would submit it
+    const row = el("div", null, { style: "display:flex;gap:8px;flex-wrap:wrap" }); row.append(choose, clear);
+    const sync = () => {
+      picked.replaceChildren(el("span", "Selected", { className: "meta", style: "font-family:var(--font);font-weight:400" }), el("span", sel || "None selected"));
+      view.replaceChildren(...(sel ? [fileContentRow(sel)] : []));
+      clear.hidden = !sel; choose.textContent = sel ? "Change file…" : "Choose file…";
+    };
+    sync();
+    wrap.append(picked, row, view);
+    if (fd.help) wrap.append(el("span", fd.help, { className: "hint" }));
+    return { node: wrap, get: () => sel, check: () => need(sel) };
   }
   if (fd.ref === "fqdn") { const c = fqdnControl(v, fd.required); return { node: c.node, suggest: c.suggest, get: c.get, check: c.check }; }
   // The four auth modes are a segmented choice, with a line of what the chosen one means.
@@ -700,7 +782,7 @@ function openCmd(key, prefill = {}) {
     if (fd.name === "name" && k.node.tagName === "INPUT" && !k.node.readOnly) k.node.placeholder = key === "add host" ? "e.g. nas" : "e.g. docsapp";
     const title = fd.label;
     // A list holds buttons, so it must not live inside a <label> (tapping the title would press one).
-    const stack = fd.kind === "list" || fd.name === "auth-mode" || fd.name === "host" && k.node.classList?.contains("seg");
+    const stack = fd.kind === "list" || fd.kind === "file" || fd.name === "auth-mode" || fd.name === "host" && k.node.classList?.contains("seg");
     const lab = stack ? el("div", null, { className: "fld" }) : el("label", k.inline ? "" : title);
     if (stack) lab.append(el("div", title, { className: "fl" }), k.node);
     else if (k.inline) { lab.className = "switchrow"; const txt = el("span", null, { className: "txt" }); txt.append(el("b", fd.label, { style: "font-weight:600" })); if (fd.help) txt.append(el("span", fd.help, { className: "hint" })); lab.append(txt, k.node); }   // label on the left, the switch on the right
@@ -1280,7 +1362,7 @@ async function undoRemoved(e) {
     key = "add service";
     values = { name: e.name, fqdn: f["Address"], host: f["Host"], backend: f["Backend"], "auth-mode": f["Auth mode"] || "none", "auth-groups": list(f["Auth groups"]),
                "bypass-paths": list(f["Bypass paths"]), "auth-policy-local": f["Policy: local"] || "", "auth-policy-public": f["Policy: public"] || "", tunnel: f["Reachable from the internet"] === "yes",
-               "forward-gate": f["Forward gate"] === "yes" };
+               "forward-gate": f["Forward gate"] === "yes", "extra-directives": f["Extra directives"] || "" };
   } else if (e.kind === "Host") { key = "add host"; values = { name: e.name, ip: f["IP address"], ssh: (f["SSH destination"] || "").replace("—", ""), "trusted-proxies": list(f["Extra trusted proxies"]) };
   } else if (e.kind === "Domain") { key = "add domain"; values = { name: e.name };
   } else return;

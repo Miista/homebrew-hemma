@@ -49,6 +49,10 @@ exit: 1
   - missing:  edge/cloudflared/config.yml
 
 Run 'hemma doctor --fix' to reconcile (regenerate missing/modified, remove orphaned).
+
+⚠ could not check whether changes on disk are deployed (on-disk config: EOF)
+    The proxy container must be up, with its admin API answering on 127.0.0.1:2019.
+    fix:  start the proxy container and check that its admin API answers on 127.0.0.1:2019
 ✓ Deploy readiness: 1 remote host in known_hosts.
 
 ⚠ could not verify OIDC client for dash: open core/authelia/data/config/configuration.yml: no such file or directory
@@ -61,5 +65,7 @@ These advisories require manual edits (see their fix: lines) — 'hemma doctor -
 --- stderr ---
 --- external commands ---
 git -C <repo> check-ignore --stdin
+docker exec caddy caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec caddy curl -s -m 5 -f http://127.0.0.1:2019/config/
 ssh-keygen -F 192.0.2.20
 --- files ---

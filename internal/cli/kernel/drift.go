@@ -46,10 +46,15 @@ func detectDrift(repoRoot string, cfg *config.Config, mf *manifest.Manifest) Dri
 	// unreadable, pin the planned content to disk so we don't falsely report the
 	// last-good file as modified (consistent with runSync's keep-last-good).
 	authErr := cfg.LoadAuthSnippet(repoRoot)
+	// Likewise each service's extra_directives: planned with its directives, so a
+	// changed extra file shows up as a modified site; a file that cannot be read
+	// is pinned to disk so the last-good site is not falsely reported modified.
+	extraErrs := cfg.LoadExtraDirectives(repoRoot)
 	p := plan.Build(cfg)
 	if authErr != nil {
 		plan.PinAuthSnippetToDisk(p, repoRoot)
 	}
+	plan.PinExtraDirectivesToDisk(p, repoRoot, extraErrs)
 
 	desired := map[string]bool{}
 	var d Drift

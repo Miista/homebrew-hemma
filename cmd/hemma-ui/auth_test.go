@@ -40,6 +40,7 @@ func TestGate_EveryRouteRefusedWithoutASession(t *testing.T) {
 		{"GET", "/api/signin?mode=forward&local=bypass", ""},
 		{"GET", "/api/commands", ""},
 		{"GET", "/api/browse?path=.", ""},
+		{"GET", "/api/file?path=services.yaml", ""},
 		{"GET", "/api/changes", ""},
 		{"GET", "/api/diff", ""},
 		{"GET", "/api/filediff?path=services.yaml", ""},

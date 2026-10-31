@@ -17,7 +17,7 @@ type HelpTopic struct {
 var HelpTopics = []HelpTopic{
 	{"add service", `hemma add service — declare a service and generate its DNS/Caddy config
 
-Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel] [--forward-gate]
+Usage: hemma add service <name> --fqdn <fqdn> --host <host> --backend <name:port> [--auth-mode forward|oidc|external] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel] [--forward-gate] [--extra-directives <file>]
 
 With no flags (and stdin a terminal) an interactive editor opens instead: the
 fqdn is pre-filled with <name>.<domain> when exactly one domain is defined and
@@ -80,12 +80,24 @@ Flags:
                           internet. Local requests go straight to the app. The public
                           policy and the groups apply; --bypass-paths exempt API paths
                           for clients that cannot follow a login.
+      --extra-directives <f>
+                          Repo-relative file of extra directives copied into THIS service's
+                          generated site block (after the TLS import and any auth gate,
+                          before reverse_proxy), for a rule hemma has no field for. The
+                          file must exist and stay inside the repository (no absolute
+                          path, no '..'). hemma does not parse it; 'hemma apply' validates
+                          the result before reloading. Like the (auth) snippet source, the
+                          site is a normal generated file: if the file changes without a
+                          re-sync, 'hemma doctor' reports drift ('hemma doctor --fix'
+                          re-syncs). If the file later cannot be read, the existing site is
+                          kept (never regenerated without its rules), the sync exits
+                          non-zero and 'hemma doctor' reports it.
 
 Regenerates files immediately, then prints which hosts need 'hemma apply'.`},
 
 	{"update service", `hemma update service — change a service's fqdn, host, backend, or auth
 
-Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel] [--forward-gate[=false]]
+Usage: hemma update service <name> [--fqdn <fqdn>] [--host <host>] [--backend <name:port>] [--auth-mode forward|oidc|external|none] [--auth-groups <g1,g2>] [--bypass-paths <p1,p2>] [--auth-policy-local <p>] [--auth-policy-public <p>] [--tunnel] [--forward-gate[=false]] [--extra-directives <file>]
 
 With no flags (and stdin a terminal) an interactive editor opens instead:
 EVERY field is pre-filled with the service's current values and editable
@@ -134,6 +146,11 @@ Flags:
                           (oidc on the tunnel only); =false removes it. Changing the mode
                           away from oidc or the tunnel off clears it with a note. See
                           'hemma help add service'.
+      --extra-directives <f>
+                          Set the repo-relative file of extra directives copied into this
+                          service's site block; '' clears it. The file must exist and stay
+                          inside the repository. The interactive editor leaves it as it is.
+                          See 'hemma help add service' for the full semantics.
 
 Only the given flags change; regenerated files and apply-hints follow.`},
 
@@ -448,6 +465,12 @@ Flags:
               over ssh to audit the other hosts; cannot be combined with --fix).
 
 doctor audits THIS host's checkout only; the web UI's Issues page covers every host.
+
+On a host that serves sites it also checks that what changed on disk has been
+deployed: one advisory for the auth snippet, and one for each service that has
+extra directives, each saying whether the running proxy matches what is on disk.
+They never affect the exit code; the fix is 'hemma apply' on that host, or
+'hemma deploy'.
 
 The auth checks are read-only advisories (hemma never writes the provider's
 config, users database, or compose file); --fix cannot resolve them. Each
