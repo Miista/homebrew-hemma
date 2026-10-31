@@ -440,10 +440,14 @@ this command before it can be deployed to. Needs no services.yaml.`},
 	{"doctor", `hemma doctor — audit the repo (gitignore, Caddyfile imports, drift, auth,
 deploy readiness)
 
-Usage: hemma doctor [--fix]
+Usage: hemma doctor [--fix | --json]
 
 Flags:
   -f, --fix   Apply fixes: reconcile generated files and .gitignore entries.
+      --json  Print the findings as JSON and change nothing (the web UI runs it
+              over ssh to audit the other hosts; cannot be combined with --fix).
+
+doctor audits THIS host's checkout only; the web UI's Issues page covers every host.
 
 The auth checks are read-only advisories (hemma never writes the provider's
 config, users database, or compose file); --fix cannot resolve them. Each

@@ -7,4 +7,6 @@ Usage of doctor:
   -f	alias for --fix
   -fix
     	apply fixes (write .gitignore entries)
+  -json
+    	print the findings as JSON (read-only)
 --- files ---

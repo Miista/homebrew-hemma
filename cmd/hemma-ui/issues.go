@@ -21,7 +21,7 @@ func (s *server) handleIssues(w http.ResponseWriter, r *http.Request) {
 	var findings []kernel.Finding
 	var err error
 	s.inKernel(ctx, "doctor", func(env *kernel.Env) int {
-		findings, err = kernel.Diagnose(env, filepath.Join(s.repo, "services.yaml"))
+		findings, err = kernel.DiagnoseFleet(env, filepath.Join(s.repo, "services.yaml"))
 		return 0
 	})
 	if err != nil {

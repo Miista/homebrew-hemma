@@ -303,6 +303,25 @@ func (s *server) runCommand(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	before := s.configStamp()
 	code, out := s.runKernel(ctx, argv)
+	if fix, _ := in.Values["fix"].(bool); c.Key == "doctor" && fix {
+		// Issues covers every host, so fixing does too: each remote host repairs its own checkout (`hemma doctor --fix` there).
+		rcode, rout := s.inKernel(ctx, "doctor --fix (remote hosts)", func(kenv *kernel.Env) int {
+			n, err := kernel.FixFleet(kenv, filepath.Join(s.repo, "services.yaml"))
+			if err != nil {
+				fmt.Fprintln(kenv.Err, err)
+				return 1
+			}
+			if n > 0 {
+				fmt.Fprintf(kenv.Err, "%d remote %s could not be reached.\n", n, map[bool]string{true: "host", false: "hosts"}[n == 1])
+				return 1
+			}
+			return 0
+		})
+		out += rout
+		if rcode != 0 && code == 0 {
+			code = rcode
+		}
+	}
 	ok := code == 0
 	if ctx.Err() != nil {
 		ok = false

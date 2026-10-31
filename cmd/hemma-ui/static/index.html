@@ -2023,16 +2023,16 @@ const withText = (tag, cls, text) => { const e = el(tag, null, { className: cls 
 // A failing check: its title is the card's header; what is behind it shows when it is expanded. Which cards are open
 // survives a re-check (kept by title), so running the checks again does not fold away what you were reading.
 function issueRow(it) {
-  const open = issues.open.has(it.title);   // every finding starts folded, even a lone one: the title says what it is
+  const key = it.id || it.title, open = issues.open.has(key);   // by id: the same finding on two hosts folds on its own   // every finding starts folded, even a lone one: the title says what it is
   const card = el("div", null, { className: "issue" });
   const head = el("button", null, { type: "button", className: "ihead" }); head.setAttribute("aria-expanded", String(open));
   const ttl = el("div", null, { className: "ttl" }), line = el("div", null, { className: "line" });
-  line.append(el("span", it.status === "err" ? "Error" : "Warning", { className: "sev" + (it.status === "err" ? " err" : "") }), el("span", it.title, { className: "it" }));
+  line.append(el("span", it.status === "err" ? "Error" : "Warning", { className: "sev" + (it.status === "err" ? " err" : "") }), ...(it.host ? [el("code", it.host)] : []), el("span", it.title, { className: "it" }));
   ttl.append(line); head.append(ttl, el("span", null, { className: "chev" }));
   const body = el("div", null, { className: "ibody", hidden: !open });
   head.onclick = () => {   // toggled in place, so the chevron turns instead of being replaced
     const o = body.hidden;
-    if (o) issues.open.add(it.title); else issues.open.delete(it.title);
+    if (o) issues.open.add(key); else issues.open.delete(key);
     body.hidden = !o; head.setAttribute("aria-expanded", String(o));
   };
   card.append(head);

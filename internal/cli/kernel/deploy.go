@@ -210,6 +210,14 @@ func (r execRunner) run(t deployTarget, argv []string) (string, error) {
 	return string(out), err
 }
 
+// runStdout is run for a remote target, returning only its stdout (ssh's own messages go to stderr and are kept out of
+// output a caller parses). A non-zero exit still returns what was printed, with the error.
+func (r execRunner) runStdout(t deployTarget, argv []string) (string, error) {
+	cmd := r.env.command("ssh", "-o", "BatchMode=yes", "--", t.Dest, strings.Join(argv, " "))
+	out, err := cmd.Output()
+	return string(out), err
+}
+
 // remoteRepoPath is the tool's default repo location, assumed on every remote
 // host (baked-in convention; no per-host override). Kept as a literal ~ so the
 // REMOTE shell expands it.

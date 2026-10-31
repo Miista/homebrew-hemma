@@ -1,9 +1,12 @@
 package kernel
 
 import (
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -41,6 +44,7 @@ type Finding struct {
 	List    []string      `json:"list,omitempty"` // the files, rules or entries it is about
 	Steps   []FindingStep `json:"steps,omitempty"`
 	Fixable bool          `json:"fixable,omitempty"` // `hemma doctor --fix` repairs it: it carries a fixer
+	Host    string        `json:"host,omitempty"`    // the host the finding is about; set by DiagnoseFleet, empty for a single host
 
 	headline string   // the first printed line, after the glyph; the Title when empty
 	lines    []string // the printed lines under it, indentation included
@@ -78,6 +82,115 @@ func Diagnose(env *Env, cfgPath string) ([]Finding, error) {
 	return diagnose(env, filepath.Dir(cfgPath), cfg), nil
 }
 
+// DiagnoseFleet is Diagnose for the UI, across every host: this host's findings plus each remote deploy target's, which it
+// gets by running that host's own `hemma doctor --json` over ssh (the same BatchMode ssh `deploy` uses; read-only). Every
+// finding carries its Host. A remote finding is Fixable when that host's own doctor says so; FixFleet is what repairs it, by
+// running `hemma doctor --fix` ON that host (--fix writes the checkout it runs in). A host that cannot be reached, or whose hemma predates
+// `doctor --json`, is itself a finding rather than a silent gap. Without a known local host (or any remote) it is Diagnose.
+func DiagnoseFleet(env *Env, cfgPath string) ([]Finding, error) {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return nil, err
+	}
+	local := diagnose(env, filepath.Dir(cfgPath), cfg)
+	self := localHost(cfg)
+	targets, err := resolveDeployTargets(cfg, self, nil)
+	if self == "" || err != nil {
+		return local, nil
+	}
+	remotes := 0
+	for _, t := range targets {
+		if !t.Local {
+			remotes++
+		}
+	}
+	if remotes == 0 {
+		return local, nil
+	}
+	for i := range local {
+		local[i].Host = self
+	}
+	fs := local
+	r := execRunner{env: env}
+	for _, t := range targets {
+		if t.Local {
+			continue
+		}
+		fs = append(fs, remoteFindings(r, t)...)
+	}
+	return fs, nil
+}
+
+// FixFleet is `doctor --fix` for the UI's remote hosts: it runs `hemma doctor --fix` on every remote deploy target over ssh and
+// prints what each said under its name. This host's own fix is cmdDoctor's, run by the caller. A host's doctor exits 1 while
+// something it cannot fix remains, so the exit status is not an error here: the page re-checks and lists what is left. Returns
+// how many hosts could not be reached at all.
+func FixFleet(env *Env, cfgPath string) (unreachable int, err error) {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return 0, err
+	}
+	self := localHost(cfg)
+	if self == "" {
+		return 0, nil
+	}
+	targets, err := resolveDeployTargets(cfg, self, nil)
+	if err != nil {
+		return 0, err
+	}
+	r := execRunner{env: env}
+	for _, t := range targets {
+		if t.Local {
+			continue
+		}
+		out, runErr := r.run(t, []string{"hemma", "doctor", "--fix"})
+		fmt.Fprintf(env.Out, "\n%s== %s ==%s\n", boldOn, t.Name, boldOff)
+		printIndented(env, out)
+		if runErr != nil && !exitedNonZero(runErr) {
+			unreachable++
+		}
+	}
+	return unreachable, nil
+}
+
+// exitedNonZero reports whether err is a process that ran and exited non-zero (as opposed to one that could not start).
+func exitedNonZero(err error) bool {
+	var ee *exec.ExitError
+	return errors.As(err, &ee)
+}
+
+// remoteFindings runs `hemma doctor --json` on one remote target and returns what it said, tagged with the host.
+func remoteFindings(r execRunner, t deployTarget) []Finding {
+	unreachable := func(why, out string) []Finding {
+		f := Finding{ID: "fleet.doctor:" + t.Name, Status: "warn", Host: t.Name,
+			Title:   fmt.Sprintf("%s: could not run hemma doctor there", t.Name),
+			Summary: why,
+			Steps:   []FindingStep{{Label: "fix", Text: fmt.Sprintf("check it by hand — ssh -o BatchMode=yes %s hemma doctor (the host's hemma must know 'doctor --json': upgrade it if not)", t.Dest)}}}
+		if out = strings.TrimSpace(out); out != "" {
+			f.Notes = strings.Split(out, "\n")
+		}
+		return []Finding{f}
+	}
+	// Exit 1 only means findings that count; the JSON is on stdout either way. CombinedOutput would mix ssh's stderr into it.
+	out, err := r.runStdout(t, []string{"hemma", "doctor", "--json"})
+	var fs []Finding
+	if jerr := json.Unmarshal([]byte(strings.TrimSpace(out)), &fs); jerr != nil {
+		why := "ssh to the host failed."
+		if err == nil {
+			why = "its hemma answered with something that is not JSON."
+		}
+		return unreachable(why, out)
+	}
+	for i := range fs {
+		fs[i].Host = t.Name
+		fs[i].ID = t.Name + ":" + fs[i].ID
+		if !fs[i].Fixable && fs[i].Status != "ok" && fs[i].Status != "info" && len(fs[i].Steps) == 0 {
+			fs[i].Steps = []FindingStep{{Label: "fix", Text: "run 'hemma doctor --fix' on " + t.Name}}
+		}
+	}
+	return fs
+}
+
 // diagnose runs every check, in the order doctor reports them.
 func diagnose(env *Env, repoRoot string, cfg *config.Config) []Finding {
 	var fs []Finding
@@ -107,7 +220,12 @@ func cmdDoctor(env *Env, cfgPath string, args []string) int {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	fixFlag := fs.Bool("fix", false, "apply fixes (write .gitignore entries)")
 	fs.BoolVar(fixFlag, "f", false, "alias for --fix")
+	jsonFlag := fs.Bool("json", false, "print the findings as JSON (read-only)")
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *jsonFlag && *fixFlag {
+		errf(env, "--json is read-only and cannot be combined with --fix.")
 		return 2
 	}
 
@@ -117,6 +235,19 @@ func cmdDoctor(env *Env, cfgPath string, args []string) int {
 		return code
 	}
 	findings := diagnose(env, repoRoot, cfg)
+	if *jsonFlag {
+		if findings == nil {
+			findings = []Finding{}
+		}
+		if err := json.NewEncoder(env.Out).Encode(findings); err != nil {
+			errf(env, "%v", err)
+			return 1
+		}
+		if Problems(findings) > 0 {
+			return 1
+		}
+		return 0
+	}
 	if *fixFlag {
 		if log := runFixers(env, findings); len(log) > 0 {
 			for _, l := range log {
