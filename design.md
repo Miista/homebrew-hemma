@@ -1359,8 +1359,18 @@ hemma -C, --chdir <dir> ...
 ### 6.8 Fleet deploy: `deploy`
 
 ```
-hemma deploy [<host> ...]
+hemma deploy
 ```
+
+`deploy` takes **no host names**. It was written with an optional host list that restricted the targets
+(`hemma deploy [<host> ...]`, from the first version, 2026-07-12); that was removed because no host list
+is ever right in general. One service's change writes files on up to three hosts (§4.1, §4.2, §4.6: the
+service's own host for its site and tunnel entry, the resolver host for its DNS record, the auth host for
+its access rules), and `apply` is per host, so deploying fewer hosts than a change touches leaves live
+state behind with nothing recording it. The fleet is the only set that is always right; making ONE
+host's change live is `hemma apply` on that host (§6.3), which is explicit about being local. Passing a
+host name is a usage error (exit 2) that says so. A deploy that applies only where something changed is a
+later, separate piece of work: it needs a record of what each host last applied.
 
 `deploy` is the push-based fan-out: **make the fleet match origin**. It is the one deliberate
 exception to the "no SSH/orchestration" non-goal (§12) — the precedent being `apply`, which

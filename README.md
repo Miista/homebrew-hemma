@@ -500,7 +500,7 @@ hemma [-C <dir>] create user <username>
 hemma [-C <dir>] list   [--all]
 hemma [-C <dir>] verify [--all] [<fqdn>]
 hemma [-C <dir>] apply
-hemma [-C <dir>] deploy [<host> ...]
+hemma [-C <dir>] deploy
 hemma [-C <dir>] doctor [--fix]
 hemma [-C <dir>] measure [--compare] [-n <runs>] <service|fqdn|url>
 hemma [-C <dir>] version
@@ -652,7 +652,7 @@ hemma verify    # assert A == host IP and AAAA == :: against the running resolve
 
 ## Deploying the fleet: `hemma deploy`
 
-`hemma deploy [<host> ...]` automates that per-machine loop from one seat — it is the one
+`hemma deploy` automates that per-machine loop from one seat — it is the one
 command that SSHes. Deploying means **"make the fleet match origin"**, and it runs exactly the
 manual workflow's two commands per host, in two phases:
 
@@ -673,8 +673,11 @@ manual workflow's two commands per host, in two phases:
    continues to the rest — restarts can't be rolled back, so fix the host and re-run (apply is
    idempotent). Exit is non-zero with a per-host summary.
 
-Targets default to every host with a role (it runs a service, or is the `dns_host`); pass names
-to restrict. Each host is reached at its optional `ssh:` destination in `services.yaml` — a
+Targets are every host with a role (it runs a service, or is the `dns_host`). `hemma deploy` takes
+no host names, on purpose: one service's change writes files on up to three hosts (its own, the
+resolver's and the auth host's), so applying on fewer hosts than a change touches would leave live
+state behind without saying so. To make **one** host's change live, run `hemma apply` on that host.
+Each host is reached at its optional `ssh:` destination in `services.yaml` — a
 verbatim ssh value (an ssh_config alias, `user@host`, …; ports/users/keys belong in ssh_config),
 defaulting to the host's name — set via `add host --ssh` / `update host --ssh`. The remote repo
 path is the tool's default `~/docker`. On the **local** (deploy) host, deploy first brings the repo level

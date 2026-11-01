@@ -1,9 +1,0 @@
-$ hemma deploy nowhere
-# setup: doctor --fix
-# machine: host="core" tools="ok"
-exit: 1
---- stdout ---
---- stderr ---
-Error: unknown host "nowhere" — defined hosts: core, edge
---- external commands ---
---- files ---

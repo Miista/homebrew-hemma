@@ -94,8 +94,8 @@ func DiagnoseFleet(env *Env, cfgPath string) ([]Finding, error) {
 	}
 	local := diagnose(env, filepath.Dir(cfgPath), cfg)
 	self := localHost(cfg)
-	targets, err := resolveDeployTargets(cfg, self, nil)
-	if self == "" || err != nil {
+	targets := resolveDeployTargets(cfg, self)
+	if self == "" {
 		return local, nil
 	}
 	remotes := 0
@@ -134,10 +134,7 @@ func FixFleet(env *Env, cfgPath string) (unreachable int, err error) {
 	if self == "" {
 		return 0, nil
 	}
-	targets, err := resolveDeployTargets(cfg, self, nil)
-	if err != nil {
-		return 0, err
-	}
+	targets := resolveDeployTargets(cfg, self)
 	r := execRunner{env: env}
 	for _, t := range targets {
 		if t.Local {
@@ -614,10 +611,7 @@ func diagDeployReadiness(env *Env, cfg *config.Config) []Finding {
 	if dh := cfg.Defaults.DeployHost; dh != "" && self != dh {
 		return nil
 	}
-	targets, err := resolveDeployTargets(cfg, self, nil)
-	if err != nil {
-		return nil // config-level problems are reported elsewhere
-	}
+	targets := resolveDeployTargets(cfg, self)
 	var fs []Finding
 	remotes, problems := 0, 0
 	for _, t := range targets {

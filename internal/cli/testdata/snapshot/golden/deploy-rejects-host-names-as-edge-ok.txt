@@ -1,0 +1,10 @@
+$ hemma deploy edge
+# setup: doctor --fix
+# machine: host="edge" tools="ok"
+exit: 2
+--- stdout ---
+--- stderr ---
+Error: deploy takes no host names: it makes every host match origin.
+To make one host's change live, run 'hemma apply' on that host.
+--- external commands ---
+--- files ---

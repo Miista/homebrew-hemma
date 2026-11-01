@@ -15,7 +15,7 @@ import (
 
 // cmdDeploy is the push-based fan-out: make the whole fleet match origin.
 //
-//	hemma deploy [<host> ...]
+//	hemma deploy
 //
 // deploy is the ONE deliberate exception to the "no SSH" non-goal (design
 // §12) — the precedent being `apply`, which relaxed the "no reloads" non-goal
@@ -52,8 +52,13 @@ import (
 // DNS-resolved ssh to the remaining hosts (converge the leaves, bounce the
 // resolver once at the end).
 //
-// Targets default to every host with a role (runs a non-disabled service, or
-// is the dns_host); explicit names restrict the set. A host is reached via
+// Targets are every host with a role (runs a non-disabled service, or is the
+// dns_host). There is deliberately no way to name hosts. One service's change
+// writes files on up to three hosts (its own, the resolver's and the auth
+// host's), so a deploy that applies on fewer hosts than a change touches would
+// leave live state behind without saying so; the fleet is the only set that is
+// always right. Making ONE host's change live is `hemma apply` on that host.
+// A host is reached via
 // `ssh -o BatchMode=yes -- <dest>` where <dest> is its verbatim `ssh:` field
 // (default: the host name); a target whose IP matches this machine runs its
 // commands locally instead (same localHost rule as apply). BatchMode forbids
@@ -68,6 +73,13 @@ import (
 // generated files still match services.yaml — a rebase can leave them stale —
 // and refuses, before any host is touched, if they do not.
 func cmdDeploy(env *Env, repoRoot, cfgPath string, args []string) int {
+	// deploy makes the WHOLE fleet match origin and never takes host names (see the targets paragraph above): a usage error,
+	// settled before the config is read or git is touched.
+	if len(args) > 0 {
+		errf(env, "deploy takes no host names: it makes every host match origin.")
+		hint(env, "To make one host's change live, run 'hemma apply' on that host.")
+		return 2
+	}
 	cfg, code := loadExisting(env, cfgPath, "deploy")
 	if cfg == nil {
 		return code
@@ -91,12 +103,8 @@ func cmdDeploy(env *Env, repoRoot, cfgPath string, args []string) int {
 		hint(env, "Run 'hemma deploy' on %s, or drop the restriction with 'hemma defaults set deploy-host -'.", dh)
 		return 1
 	}
-	// A mistyped host name, or nothing to deploy, is settled from the config alone — before anything touches git.
-	targets, err := resolveDeployTargets(cfg, self, args)
-	if err != nil {
-		errf(env, "%v", err)
-		return 1
-	}
+	// Nothing to deploy is settled from the config alone — before anything touches git.
+	targets := resolveDeployTargets(cfg, self)
 	if len(targets) == 0 {
 		fmt.Fprintln(env.Out, "Nothing to deploy: no host runs a service or is the dns_host.")
 		return 0
@@ -128,10 +136,7 @@ func cmdDeploy(env *Env, repoRoot, cfgPath string, args []string) int {
 	if driftRefusal(env, repoRoot, cfg) {
 		return 1
 	}
-	if targets, err = resolveDeployTargets(cfg, self, args); err != nil {
-		errf(env, "%v", err)
-		return 1
-	}
+	targets = resolveDeployTargets(cfg, self)
 	if len(targets) == 0 {
 		fmt.Fprintln(env.Out, "Nothing to deploy: no host runs a service or is the dns_host.")
 		return 0
@@ -223,30 +228,16 @@ func (r execRunner) runStdout(t deployTarget, argv []string) (string, error) {
 // REMOTE shell expands it.
 const remoteRepoPath = "~/docker"
 
-// resolveDeployTargets picks and orders the deploy targets. With no names,
-// every host with a role is targeted: it runs a non-disabled service or is
-// the dns_host (role-less spare hosts have nothing to apply). Explicit names
-// restrict the set (unknown names are refused). Targets are sorted by name,
-// except self — which always goes LAST (see cmdDeploy: bounce the resolver
-// once, at the end).
-func resolveDeployTargets(cfg *config.Config, self string, names []string) ([]deployTarget, error) {
+// resolveDeployTargets picks and orders the deploy targets: every host with a
+// role — it runs a non-disabled service or is the dns_host (role-less spare
+// hosts have nothing to apply). There is no way to name hosts (see cmdDeploy).
+// Targets are sorted by name, except self — which always goes LAST (see
+// cmdDeploy: bounce the resolver once, at the end).
+func resolveDeployTargets(cfg *config.Config, self string) []deployTarget {
 	var picked []string
-	if len(names) > 0 {
-		seen := map[string]bool{}
-		for _, n := range names {
-			if _, ok := cfg.Hosts[n]; !ok {
-				return nil, fmt.Errorf("unknown host %q — defined hosts: %s", n, strings.Join(sortedKeysOf(cfg.Hosts), ", "))
-			}
-			if !seen[n] {
-				seen[n] = true
-				picked = append(picked, n)
-			}
-		}
-	} else {
-		for name := range cfg.Hosts {
-			if name == cfg.DNSHost() || hostRunsCaddy(cfg, name) {
-				picked = append(picked, name)
-			}
+	for name := range cfg.Hosts {
+		if name == cfg.DNSHost() || hostRunsCaddy(cfg, name) {
+			picked = append(picked, name)
 		}
 	}
 	sort.Strings(picked)
@@ -264,7 +255,7 @@ func resolveDeployTargets(cfg *config.Config, self string, names []string) ([]de
 	if selfTarget != nil {
 		out = append(out, *selfTarget)
 	}
-	return out, nil
+	return out
 }
 
 // gitFunc runs one git command in a checkout — this machine's (directly) or a remote host's (over ssh) — and returns

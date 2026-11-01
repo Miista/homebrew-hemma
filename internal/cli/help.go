@@ -409,7 +409,7 @@ config changes. Refuses if the repo has drift.`},
 
 	{"deploy", `hemma deploy — push-based fan-out: pull + apply on every host over ssh
 
-Usage: hemma deploy [<host> ...]
+Usage: hemma deploy
 
 Makes the fleet match origin, in four strictly ordered phases:
 
@@ -435,8 +435,12 @@ Makes the fleet match origin, in four strictly ordered phases:
                     remaining hosts. A failure on one host is reported and the
                     fan-out continues; exit is non-zero with a per-host summary.
 
-Targets default to every host with a role (runs a service, or is the
-dns_host); pass names to restrict. Hosts are reached with
+Targets are every host with a role (runs a service, or is the dns_host).
+deploy takes no host names, on purpose: one service's change writes files on
+up to three hosts (its own, the resolver's and the auth host's), so applying
+on fewer hosts than a change touches would leave live state behind without
+saying so. To make ONE host's change live, run 'hemma apply' on that host.
+Hosts are reached with
 'ssh -o BatchMode=yes <dest>' where <dest> is the host's ssh: field
 (default: its name); a host whose IP matches this machine runs locally.
 Deploying means "make the fleet match origin", so on THIS host deploy first

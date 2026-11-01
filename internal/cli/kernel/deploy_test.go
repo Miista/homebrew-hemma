@@ -42,10 +42,7 @@ func targetNames(ts []deployTarget) []string {
 // role-less hosts are excluded — and self is ordered LAST.
 func TestResolveDeployTargets_RolesAndSelfLast(t *testing.T) {
 	cfg := deployCfg()
-	ts, err := resolveDeployTargets(cfg, "resolver", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ts := resolveDeployTargets(cfg, "resolver")
 	if got := strings.Join(targetNames(ts), ","); got != "appbox,resolver" {
 		t.Errorf("want appbox,resolver (self last, spare excluded), got %s", got)
 	}
@@ -57,10 +54,7 @@ func TestResolveDeployTargets_RolesAndSelfLast(t *testing.T) {
 		t.Errorf("appbox dest should come from the ssh field, got %q", ts[0].Dest)
 	}
 	// No self among the hosts → nothing Local, plain sorted order.
-	ts, err = resolveDeployTargets(cfg, "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ts = resolveDeployTargets(cfg, "")
 	if got := strings.Join(targetNames(ts), ","); got != "appbox,resolver" {
 		t.Errorf("want appbox,resolver, got %s", got)
 	}
@@ -71,22 +65,16 @@ func TestResolveDeployTargets_RolesAndSelfLast(t *testing.T) {
 	}
 }
 
-// Explicit names restrict the set (even to role-less hosts), dedupe, default
-// the ssh destination to the name, and refuse unknown names.
-func TestResolveDeployTargets_ExplicitNames(t *testing.T) {
-	cfg := deployCfg()
-	ts, err := resolveDeployTargets(cfg, "appbox", []string{"spare", "appbox", "spare"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := strings.Join(targetNames(ts), ","); got != "spare,appbox" {
-		t.Errorf("want spare,appbox (deduped, self last), got %s", got)
-	}
-	if ts[0].Dest != "spare" {
-		t.Errorf("dest should default to the host name, got %q", ts[0].Dest)
-	}
-	if _, err := resolveDeployTargets(cfg, "", []string{"ghost"}); err == nil {
-		t.Error("unknown host name should be refused")
+// The ssh destination defaults to the host's own name, and a role-less spare host is never a target.
+func TestResolveDeployTargets_DestDefaultsToTheName(t *testing.T) {
+	ts := resolveDeployTargets(deployCfg(), "appbox")
+	for _, tt := range ts {
+		if tt.Name == "spare" {
+			t.Errorf("a host with no role has nothing to apply and must not be a target: %+v", ts)
+		}
+		if !tt.Local && tt.Dest != tt.Name {
+			t.Errorf("dest should default to the host name, got %q for %q", tt.Dest, tt.Name)
+		}
 	}
 }
 
@@ -469,12 +457,26 @@ func TestDeployPreflight(t *testing.T) {
 	}
 }
 
-// Unknown host names are refused before any git/ssh work happens.
-func TestDeploy_UnknownHostRefused(t *testing.T) {
+// deploy never takes host names, known or not: it makes the whole fleet match origin, and one host's change goes live with
+// `hemma apply` on that host. A usage error (exit 2) that says so, settled before the config is read or any git/ssh work.
+func TestDeploy_RefusesHostNames(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir)
-	if code := Run([]string{"-C", dir, "deploy", "ghost"}); code != 1 {
-		t.Errorf("deploy with unknown host should exit 1, got %d", code)
+	before, _ := os.ReadFile(filepath.Join(dir, configName))
+	for _, args := range [][]string{{"appbox"}, {"ghost"}, {"appbox", "resolver"}} {
+		var out strings.Builder
+		env := &Env{Out: &out, Err: &out, NoTerminal: true}
+		if code := Deploy(env, dir, filepath.Join(dir, configName), args); code != 2 {
+			t.Errorf("deploy %v: want usage error exit 2, got %d", args, code)
+		}
+		for _, want := range []string{"deploy takes no host names", "hemma apply"} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("deploy %v should say %q, got:\n%s", args, want, out.String())
+			}
+		}
+	}
+	if after, _ := os.ReadFile(filepath.Join(dir, configName)); string(after) != string(before) {
+		t.Error("a refused deploy must not touch services.yaml")
 	}
 }
 
@@ -908,7 +910,7 @@ func TestExecRunner_RebaseAbortRunsOnADoneContext(t *testing.T) {
 // or applied. An older hemma that does not know the command fails the same way: every host needs one that does.
 func TestDeploy_RemoteWithUncommittedHemmaFilesIsRefused(t *testing.T) {
 	cfg := deployCfg()
-	targets, _ := resolveDeployTargets(cfg, "resolver", nil)
+	targets := resolveDeployTargets(cfg, "resolver")
 	f := &fakeRunner{preflightErr: map[string]string{"appbox": "The repo has uncommitted files hemma owns — commit them before deploying:\n M services.yaml"}}
 	var out strings.Builder
 	env := &Env{Out: &out, Err: &out, NoTerminal: true}
