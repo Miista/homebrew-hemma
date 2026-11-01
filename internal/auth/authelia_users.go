@@ -102,7 +102,7 @@ func (a authelia) ValidateUsers(cfgPath string, services []Service) []Advisory {
 
 	users, err := a.UserGroups(cfgPath)
 	if err != nil {
-		return []Advisory{{Headline: fmt.Sprintf("could not cross-check auth groups: %v", err)}}
+		return []Advisory{{Code: "groups.unchecked", Subject: "users", Headline: fmt.Sprintf("could not cross-check auth groups: %v", err)}}
 	}
 	if users == nil {
 		return nil // gate: no file backend here, nothing to cross-check
@@ -126,6 +126,8 @@ func (a authelia) ValidateUsers(cfgPath string, services []Service) []Advisory {
 				continue
 			}
 			w = append(w, Advisory{
+				Code:     "groups.nomatch",
+				Subject:  s.Name + "/" + g,
 				Headline: fmt.Sprintf("auth group %q (service %s) matches no user — likely a typo", g, s.Name),
 				Body:     []string{fmt.Sprintf("no user in %s is in group %q.", usersPath, g)},
 				Fix: []string{fmt.Sprintf("fix the list with 'hemma update service %s --auth-groups <groups>',", s.Name),
@@ -134,6 +136,8 @@ func (a authelia) ValidateUsers(cfgPath string, services []Service) []Advisory {
 		}
 		if !anyMember {
 			w = append(w, Advisory{
+				Code:     "groups.nobody",
+				Subject:  s.Name,
 				Headline: fmt.Sprintf("nobody can access %s", s.Name),
 				Body:     []string{fmt.Sprintf("no user is in any of service %s's allowed groups (%s).", s.Name, strings.Join(s.Groups, ", "))},
 				Fix: []string{fmt.Sprintf("add one of the groups to a user in %s,", usersPath),

@@ -111,7 +111,7 @@ func TestDiagnose_HostsInFixedOrder(t *testing.T) {
 		}
 		last = got
 	}
-	if !strings.Contains(last, "caddy.import:appbox,caddy.import:resolver") {
+	if !strings.Contains(last, "caddy.import:appbox:Caddyfile,caddy.import:resolver:Caddyfile") {
 		t.Errorf("hosts should be in name order: %s", last)
 	}
 }

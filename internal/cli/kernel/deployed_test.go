@@ -94,19 +94,19 @@ func idsOf(fs []Finding) []string {
 func byID(t *testing.T, fs []Finding, kind string) Finding {
 	t.Helper()
 	for _, f := range fs {
-		if f.ID == "deployed."+kind+":appbox" {
+		if f.ID == deployedID("appbox", kind) {
 			return f
 		}
 	}
-	t.Fatalf("no deployed.%s:appbox in %v", kind, idsOf(fs))
+	t.Fatalf("no %s in %v", deployedID("appbox", kind), idsOf(fs))
 	return Finding{}
 }
 
 func noFinding(t *testing.T, fs []Finding, kind string) {
 	t.Helper()
 	for _, f := range fs {
-		if f.ID == "deployed."+kind+":appbox" {
-			t.Errorf("deployed.%s:appbox should not be there: %+v", kind, f)
+		if f.ID == deployedID("appbox", kind) {
+			t.Errorf("%s should not be there: %+v", deployedID("appbox", kind), f)
 		}
 	}
 }
@@ -220,7 +220,7 @@ func TestDeployed_SiteNotOnDiskIsLeftToTheOtherChecks(t *testing.T) {
 		fakeProxyContainer(t, tc.disk, tc.live)
 		fs := runDeployed(t, deployedCfg(), "appbox")
 		noFinding(t, fs, "extra.media")
-		if len(fs) != 1 || fs[0].ID != "deployed.auth:appbox" || fs[0].Status != "ok" {
+		if len(fs) != 1 || fs[0].ID != deployedID("appbox", deployedAuth) || fs[0].Status != "ok" {
 			t.Errorf("%s: only the auth snippet is judged: %v", name, idsOf(fs))
 		}
 	}
@@ -278,7 +278,7 @@ func TestDeployed_NoAuthSnippetNoAuthAdvisory(t *testing.T) {
 	cfg := deployedCfg()
 	cfg.Defaults.AuthSnippet = ""
 	fs := runDeployed(t, cfg, "appbox")
-	if len(fs) != 1 || fs[0].ID != "deployed.extra.media:appbox" {
+	if len(fs) != 1 || fs[0].ID != deployedID("appbox", "extra.media") {
 		t.Fatalf("only media's extra directives should be checked: %v", idsOf(fs))
 	}
 }
@@ -344,7 +344,7 @@ func TestDeployed_UnreachableIsASoftFinding(t *testing.T) {
 	} {
 		fakeProxyContainer(t, tc.adapted, tc.running)
 		fs := runDeployed(t, deployedCfg(), "appbox")
-		if len(fs) != 1 || fs[0].Status != "warn" || fs[0].ID != "deployed.unreachable:appbox" ||
+		if len(fs) != 1 || fs[0].Status != "warn" || fs[0].ID != deployedID("appbox", deployedUnreachable) ||
 			!strings.HasPrefix(fs[0].Title, "could not check whether changes on disk are deployed") {
 			t.Errorf("%s: want one could-not-check finding, got %v", name, idsOf(fs))
 		}
@@ -416,7 +416,7 @@ func TestDeployed_DisabledServiceIsSkipped(t *testing.T) {
 	m.Disabled = true
 	cfg.Services["media"] = m
 	fs := runDeployed(t, cfg, "appbox")
-	if len(fs) != 1 || fs[0].ID != "deployed.auth:appbox" || fs[0].Status != "ok" {
+	if len(fs) != 1 || fs[0].ID != deployedID("appbox", deployedAuth) || fs[0].Status != "ok" {
 		t.Fatalf("got %v", idsOf(fs))
 	}
 }

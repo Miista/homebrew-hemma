@@ -188,7 +188,20 @@ const (
 	deployedUnreachable = "unreachable" // the proxy could not be asked at all
 )
 
-func deployedID(host, kind string) string { return "deployed." + kind + ":" + host }
+// deployedID: the shared snippet is "deployed.auth:<host>:snippet", a service's extra directives are
+// "deployed.extra:<host>:<service>" (kind "extra.<service>"), and the proxy that could not be asked is
+// "deployed.unreachable:<host>:proxy".
+func deployedID(host, kind string) string {
+	switch {
+	case kind == deployedAuth:
+		return findingID("deployed.auth", host, "snippet")
+	case kind == deployedUnreachable:
+		return findingID("deployed.unreachable", host, "proxy")
+	case strings.HasPrefix(kind, "extra."):
+		return findingID("deployed.extra", host, strings.TrimPrefix(kind, "extra."))
+	}
+	return findingID("deployed."+kind, host, kind)
+}
 
 // deployedOK is a check that passed: a ✓ line in the CLI, as "Auth config is consistent." is. The Issues page keeps only warnings
 // and errors, so it never shows these.

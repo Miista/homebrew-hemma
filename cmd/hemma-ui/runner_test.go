@@ -405,7 +405,7 @@ func TestIssues_ListsDoctorsFindings_FixableOnlyWithAFixer(t *testing.T) {
 
 	// 1. brand new repo: generated files are missing → a fixable finding
 	items, ok := issues()
-	if found, fixable := failing(items, "out of sync"); ok || !found || !fixable {
+	if found, fixable := failing(items, "missing:"); ok || !found || !fixable {
 		t.Errorf("missing files: ok=%v found=%v fixable=%v %+v", ok, found, fixable, items)
 	}
 	// the items are doctor's findings: each failing title is something `hemma doctor` prints
@@ -420,7 +420,7 @@ func TestIssues_ListsDoctorsFindings_FixableOnlyWithAFixer(t *testing.T) {
 	// known_hosts entry for the deploy host, with its own "connect once interactively" step), without a fixer
 	run("doctor", "--fix")
 	items, ok = issues()
-	if found, _ := failing(items, "out of sync"); found || ok || anyFixable(items) {
+	if found, _ := failing(items, "missing:"); found || ok || anyFixable(items) {
 		t.Errorf("after --fix: ok=%v, nothing should be fixable and the drift gone: %+v", ok, items)
 	}
 	if found, fixable := failing(items, "known_hosts"); !found || fixable {

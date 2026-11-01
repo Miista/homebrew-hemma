@@ -79,7 +79,7 @@ func (a authelia) ValidateWiring(hostDir, container string, services []Service) 
 
 	envValue, envFound, err := composeEnvValue(composePath, container, autheliaConfigEnv)
 	if err != nil {
-		return []Advisory{{Headline: fmt.Sprintf("could not verify that Authelia loads the generated %s: %v", artifact, err)}}
+		return []Advisory{{Code: "wiring.unchecked", Subject: artifact, Headline: fmt.Sprintf("could not verify that Authelia loads the generated %s: %v", artifact, err)}}
 	}
 
 	var w []Advisory
@@ -116,6 +116,8 @@ func (a authelia) ValidateWiring(hostDir, container string, services []Service) 
 				fmt.Sprintf("breaking unauthenticated probes: %s.", strings.Join(gated, ", ")))
 		}
 		w = append(w, Advisory{
+			Code:     "wiring.unenforced",
+			Subject:  artifact,
 			Headline: "access control is declared but not enforced",
 			Body:     body,
 			Fix: []string{fmt.Sprintf("add to the %s service environment in %s:", container, composePath),
@@ -130,6 +132,8 @@ func (a authelia) ValidateWiring(hostDir, container string, services []Service) 
 		cfgPath := filepath.Join(hostDir, autheliaConfigPath)
 		if hasTopLevelAccessControl(cfgPath) {
 			w = append(w, Advisory{
+				Code:     "wiring.duplicate",
+				Subject:  artifact,
 				Headline: "access_control is defined twice — one silently wins",
 				Body: []string{fmt.Sprintf("both %s and the generated %s define a top-level", filepath.Base(cfgPath), artifact),
 					"access_control section, and Authelia does not merge rule lists across config files."},

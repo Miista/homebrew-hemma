@@ -67,6 +67,11 @@ type Service struct {
 //
 // Headline-only advisories (soft could-not-verify notes) are fine.
 type Advisory struct {
+	// Code and Subject name what the advisory is about, for a stable finding ID: Code is the kind (dotted, lower case) and
+	// Subject the service, file or setting it concerns. Neither may be a position in a list or contain a host's name.
+	Code    string
+	Subject string
+
 	Headline string
 	Body     []string
 	Fix      []string

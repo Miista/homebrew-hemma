@@ -2,11 +2,9 @@ package kernel
 
 import (
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -44,8 +42,11 @@ type Finding struct {
 	List    []string      `json:"list,omitempty"` // the files, rules or entries it is about
 	Steps   []FindingStep `json:"steps,omitempty"`
 	Fixable bool          `json:"fixable,omitempty"` // `hemma doctor --fix` repairs it: it carries a fixer
-	Host    string        `json:"host,omitempty"`    // the host the finding is about; set by DiagnoseFleet, empty for a single host
+	Host    string        `json:"host,omitempty"`    // the host that reported it (the first of Hosts); set by DiagnoseFleet, empty for a single host
+	Hosts   []string      `json:"hosts,omitempty"`   // every host that reported this very finding; set by DiagnoseFleet
 
+	cliOnly  bool     // printed by the CLI only: an aggregate of per-item findings that a UI (and --json) gets one by one
+	uiOnly   bool     // left out of the CLI's text: its aggregate says it
 	headline string   // the first printed line, after the glyph; the Title when empty
 	lines    []string // the printed lines under it, indentation included
 	noGlyph  bool
@@ -79,20 +80,32 @@ func Diagnose(env *Env, cfgPath string) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
-	return diagnose(env, filepath.Dir(cfgPath), cfg), nil
+	return forUI(diagnose(env, filepath.Dir(cfgPath), cfg)), nil
+}
+
+// forUI is the findings a UI (and --json) gets: everything except the CLI's aggregates.
+func forUI(fs []Finding) []Finding {
+	out := make([]Finding, 0, len(fs))
+	for _, f := range fs {
+		if !f.cliOnly {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // DiagnoseFleet is Diagnose for the UI, across every host: this host's findings plus each remote deploy target's, which it
 // gets by running that host's own `hemma doctor --json` over ssh (the same BatchMode ssh `deploy` uses; read-only). Every
-// finding carries its Host. A remote finding is Fixable when that host's own doctor says so; FixFleet is what repairs it, by
-// running `hemma doctor --fix` ON that host (--fix writes the checkout it runs in). A host that cannot be reached, or whose hemma predates
+// finding names the host(s) that reported it, and the same problem found by several hosts (same ID, same content) is ONE
+// finding (mergeFleet). Only this host's findings are fixable from here: the UI fixes the checkout it shows, and a fix on a
+// remote host would leave that host with changes nobody committed. A host that cannot be reached, or whose hemma predates
 // `doctor --json`, is itself a finding rather than a silent gap. Without a known local host (or any remote) it is Diagnose.
 func DiagnoseFleet(env *Env, cfgPath string) ([]Finding, error) {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return nil, err
 	}
-	local := diagnose(env, filepath.Dir(cfgPath), cfg)
+	local := forUI(diagnose(env, filepath.Dir(cfgPath), cfg))
 	self := localHost(cfg)
 	targets := resolveDeployTargets(cfg, self)
 	if self == "" {
@@ -107,59 +120,21 @@ func DiagnoseFleet(env *Env, cfgPath string) ([]Finding, error) {
 	if remotes == 0 {
 		return local, nil
 	}
-	for i := range local {
-		local[i].Host = self
-	}
-	fs := local
 	r := execRunner{env: env}
+	var results []remoteResult
 	for _, t := range targets {
 		if t.Local {
 			continue
 		}
-		fs = append(fs, remoteFindings(r, t)...)
+		results = append(results, remoteResult{host: t.Name, fs: remoteFindings(r, t)})
 	}
-	return fs, nil
-}
-
-// FixFleet is `doctor --fix` for the UI's remote hosts: it runs `hemma doctor --fix` on every remote deploy target over ssh and
-// prints what each said under its name. This host's own fix is cmdDoctor's, run by the caller. A host's doctor exits 1 while
-// something it cannot fix remains, so the exit status is not an error here: the page re-checks and lists what is left. Returns
-// how many hosts could not be reached at all.
-func FixFleet(env *Env, cfgPath string) (unreachable int, err error) {
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		return 0, err
-	}
-	self := localHost(cfg)
-	if self == "" {
-		return 0, nil
-	}
-	targets := resolveDeployTargets(cfg, self)
-	r := execRunner{env: env}
-	for _, t := range targets {
-		if t.Local {
-			continue
-		}
-		out, runErr := r.run(t, []string{"hemma", "doctor", "--fix"})
-		fmt.Fprintf(env.Out, "\n%s== %s ==%s\n", boldOn, t.Name, boldOff)
-		printIndented(env, out)
-		if runErr != nil && !exitedNonZero(runErr) {
-			unreachable++
-		}
-	}
-	return unreachable, nil
-}
-
-// exitedNonZero reports whether err is a process that ran and exited non-zero (as opposed to one that could not start).
-func exitedNonZero(err error) bool {
-	var ee *exec.ExitError
-	return errors.As(err, &ee)
+	return mergeFleet(self, local, results), nil
 }
 
 // remoteFindings runs `hemma doctor --json` on one remote target and returns what it said, tagged with the host.
 func remoteFindings(r execRunner, t deployTarget) []Finding {
 	unreachable := func(why, out string) []Finding {
-		f := Finding{ID: "fleet.doctor:" + t.Name, Status: "warn", Host: t.Name,
+		f := Finding{ID: findingID("fleet.doctor", t.Name, "ssh"), Status: "warn", Host: t.Name,
 			Title:   fmt.Sprintf("%s: could not run hemma doctor there", t.Name),
 			Summary: why,
 			Steps:   []FindingStep{{Label: "fix", Text: fmt.Sprintf("check it by hand — ssh -o BatchMode=yes %s hemma doctor (the host's hemma must know 'doctor --json': upgrade it if not)", t.Dest)}}}
@@ -178,14 +153,7 @@ func remoteFindings(r execRunner, t deployTarget) []Finding {
 		}
 		return unreachable(why, out)
 	}
-	for i := range fs {
-		fs[i].Host = t.Name
-		fs[i].ID = t.Name + ":" + fs[i].ID
-		if !fs[i].Fixable && fs[i].Status != "ok" && fs[i].Status != "info" && len(fs[i].Steps) == 0 {
-			fs[i].Steps = []FindingStep{{Label: "fix", Text: "run 'hemma doctor --fix' on " + t.Name}}
-		}
-	}
-	return fs
+	return fs // mergeFleet decides what each means here
 }
 
 // diagnose runs every check, in the order doctor reports them.
@@ -194,7 +162,7 @@ func diagnose(env *Env, repoRoot string, cfg *config.Config) []Finding {
 	// Load the auth snippet source so the plan below renders the real (auth) file content, not the empty stub. On failure keep
 	// the last good one — the way runSync does — but count it: a bad auth_snippet path is exactly what doctor exists to surface.
 	if err := cfg.LoadAuthSnippet(repoRoot); err != nil {
-		fs = append(fs, Finding{ID: "auth.snippet", Status: "err", counts: true, toStderr: true,
+		fs = append(fs, Finding{ID: findingID("auth.snippet", repoScope, "defaults"), Status: "err", counts: true, toStderr: true,
 			Title:    "auth_snippet unreadable — keeping the existing generated auth snippet",
 			Summary:  err.Error(),
 			headline: fmt.Sprintf("auth_snippet unreadable — keeping the existing generated auth snippet: %v", err)})
@@ -203,7 +171,7 @@ func diagnose(env *Env, repoRoot string, cfg *config.Config) []Finding {
 	// rule in the file would otherwise silently stop applying.
 	for _, name := range sortedKeysOf(cfg.LoadExtraDirectives(repoRoot)) {
 		err := cfg.ExtraDirectivesFailed[name]
-		fs = append(fs, Finding{ID: "extra.directives." + name, Status: "err", counts: true, toStderr: true,
+		fs = append(fs, Finding{ID: findingID("extra.directives", cfg.Services[name].Host, name), Status: "err", counts: true, toStderr: true,
 			Title:    fmt.Sprintf("extra_directives unreadable for %s — keeping its existing generated site", name),
 			Summary:  err.Error(),
 			headline: fmt.Sprintf("extra_directives unreadable for %s — keeping its existing generated site: %v", name, err)})
@@ -244,10 +212,7 @@ func cmdDoctor(env *Env, cfgPath string, args []string) int {
 	}
 	findings := diagnose(env, repoRoot, cfg)
 	if *jsonFlag {
-		if findings == nil {
-			findings = []Finding{}
-		}
-		if err := json.NewEncoder(env.Out).Encode(findings); err != nil {
+		if err := json.NewEncoder(env.Out).Encode(forUI(findings)); err != nil {
 			errf(env, "%v", err)
 			return 1
 		}
@@ -295,6 +260,9 @@ func runFixers(env *Env, fs []Finding) []string {
 func printFindings(env *Env, repoRoot string, fs []Finding) {
 	advisories := 0
 	for _, f := range fs {
+		if f.uiOnly {
+			continue
+		}
 		if f.advisory {
 			fmt.Fprintln(env.Out)
 			advisories++
@@ -339,9 +307,9 @@ func diagGitignore(env *Env, repoRoot string, p *plan.Plan) []Finding {
 	ignored, ok := ignoredPaths(env, repoRoot, planPaths(p))
 	switch {
 	case !ok:
-		return []Finding{{ID: "gitignore", Status: "info", Title: "Skipped gitignore check (git not available or not a repository)."}}
+		return []Finding{{ID: findingID("gitignore", repoScope, "generated"), Status: "info", Title: "Skipped gitignore check (git not available or not a repository)."}}
 	case len(ignored) == 0:
-		return []Finding{{ID: "gitignore", Status: "ok", Title: "No generated files are gitignored."}}
+		return []Finding{{ID: findingID("gitignore", repoScope, "generated"), Status: "ok", Title: "No generated files are gitignored."}}
 	}
 	title := fmt.Sprintf("%d generated %s ignored by git — they won't be committed or deployed", len(ignored), plural(len(ignored), "file"))
 	lines := []string{}
@@ -353,7 +321,7 @@ func diagGitignore(env *Env, repoRoot string, p *plan.Plan) []Finding {
 		lines = append(lines, "  "+rule)
 	}
 	lines = append(lines, "", "Run 'hemma doctor --fix' to add these entries automatically.")
-	return []Finding{Finding{ID: "gitignore", Status: "warn", Title: title, List: ignored, counts: true, noGlyph: true,
+	return []Finding{Finding{ID: findingID("gitignore", repoScope, "generated"), Status: "warn", Title: title, List: ignored, counts: true, noGlyph: true,
 		headline: title + ":", lines: lines}.withFix(func(env *Env) ([]string, error) {
 		if err := writeManagedBlock(filepath.Join(repoRoot, ".gitignore"), unignoreRules()); err != nil {
 			return nil, err
@@ -380,7 +348,7 @@ func diagManagedBlock(giPath string) []Finding {
 	want := unignoreRules()
 	var fs []Finding
 	if found && strings.Join(have, "\n") != strings.Join(want, "\n") {
-		fs = append(fs, Finding{ID: "gitignore.block", Status: "warn", counts: true,
+		fs = append(fs, Finding{ID: findingID("gitignore", repoScope, "block"), Status: "warn", counts: true,
 			Title:    "hemma's .gitignore block is out of date",
 			Summary:  "this version of hemma writes narrower rules and no longer re-includes whole data/ directories.",
 			headline: "hemma's .gitignore block is out of date: this version of hemma writes narrower rules and no longer re-includes whole data/ directories.",
@@ -400,7 +368,7 @@ func diagManagedBlock(giPath string) []Finding {
 			return []string{"Updated hemma's .gitignore block to the current (narrow) rules."}, nil
 		}))
 	} else if found {
-		fs = append(fs, Finding{ID: "gitignore.block", Status: "ok", Title: ".gitignore block is current."})
+		fs = append(fs, Finding{ID: findingID("gitignore", repoScope, "block"), Status: "ok", Title: ".gitignore block is current."})
 	}
 	// Blanket rules outside hemma's block.
 	if s, e := strings.Index(content, giBlockStart), strings.Index(content, giBlockEnd); s >= 0 && e > s {
@@ -414,7 +382,7 @@ func diagManagedBlock(giPath string) []Finding {
 	}
 	if len(stray) > 0 {
 		rules := strings.Join(dedupe(stray), ", ")
-		fs = append(fs, Finding{ID: "gitignore.blanket", Status: "warn",
+		fs = append(fs, Finding{ID: findingID("gitignore", repoScope, "blanket"), Status: "warn",
 			Title:    fmt.Sprintf(".gitignore has blanket data/ rules outside hemma's block (%s)", rules),
 			Summary:  "they make git walk all runtime data on every 'git status'. Remove them — hemma's narrow rules replace them.",
 			headline: fmt.Sprintf(".gitignore has blanket data/ rules outside hemma's block (%s): they make git walk all runtime data on every 'git status'. Remove them — hemma's narrow rules replace them.", rules)})
@@ -446,7 +414,7 @@ func diagCaddyImports(repoRoot string, cfg *config.Config) []Finding {
 	var fs []Finding
 	for _, host := range hostNames(cfg) {
 		cfPath := caddyfilePath(repoRoot, cfg, host)
-		id := "caddy.import:" + host
+		id := findingID("caddy.import", host, "Caddyfile")
 		data, err := os.ReadFile(cfPath)
 		if os.IsNotExist(err) {
 			continue
@@ -519,7 +487,7 @@ func diagTrustedProxies(repoRoot string, cfg *config.Config) []Finding {
 	var fs []Finding
 	for _, host := range hostNames(cfg) {
 		data, err := os.ReadFile(caddyfilePath(repoRoot, cfg, host))
-		id := "caddy.trusted:" + host
+		id := findingID("caddy.trusted", host, "Caddyfile")
 		if os.IsNotExist(err) {
 			continue
 		}
@@ -566,16 +534,16 @@ func diagDrift(env *Env, repoRoot string, cfg *config.Config) []Finding {
 	mf := loadManifest(env, repoRoot, cfg)
 	d := detectDrift(repoRoot, cfg, mf)
 	if !d.Any() {
-		return []Finding{{ID: "drift", Status: "ok", Title: "Generated files are in sync with services.yaml."}}
+		return []Finding{{ID: findingID("drift", repoScope, "generated"), Status: "ok", Title: "Generated files are in sync with services.yaml."}}
 	}
-	title := fmt.Sprintf("%d generated %s out of sync with services.yaml", d.Count(), plural(d.Count(), "file"))
-	entries := driftEntries(d)
-	lines := []string{}
-	for _, e := range entries {
-		lines = append(lines, "  - "+e)
-	}
-	lines = append(lines, "", "Run 'hemma doctor --fix' to reconcile (regenerate missing/modified, remove orphaned).")
-	return []Finding{Finding{ID: "drift", Status: "err", Title: title, List: entries, counts: true, headline: title + ":", lines: lines}.withFix(func(env *Env) ([]string, error) {
+	// One reconcile repairs every file, whichever finding asks first; the others then have nothing left to do (and a failure is
+	// reported once, by the first).
+	reconciled := false
+	reconcile := func(env *Env) ([]string, error) {
+		if reconciled {
+			return nil, nil
+		}
+		reconciled = true
 		eng := &syncpkg.Engine{RepoRoot: repoRoot, Manifest: loadManifest(env, repoRoot, cfg)}
 		fixPlan := plan.Build(cfg)
 		plan.PinExtraDirectivesToDisk(fixPlan, repoRoot, cfg.ExtraDirectivesFailed) // never regenerate a site without its extra directives
@@ -586,7 +554,29 @@ func diagDrift(env *Env, repoRoot string, cfg *config.Config) []Finding {
 		n := len(res.Created) + len(res.Updated) + len(res.Deleted)
 		return []string{fmt.Sprintf("Reconciled %d generated %s (%d created, %d updated, %d removed).",
 			n, plural(n, "file"), len(res.Created), len(res.Updated), len(res.Deleted))}, nil
-	})}
+	}
+
+	// The CLI prints one block for all of it. A UI (and --json) gets one finding per file, keyed by the host folder it is in and
+	// the file, so the same file out of sync on two hosts is one card, and fixing or adding another never renames it.
+	title := fmt.Sprintf("%d generated %s out of sync with services.yaml", d.Count(), plural(d.Count(), "file"))
+	entries := driftEntries(d)
+	lines := []string{}
+	for _, e := range entries {
+		lines = append(lines, "  - "+e)
+	}
+	lines = append(lines, "", "Run 'hemma doctor --fix' to reconcile (regenerate missing/modified, remove orphaned).")
+	fs := []Finding{Finding{ID: findingID("drift", repoScope, "all"), Status: "err", Title: title, List: entries, counts: true, cliOnly: true,
+		headline: title + ":", lines: lines}.withFix(reconcile)}
+	for _, class := range []struct {
+		word  string
+		files []string
+	}{{"missing: ", d.Missing}, {"modified:", d.Modified}, {"orphaned:", d.Orphaned}} {
+		for _, path := range class.files {
+			fs = append(fs, Finding{ID: findingID("drift", scopeOfPath(cfg, path), path), Status: "err", uiOnly: true, counts: true,
+				Title: class.word + " " + path, Summary: "this generated file is out of sync with services.yaml."}.withFix(reconcile))
+		}
+	}
+	return fs
 }
 
 // ── deploy readiness ────────────────────────────────────────────────────────────────────────────────────────
@@ -625,7 +615,7 @@ func diagDeployReadiness(env *Env, cfg *config.Config) []Finding {
 		}
 		problems++
 		title := fmt.Sprintf("%s: no known_hosts entry for its deploy destination (%s)", t.Name, t.Dest)
-		fs = append(fs, Finding{ID: "deploy.known_hosts:" + t.Name, Status: "warn", counts: true, Title: title,
+		fs = append(fs, Finding{ID: findingID("deploy.known_hosts", t.Name, "ssh"), Status: "warn", counts: true, Title: title,
 			Summary: "'hemma deploy' uses 'ssh -o BatchMode=yes' and will fail host-key verification.",
 			Steps:   []FindingStep{{Label: "fix", Text: fmt.Sprintf("connect once interactively to accept and record the host key — ssh %s (verify the fingerprint before accepting.)", t.Dest)}},
 			lines: []string{
@@ -636,7 +626,7 @@ func diagDeployReadiness(env *Env, cfg *config.Config) []Finding {
 			}})
 	}
 	if remotes > 0 && problems == 0 {
-		fs = append(fs, Finding{ID: "deploy.known_hosts", Status: "ok", Title: fmt.Sprintf("Deploy readiness: %d remote %s in known_hosts.", remotes, plural(remotes, "host"))})
+		fs = append(fs, Finding{ID: findingID("deploy.known_hosts", repoScope, "fleet"), Status: "ok", Title: fmt.Sprintf("Deploy readiness: %d remote %s in known_hosts.", remotes, plural(remotes, "host"))})
 	}
 	return fs
 }
@@ -652,12 +642,14 @@ func diagAuth(repoRoot string, cfg *config.Config) []Finding {
 	cfgAdvs := authConfigWarnings(repoRoot, cfg)
 	loop := cfg.Defaults.AuthSnippet != "" && cfg.Defaults.AuthService == ""
 	if len(cfgAdvs) == 0 && cfg.Defaults.AuthSnippet != "" {
-		fs = append(fs, Finding{ID: "auth.consistent", Status: "ok", Title: "Auth config is consistent."})
+		fs = append(fs, Finding{ID: findingID("auth.consistent", authScope(cfg), "config"), Status: "ok", Title: "Auth config is consistent."})
 	}
 	advs := append(append(cfgAdvs, usersDBWarnings(repoRoot, cfg)...), authWiringWarnings(repoRoot, cfg)...)
 	for i, a := range advs {
 		f := advisoryFinding(repoRoot, a)
-		f.ID = fmt.Sprintf("auth.advisory:%d", i+1)
+		if a.Code != "" && a.Subject != "" {
+			f.ID = findingID("auth."+a.Code, authScope(cfg), a.Subject)
+		}
 		f.counts = loop && i < len(cfgAdvs)
 		fs = append(fs, f)
 	}

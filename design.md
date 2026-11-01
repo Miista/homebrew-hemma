@@ -1222,14 +1222,14 @@ hemma doctor [--fix]     (-f)
    explains how `apply` works; the fix is "hemma apply on <host>, or hemma deploy". The check is split by the
    **source** of what was copied through (finding IDs `deployed.*`), and each reports deployed as well as not
    (✓ in the CLI, ⚠ when not), so a run always says what was compared:
-   - `deployed.auth:<host>` — "the auth snippet changed on disk and not deployed". The snippet is **shared**,
+   - `deployed.auth:<host>:snippet` — "the auth snippet changed on disk and not deployed". The snippet is **shared**,
      so this is binary: no counts, no list of services. It is judged by the gated services that have no extra
      directives of their own, whose route depends on the snippet alone (judging it by a service whose extras
      changed would blame the wrong file); with no such service nothing is said about it.
-   - `deployed.extra.<service>:<host>` — "extra directives for <service> changed on disk and not deployed", one
+   - `deployed.extra:<host>:<service>` — "extra directives for <service> changed on disk and not deployed", one
      per service that has them, with the source file as its body line. A service that also imports `(auth)` is
      not reported on its own while the snippet is not deployed: the one deploy that fixes the snippet fixes it.
-   - `deployed.unreachable:<host>` — when the proxy could not be asked at all (container down, admin API not
+   - `deployed.unreachable:<host>:proxy` — when the proxy could not be asked at all (container down, admin API not
      answering, unreadable output): a soft finding, never a silent pass, and neither advisory above pretends
      to be deployed.
 
@@ -1242,6 +1242,29 @@ hemma doctor [--fix]     (-f)
    page runs every host's over ssh — because the admin API is reachable from that host only (`diagDeployed`).
 
 Exits non-zero if any problem remains.
+
+**Finding IDs.** Every finding (`doctor --json`, the UI's Issues) has an ID that names what it is about and never
+who reported it: `<type>:<scope>:<subject>`. *type* is the kind (`drift`, `gitignore`, `caddy.import`,
+`caddy.trusted`, `deploy.known_hosts`, `extra.directives`, `deployed.auth|extra|unreachable`, `auth.<code>` for
+the auth advisories such as `auth.bypass.both`, `auth.oidc.noclient`, `auth.wiring.unenforced`); *scope* is the
+host (folder) the subject belongs to, or `repo` when it belongs to none; *subject* is the service, file or setting
+(`jellyfin`, `optiplex/caddy/data/sites/jellyfin.caddy`, `Caddyfile`, `block`). So the same problem found from two
+machines has the same ID, and an ID never depends on the order of findings or how many there are (no "advisory 3":
+each `auth.Advisory` carries a `Code` and `Subject`). Drift is one finding per generated file
+(`drift:<host>:<path>`), keyed by the host folder the file is in; the CLI keeps printing ONE block for all of it
+(an aggregate marked CLI-only that `--json` and the UI never see), and one reconcile fixes every file, whichever
+finding asks first.
+
+**Fleet view (the UI).** `DiagnoseFleet` takes this host's findings and each remote host's own `doctor --json`,
+and shows a problem once: two findings are ONE card when they have the same ID in this scheme AND say the same
+thing (status, title, summary, notes, list, steps); the card lists every host that reported it (`hosts`). When
+they differ — a hand edit, or a checkout one commit behind, on one host — each stays its own card (the later
+one's ID gets `@<host>` appended), so a host-specific divergence is never hidden by the merge. An ID that is not
+in the scheme (an older hemma on that host) is never merged and is prefixed with that host. **Fix only ever
+repairs the deploy host's checkout** — the one the page shows and Deploy ships; a remote host is never fixed from
+the UI (that left it with changes nobody committed), so a remote finding is not fixable there and says to run
+`hemma doctor --fix` on that host. For the usual case — the checkout is shared through git, so every host reports
+the same drift — it is one card: Fix, then Save, then Deploy.
 
 **The two-tier contract.** Every doctor finding is one of exactly two kinds: a *problem*
 `--fix` repairs mechanically (gitignore, Caddyfile imports, drift), or an *instructive

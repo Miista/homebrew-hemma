@@ -259,7 +259,7 @@ func (authelia) ValidateConfig(cfgPath string, services []Service) []Advisory {
 	doc, err := readAutheliaConfig(cfgPath)
 	if err != nil {
 		for _, s := range oidcSvcs {
-			w = append(w, Advisory{Headline: fmt.Sprintf("could not verify OIDC client for %s: %v", s.Name, err)})
+			w = append(w, Advisory{Code: "oidc.unchecked", Subject: s.Name, Headline: fmt.Sprintf("could not verify OIDC client for %s: %v", s.Name, err)})
 		}
 		return w
 	}
@@ -281,6 +281,8 @@ func (authelia) ValidateConfig(cfgPath string, services []Service) []Advisory {
 		}
 		if !matched {
 			w = append(w, Advisory{
+				Code:     "oidc.noclient",
+				Subject:  s.Name,
 				Headline: fmt.Sprintf("OIDC logins to %s will fail — no client is registered for it", s.Name),
 				Body: []string{fmt.Sprintf("service %s is auth: oidc but no Authelia OIDC client registers a redirect_uri for %s.",
 					s.Name, want)},
@@ -295,6 +297,8 @@ func (authelia) ValidateConfig(cfgPath string, services []Service) []Advisory {
 		// by name.
 		if oidcHasPolicy(s) && matchedPolicy != s.Name {
 			w = append(w, Advisory{
+				Code:     "oidc.policy",
+				Subject:  s.Name,
 				Headline: fmt.Sprintf("the access policy on %s is not enforced", s.Name),
 				Body: []string{fmt.Sprintf("%s has auth groups or a per-horizon policy, but its Authelia OIDC client does not", s.Name),
 					"reference the generated named authorization_policy, so it never applies."},

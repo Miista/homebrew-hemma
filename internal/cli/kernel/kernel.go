@@ -529,6 +529,8 @@ func authConfigWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 
 	if snippet && !service {
 		w = append(w, auth.Advisory{
+			Code:     "loop",
+			Subject:  "auth",
 			Headline: "post-login redirects will loop back to the auth portal",
 			Body: []string{"auth_snippet is set but auth_service is not, so the auth backend's site block",
 				"does not preserve X-Forwarded-Host."},
@@ -537,6 +539,8 @@ func authConfigWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 	}
 	if service && !snippet {
 		w = append(w, auth.Advisory{
+			Code:     "inert",
+			Subject:  "auth",
 			Headline: "auth is configured but does nothing — the (auth) snippet is an empty no-op",
 			Body:     []string{"auth_service is set but auth_snippet is not."},
 			Fix:      []string{"hemma defaults set auth-snippet <path>"},
@@ -545,6 +549,8 @@ func authConfigWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 	if service {
 		if _, ok := cfg.Services[cfg.Defaults.AuthService]; !ok {
 			w = append(w, auth.Advisory{
+				Code:     "service.undefined",
+				Subject:  cfg.Defaults.AuthService,
 				Headline: fmt.Sprintf("auth_service %q is not a defined service", cfg.Defaults.AuthService),
 				Fix:      []string{"hemma defaults set auth-service <name>  (or add the service first)"},
 			})
@@ -552,6 +558,8 @@ func authConfigWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 	}
 	if snippet && service && !anyForward {
 		w = append(w, auth.Advisory{
+			Code:     "unprotected",
+			Subject:  "auth",
 			Headline: "auth is fully configured but nothing is protected yet",
 			Body:     []string{"no service uses forward auth."},
 			Fix:      []string{"hemma update service <name> --auth-mode forward"},
@@ -568,6 +576,8 @@ func authConfigWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 			continue
 		}
 		w = append(w, auth.Advisory{
+			Code:     "bypass.both",
+			Subject:  name,
 			Headline: fmt.Sprintf("anyone can access %s — its auth policy is bypass on both horizons", name),
 			Body:     []string{fmt.Sprintf("service %s is auth: %s, but its effective policy is local: bypass, public: bypass — the same as auth: none.", name, s.Auth.Mode)},
 			Fix:      []string{fmt.Sprintf("hemma update service %s --auth-policy-local one_factor --auth-policy-public one_factor", name)},
@@ -633,6 +643,8 @@ func advisoryText(repoRoot string, a auth.Advisory) (headline string, lines []st
 func oidcClientWarnings(repoRoot string, cfg *config.Config) []auth.Advisory {
 	if cfg.Defaults.AuthService == "" {
 		return []auth.Advisory{{
+			Code:     "oidc.unverifiable",
+			Subject:  "auth",
 			Headline: "OIDC clients can't be verified — auth_service is not set",
 			Fix:      []string{"hemma defaults set auth-service <name>"},
 		}}
