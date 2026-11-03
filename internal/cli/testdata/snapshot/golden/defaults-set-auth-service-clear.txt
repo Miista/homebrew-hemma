@@ -24,7 +24,7 @@ Every host got an empty (auth) stub: services that 'import auth' are NOT protect
 --- files ---
 - core/authelia/data/config/hemma.access_control.generated.yml
 ~ core/caddy/data/hemma.auth.generated.caddy 293d8bfa6882
-~ core/caddy/data/sites/sso.caddy 21f224508e83
+~ core/caddy/data/sites/sso.caddy 9a43584e53c5
 ~ edge/caddy/data/hemma.auth.generated.caddy 293d8bfa6882
 ~ hemma-manifest.yaml 70bf21d4bb42
 ~ services.yaml 77a6633dce7a

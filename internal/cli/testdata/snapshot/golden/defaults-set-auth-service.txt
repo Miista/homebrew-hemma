@@ -18,8 +18,8 @@ To make changes live, run 'hemma apply' on each host:
 --- stderr ---
 --- files ---
 ~ core/caddy/data/hemma.auth.generated.caddy 44ab6beff912
-~ core/caddy/data/sites/registry.caddy c25da66b9f7e
-~ core/caddy/data/sites/sso.caddy 21f224508e83
+~ core/caddy/data/sites/registry.caddy f3d588757809
+~ core/caddy/data/sites/sso.caddy 9a43584e53c5
 ~ edge/caddy/data/hemma.auth.generated.caddy d9d8331e55ab
 ~ services.yaml 906c881605b9
 --- services.yaml ---

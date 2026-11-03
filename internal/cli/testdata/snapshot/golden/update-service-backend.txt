@@ -15,7 +15,7 @@ To make changes live, run 'hemma apply' on each host:
   on edge:  hemma apply
 --- stderr ---
 --- files ---
-~ edge/caddy/data/sites/dash.caddy 354d2df0ac17
+~ edge/caddy/data/sites/dash.caddy 081f4454d587
 ~ services.yaml e5858ad0f15f
 --- services.yaml ---
 hosts:

@@ -15,7 +15,7 @@ To make changes live, run 'hemma apply' on each host:
   on core:  hemma apply
 --- stderr ---
 --- files ---
-+ core/caddy/data/sites/newsvc.caddy 21ce94ba2443
++ core/caddy/data/sites/newsvc.caddy 8a2a4c556696
 + core/pihole/data/dnsmasq.d/newsvc.generated.conf 5e336303503d
 ~ hemma-manifest.yaml 53b618f288ed
 ~ services.yaml b1495ba7fc26

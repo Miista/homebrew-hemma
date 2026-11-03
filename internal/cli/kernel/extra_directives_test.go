@@ -55,7 +55,7 @@ func TestExtraDirectives_Lifecycle(t *testing.T) {
 	got := readSite()
 	// inside one route block (so they run in written order, after any gate), two tabs deep, matcher indentation kept on top
 	if !strings.Contains(got, "\t# extra_directives: extras/watch.caddy") ||
-		!strings.Contains(got, "\troute {\n\t\t@m {\n\t\t\tpath /a\n\t\t}\n\t\turi @m query x 1\n\t}\n\treverse_proxy jellyfin:8096\n") {
+		!strings.Contains(got, "\troute {\n\t\t@m {\n\t\t\tpath /a\n\t\t}\n\t\turi @m query x 1\n\t}\n\treverse_proxy jellyfin:8096 {\n") {
 		t.Fatalf("the directives are missing from the site, or not inside a route block:\n%s", got)
 	}
 	if strings.Index(got, "uri @m query x 1") > strings.Index(got, "reverse_proxy jellyfin:8096") {

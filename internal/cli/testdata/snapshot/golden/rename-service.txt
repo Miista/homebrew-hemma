@@ -18,7 +18,7 @@ To make changes live, run 'hemma apply' on each host:
 --- stderr ---
 --- files ---
 + core/pihole/data/dnsmasq.d/dashboard.generated.conf ebe21c0af1a5
-+ edge/caddy/data/sites/dashboard.caddy 2d8134873552
++ edge/caddy/data/sites/dashboard.caddy 63b5d4149ad1
 - core/pihole/data/dnsmasq.d/dash.generated.conf
 - edge/caddy/data/sites/dash.caddy
 ~ hemma-manifest.yaml 4d20140dc993

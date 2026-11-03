@@ -35,10 +35,26 @@ func TestCaddySite(t *testing.T) {
 	want := Header + "\n" +
 		"docs.example.com {\n" +
 		"\timport tls_example_com\n" +
-		"\treverse_proxy docsapp:8000\n" +
+		"\treverse_proxy docsapp:8000 {\n" +
+		"\t\theader_up X-Forwarded-For {client_ip}\n" +
+		"\t}\n" +
 		"}\n"
 	if got != want {
 		t.Fatalf("CaddySite mismatch:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// Every upstream gets X-Forwarded-For set to Caddy's resolved client IP, whatever the gate, so an app that reads the header strictly
+// sees one address and needs to trust only Caddy (design §4.7). Without it, reverse_proxy passes on the trusted chain with the last
+// proxy appended ("client, <cloudflared>"), and such an app takes that proxy for the client.
+func TestCaddySite_ForwardsResolvedClientIP(t *testing.T) {
+	for _, gate := range []config.GateScope{config.GateNone, config.GateAll, config.GateOutside} {
+		for _, authBackend := range []bool{false, true} {
+			got := CaddySite("a.example.com", "tls_example_com", "app:1", gate, []string{"10.0.0.0/8"}, authBackend)
+			if strings.Count(got, "header_up X-Forwarded-For {client_ip}") != 1 {
+				t.Errorf("gate %v, authBackend %v: want exactly one client-IP header_up:\n%s", gate, authBackend, got)
+			}
+		}
 	}
 }
 
@@ -60,7 +76,9 @@ func TestCaddySite_Auth(t *testing.T) {
 		"docs.example.com {\n" +
 		"\timport tls_example_com\n" +
 		"\timport auth\n" +
-		"\treverse_proxy docsapp:8000\n" +
+		"\treverse_proxy docsapp:8000 {\n" +
+		"\t\theader_up X-Forwarded-For {client_ip}\n" +
+		"\t}\n" +
 		"}\n"
 	if got != want {
 		t.Fatalf("CaddySite(auth) mismatch:\n got: %q\nwant: %q", got, want)
@@ -80,6 +98,7 @@ func TestCaddySite_AuthBackend(t *testing.T) {
 		"auth.example.com {\n" +
 		"\timport tls_example_com\n" +
 		"\treverse_proxy authelia:9091 {\n" +
+		"\t\theader_up X-Forwarded-For {client_ip}\n" +
 		"\t\theader_up X-Forwarded-Host {header.X-Forwarded-Host}\n" +
 		"\t}\n" +
 		"}\n"
@@ -98,7 +117,9 @@ func TestCaddySite_ForwardIsUniform_NoPublicPathBranches(t *testing.T) {
 		"status.example.com {\n" +
 		"\timport tls_example_com\n" +
 		"\timport auth\n" +
-		"\treverse_proxy gatus:8080\n" +
+		"\treverse_proxy gatus:8080 {\n" +
+		"\t\theader_up X-Forwarded-For {client_ip}\n" +
+		"\t}\n" +
 		"}\n"
 	if got != want {
 		t.Fatalf("CaddySite(forward) mismatch:\n got: %q\nwant: %q", got, want)
@@ -254,7 +275,9 @@ func TestCaddySite_GateOutside(t *testing.T) {
 		"\troute @hemma_outside {\n" +
 		"\t\timport auth\n" +
 		"\t}\n" +
-		"\treverse_proxy paperless:8000\n" +
+		"\treverse_proxy paperless:8000 {\n" +
+		"\t\theader_up X-Forwarded-For {client_ip}\n" +
+		"\t}\n" +
 		"}\n"
 	if got != want {
 		t.Fatalf("CaddySite(GateOutside) mismatch:\n got: %q\nwant: %q", got, want)
@@ -280,7 +303,9 @@ func TestCaddySiteWithDirectives_PlainSite(t *testing.T) {
 		"\t\t}\n" +
 		"\t\turi @m query x 1\n" +
 		"\t}\n" +
-		"\treverse_proxy jellyfin:8096\n" +
+		"\treverse_proxy jellyfin:8096 {\n" +
+		"\t\theader_up X-Forwarded-For {client_ip}\n" +
+		"\t}\n" +
 		"}\n"
 	if got != want {
 		t.Fatalf("CaddySiteWithDirectives mismatch:\n got: %q\nwant: %q", got, want)
@@ -294,19 +319,20 @@ func TestCaddySiteWithDirectives_PlainSite(t *testing.T) {
 func TestCaddySiteWithDirectives_ExactShapes(t *testing.T) {
 	extra := SiteDirectives{Path: "e.caddy", Body: "uri /a\n"}
 	block := "\t# extra_directives: e.caddy (edit that file, not this one)\n\troute {\n\t\turi /a\n\t}\n"
+	proxy := "\treverse_proxy app:1 {\n\t\theader_up X-Forwarded-For {client_ip}\n\t}\n"
 	for name, tc := range map[string]struct {
 		gate config.GateScope
 		nets []string
 		want string
 	}{
 		"gate for everyone": {config.GateAll, nil,
-			Header + "\na.example.com {\n\timport tls_example_com\n\timport auth\n" + block + "\treverse_proxy app:1\n}\n"},
+			Header + "\na.example.com {\n\timport tls_example_com\n\timport auth\n" + block + proxy + "}\n"},
 		"gate outside the local networks": {config.GateOutside, []string{"10.0.0.0/8", "192.168.1.0/24"},
-			Header + "\na.example.com {\n\timport tls_example_com\n\t@hemma_outside not client_ip 10.0.0.0/8 192.168.1.0/24\n\troute @hemma_outside {\n\t\timport auth\n\t}\n" + block + "\treverse_proxy app:1\n}\n"},
+			Header + "\na.example.com {\n\timport tls_example_com\n\t@hemma_outside not client_ip 10.0.0.0/8 192.168.1.0/24\n\troute @hemma_outside {\n\t\timport auth\n\t}\n" + block + proxy + "}\n"},
 		"outside gate but no local networks asks everyone": {config.GateOutside, nil,
-			Header + "\na.example.com {\n\timport tls_example_com\n\timport auth\n" + block + "\treverse_proxy app:1\n}\n"},
+			Header + "\na.example.com {\n\timport tls_example_com\n\timport auth\n" + block + proxy + "}\n"},
 		"no gate": {config.GateNone, nil,
-			Header + "\na.example.com {\n\timport tls_example_com\n" + block + "\treverse_proxy app:1\n}\n"},
+			Header + "\na.example.com {\n\timport tls_example_com\n" + block + proxy + "}\n"},
 	} {
 		if got := CaddySiteWithDirectives("a.example.com", "tls_example_com", "app:1", tc.gate, tc.nets, false, extra); got != tc.want {
 			t.Errorf("%s:\n got: %q\nwant: %q", name, got, tc.want)
@@ -319,7 +345,7 @@ func TestCaddySiteWithDirectives_PortalProxyKeepsItsBlock(t *testing.T) {
 	got := CaddySiteWithDirectives("auth.example.com", "tls_example_com", "authelia:9091", config.GateNone, nil, true, SiteDirectives{Path: "e.caddy", Body: "header X 1\n"})
 	want := Header + "\nauth.example.com {\n\timport tls_example_com\n" +
 		"\t# extra_directives: e.caddy (edit that file, not this one)\n\troute {\n\t\theader X 1\n\t}\n" +
-		"\treverse_proxy authelia:9091 {\n\t\theader_up X-Forwarded-Host {header.X-Forwarded-Host}\n\t}\n}\n"
+		"\treverse_proxy authelia:9091 {\n\t\theader_up X-Forwarded-For {client_ip}\n\t\theader_up X-Forwarded-Host {header.X-Forwarded-Host}\n\t}\n}\n"
 	if got != want {
 		t.Errorf("portal with extras:\n got: %q\nwant: %q", got, want)
 	}

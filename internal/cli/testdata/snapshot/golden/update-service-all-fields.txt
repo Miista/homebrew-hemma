@@ -13,7 +13,7 @@ To make changes live, run 'hemma apply' on each host:
   on core:  hemma apply
 --- stderr ---
 --- files ---
-+ core/caddy/data/sites/dash.caddy ffc23a16f0eb
++ core/caddy/data/sites/dash.caddy 96ccb58cfff2
 ~ core/cloudflared/config.yml 6aa409325191
 ~ core/pihole/data/dnsmasq.d/dash.generated.conf 6e1bf042545a
 ~ edge/cloudflared/config.yml 938c605dbbe8

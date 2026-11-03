@@ -17,7 +17,7 @@ To make changes live, run 'hemma apply' on each host:
 --- stderr ---
 --- files ---
 + core/pihole/data/dnsmasq.d/newsvc.generated.conf f43ec400c010
-+ edge/caddy/data/sites/newsvc.caddy 21ce94ba2443
++ edge/caddy/data/sites/newsvc.caddy 8a2a4c556696
 ~ hemma-manifest.yaml 6bd89803f8d7
 ~ services.yaml ec7bd927aec4
 --- services.yaml ---

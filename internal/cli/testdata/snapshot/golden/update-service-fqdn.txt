@@ -17,7 +17,7 @@ To make changes live, run 'hemma apply' on each host:
 --- stderr ---
 --- files ---
 ~ core/pihole/data/dnsmasq.d/dash.generated.conf 992752da1cea
-~ edge/caddy/data/sites/dash.caddy 5c9e7b262cac
+~ edge/caddy/data/sites/dash.caddy 19d1b22dc884
 ~ edge/cloudflared/config.yml f7650dad75cd
 ~ services.yaml cd235e3b2c15
 --- services.yaml ---

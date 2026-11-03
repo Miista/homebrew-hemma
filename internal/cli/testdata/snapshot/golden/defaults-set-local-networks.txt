@@ -16,7 +16,7 @@ To make changes live, run 'hemma apply' on each host:
 --- stderr ---
 --- files ---
 ~ core/authelia/data/config/hemma.access_control.generated.yml 5b4dcb79e07a
-~ edge/caddy/data/sites/wiki.caddy a342b687a3b4
+~ edge/caddy/data/sites/wiki.caddy 4271f78a337f
 ~ services.yaml 39822241ccf9
 --- services.yaml ---
 hosts:

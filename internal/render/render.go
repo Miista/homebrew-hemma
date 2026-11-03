@@ -178,6 +178,14 @@ func CaddySite(fqdn, tlsImport, backend string, gate config.GateScope, localNetw
 // The zero SiteDirectives (or a blank body) adds nothing, so a service without one
 // renders byte-identically to CaddySite.
 func CaddySiteWithDirectives(fqdn, tlsImport, backend string, gate config.GateScope, localNetworks []string, authBackend bool, extra SiteDirectives) string {
+	// Every upstream gets X-Forwarded-For set to Caddy's resolved client IP (design §4.7). By
+	// default reverse_proxy keeps the inbound header from a trusted peer and appends that peer,
+	// so a request through the tunnel reaches the app as "client, <cloudflared>": an app that
+	// reads the header strictly (right to left, trusting only Caddy) then takes cloudflared for
+	// the client. {client_ip} is what Caddy itself derived from trusted_proxies and
+	// client_ip_headers, so the app sees one address and needs to trust only Caddy. From an
+	// untrusted peer {client_ip} is that peer, which is what the header already held.
+	proxyHeaders := "\t\theader_up X-Forwarded-For {client_ip}\n"
 	// The forward-auth backend (e.g. an Authelia portal) must preserve the inbound
 	// X-Forwarded-Host through the reverse_proxy. When a protected service's
 	// auth check hits this backend, Caddy's outer hop already set
@@ -186,10 +194,10 @@ func CaddySiteWithDirectives(fqdn, tlsImport, backend string, gate config.GateSc
 	// treat itself as the target and loop the post-login redirect. Preserving it
 	// is safe: the value is whatever the trusted outer Caddy hop computed, not
 	// anything a client can spoof.
-	proxyLine := fmt.Sprintf("reverse_proxy %s", backend)
 	if authBackend {
-		proxyLine = fmt.Sprintf("reverse_proxy %s {\n\t\theader_up X-Forwarded-Host {header.X-Forwarded-Host}\n\t}", backend)
+		proxyHeaders += "\t\theader_up X-Forwarded-Host {header.X-Forwarded-Host}\n"
 	}
+	proxyLine := fmt.Sprintf("reverse_proxy %s {\n%s\t}", backend, proxyHeaders)
 
 	// AuthForward: one uniform shape — import auth, then proxy. No handle
 	// wrappers: with a single branch they add nothing, and per-path public
