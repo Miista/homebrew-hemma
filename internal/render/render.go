@@ -112,11 +112,13 @@ func TLSSnippet(domain string) string {
 //     local= type 65 is NODATA; without it, type 65 is the cached Cloudflare
 //     record.)
 //   - the A record points at hostIP (the host that RUNS the service).
-//   - address=/<fqdn>/:: suppresses the public AAAA; :: (unspecified) is
-//     correct, ::1 (loopback) is a bug (design §4.1).
+//   - no AAAA record: local= already answers AAAA with NODATA, so the public
+//     AAAA never leaks. An address=/<fqdn>/:: line would answer with a real
+//     :: record, which IPv6-first clients on a Linux host dial as that host
+//     itself (design §4.1).
 func DNSRecord(fqdn, hostIP string) string {
-	return fmt.Sprintf("%s\nlocal=/%s/\naddress=/%s/%s\naddress=/%s/::\n",
-		Header, fqdn, fqdn, hostIP, fqdn)
+	return fmt.Sprintf("%s\nlocal=/%s/\naddress=/%s/%s\n",
+		Header, fqdn, fqdn, hostIP)
 }
 
 // CaddySite renders the Caddy site block for a service. tlsImport is the

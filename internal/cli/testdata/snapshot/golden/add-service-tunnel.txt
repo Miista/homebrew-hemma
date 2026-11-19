@@ -16,7 +16,7 @@ To make changes live, run 'hemma apply' on each host:
   on edge:  hemma apply
 --- stderr ---
 --- files ---
-+ core/pihole/data/dnsmasq.d/newsvc.generated.conf f43ec400c010
++ core/pihole/data/dnsmasq.d/newsvc.generated.conf 6a6f4066c269
 + edge/caddy/data/sites/newsvc.caddy 8a2a4c556696
 ~ edge/cloudflared/config.yml 5feb23b77349
 ~ hemma-manifest.yaml 6bd89803f8d7

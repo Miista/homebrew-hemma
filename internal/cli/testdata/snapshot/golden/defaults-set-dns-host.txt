@@ -30,22 +30,22 @@ To make changes live, run 'hemma apply' on each host:
   on edge:  hemma apply
 --- stderr ---
 --- files ---
-+ edge/pihole/data/dnsmasq.d/chat.generated.conf e2fe254f5eaa
-+ edge/pihole/data/dnsmasq.d/dash.generated.conf ebe21c0af1a5
-+ edge/pihole/data/dnsmasq.d/downloads.generated.conf f5fd79710ba9
-+ edge/pihole/data/dnsmasq.d/home.generated.conf fc5f43086421
-+ edge/pihole/data/dnsmasq.d/homepage.generated.conf a8b08b585383
-+ edge/pihole/data/dnsmasq.d/indexer.generated.conf fbdbe437aa14
-+ edge/pihole/data/dnsmasq.d/media.generated.conf 2abff58d132f
-+ edge/pihole/data/dnsmasq.d/music.generated.conf 9eb00f6266c2
-+ edge/pihole/data/dnsmasq.d/panel.generated.conf 1e4327e386cf
-+ edge/pihole/data/dnsmasq.d/registry.generated.conf 33a6a14119e6
-+ edge/pihole/data/dnsmasq.d/robot.generated.conf b09b382ff4fc
-+ edge/pihole/data/dnsmasq.d/speed.generated.conf b3585fd7de81
-+ edge/pihole/data/dnsmasq.d/sso.generated.conf 5433cee68593
-+ edge/pihole/data/dnsmasq.d/status.generated.conf 663cfdc4b90a
-+ edge/pihole/data/dnsmasq.d/wiki.generated.conf c35fb99d0f7f
-+ edge/pihole/data/dnsmasq.d/wikijs.generated.conf 4290148ee2fe
++ edge/pihole/data/dnsmasq.d/chat.generated.conf 22194b90eddc
++ edge/pihole/data/dnsmasq.d/dash.generated.conf 43dca53559c8
++ edge/pihole/data/dnsmasq.d/downloads.generated.conf c851b0e4ed34
++ edge/pihole/data/dnsmasq.d/home.generated.conf 60c8383fc475
++ edge/pihole/data/dnsmasq.d/homepage.generated.conf 9b165f17cc86
++ edge/pihole/data/dnsmasq.d/indexer.generated.conf 041a431e7a85
++ edge/pihole/data/dnsmasq.d/media.generated.conf 60dbf6af9e53
++ edge/pihole/data/dnsmasq.d/music.generated.conf 73cb23197c18
++ edge/pihole/data/dnsmasq.d/panel.generated.conf c36026506534
++ edge/pihole/data/dnsmasq.d/registry.generated.conf ef8e5e00769a
++ edge/pihole/data/dnsmasq.d/robot.generated.conf a16ed05cd719
++ edge/pihole/data/dnsmasq.d/speed.generated.conf 6501f1161f7a
++ edge/pihole/data/dnsmasq.d/sso.generated.conf 6589c933303c
++ edge/pihole/data/dnsmasq.d/status.generated.conf 5083fd619dd8
++ edge/pihole/data/dnsmasq.d/wiki.generated.conf 581b3c039cb5
++ edge/pihole/data/dnsmasq.d/wikijs.generated.conf 84bfa9dd2a2c
 - core/pihole/data/dnsmasq.d/chat.generated.conf
 - core/pihole/data/dnsmasq.d/dash.generated.conf
 - core/pihole/data/dnsmasq.d/downloads.generated.conf

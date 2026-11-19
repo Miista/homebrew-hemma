@@ -15,7 +15,7 @@ To make changes live, run 'hemma apply' on each host:
 --- files ---
 + core/caddy/data/sites/dash.caddy 96ccb58cfff2
 ~ core/cloudflared/config.yml 6aa409325191
-~ core/pihole/data/dnsmasq.d/dash.generated.conf 6e1bf042545a
+~ core/pihole/data/dnsmasq.d/dash.generated.conf cd6112fefe8a
 ~ edge/cloudflared/config.yml 938c605dbbe8
 ~ hemma-manifest.yaml aacfd357af92
 ~ services.yaml 693cff6b0918

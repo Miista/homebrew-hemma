@@ -7,11 +7,11 @@ Running on host "core".
 
 == dash · dash.home.example ==
   ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
 
 --- stderr ---
-Error: 2 checks failed.
+Error: 1 check failed.
 --- external commands ---
 git -C <repo> check-ignore --stdin
 docker exec pihole dig +short A dash.home.example @127.0.0.1
