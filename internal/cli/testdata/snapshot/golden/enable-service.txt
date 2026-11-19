@@ -14,7 +14,7 @@ To make changes live, run 'hemma apply' on each host:
   on edge:  hemma apply
 --- stderr ---
 --- files ---
-+ core/pihole/data/dnsmasq.d/shelf.generated.conf a4f6d772a9ac
++ core/pihole/data/dnsmasq.d/shelf.generated.conf 92b74021b92a
 + edge/caddy/data/sites/shelf.caddy 727d0190ba3b
 ~ core/authelia/data/config/hemma.access_control.generated.yml 395cbe246def
 ~ edge/cloudflared/config.yml 81e39206417d

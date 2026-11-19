@@ -7,22 +7,22 @@ Running on host "core".
 
 == chat · chat.home.example ==
   ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
 
 == dash · dash.home.example ==
   ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
 
 == downloads · downloads.home.example ==
   ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
 
 == home · ha.home.example ==
   ✗ DNS A = (none) (want 192.0.2.10) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
   ✗ ha.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
   ✓ caddy validate passes
@@ -31,7 +31,7 @@ Running on host "core".
 
 == homepage · start.home.example ==
   ✗ DNS A = (none) (want 192.0.2.10) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
   ✗ start.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
   ✓ caddy validate passes
@@ -40,22 +40,22 @@ Running on host "core".
 
 == indexer · indexer.home.example ==
   ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
 
 == media · watch.home.example ==
   ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
 
 == music · music.home.example ==
   ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
 
 == panel · panel.home.example ==
   ✗ DNS A = (none) (want 192.0.2.10) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
   ✗ panel.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
   ✓ caddy validate passes
@@ -64,7 +64,7 @@ Running on host "core".
 
 == registry · registry.home.example ==
   ✗ DNS A = (none) (want 192.0.2.10) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
   ✗ registry.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
   ✓ caddy validate passes
@@ -73,17 +73,17 @@ Running on host "core".
 
 == robot · robot.home.example ==
   ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
 
 == speed · speed.home.example ==
   ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
 
 == sso · auth.home.example ==
   ✗ DNS A = (none) (want 192.0.2.10) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
   ✗ auth.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
   ✓ caddy validate passes
@@ -92,7 +92,7 @@ Running on host "core".
 
 == status · status.home.example ==
   ✗ DNS A = (none) (want 192.0.2.10) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
   ✗ status.home.example not in adapted config — the Caddyfile must 'import tls/*.caddy' then 'import sites/*.caddy' (tls first, uncommented)
   ✓ caddy validate passes
@@ -101,16 +101,16 @@ Running on host "core".
 
 == wiki · wiki.home.example ==
   ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
 
 == wikijs · docs.home.example ==
   ✗ DNS A = (none) (want 192.0.2.20) — conf not loaded? pihole forwarding upstream. The .conf must be directly in /etc/dnsmasq.d/ (conf-dir does not recurse into subdirs).
-  ✗ DNS AAAA = (none) (want ::)
+  ✓ DNS AAAA = NODATA (clients use the A record)
   ✓ DNS HTTPS/SVCB = NODATA (no public-endpoint leak)
 
 --- stderr ---
-Error: 50 checks failed.
+Error: 34 checks failed.
 --- external commands ---
 git -C <repo> check-ignore --stdin
 docker exec pihole dig +short A chat.home.example @127.0.0.1

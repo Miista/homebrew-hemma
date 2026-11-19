@@ -156,14 +156,12 @@ func (v *verifier) dns(env *Env, fqdn, wantIP string) {
 		v.no(env, "dnsmasq served a cached (stale upstream) answer — restart pihole to flush")
 	}
 
-	// AAAA must be :: (suppression), never ::1.
-	switch aaaa := dexec(env, piholeContainer, "dig", "+short", "AAAA", fqdn, "@127.0.0.1"); aaaa {
-	case "::":
-		v.ok(env, "DNS AAAA = :: (suppressed)")
-	case "::1":
-		v.no(env, "DNS AAAA = ::1 (loopback) — must be :: (unspecified)")
-	default:
-		v.no(env, "DNS AAAA = %s (want ::)", orNone(aaaa))
+	// AAAA must be NODATA: any address (:: included) is dialled by IPv6-first
+	// clients, and :: or ::1 means the client's own host.
+	if aaaa := dexec(env, piholeContainer, "dig", "+short", "AAAA", fqdn, "@127.0.0.1"); aaaa == "" {
+		v.ok(env, "DNS AAAA = NODATA (clients use the A record)")
+	} else {
+		v.no(env, "DNS AAAA = %s (want NODATA) — an old address=/%s/:: line? restart pihole after sync", aaaa, fqdn)
 	}
 
 	// HTTPS/SVCB (type 65) must be NODATA, else SVCB-aware clients (Safari) take

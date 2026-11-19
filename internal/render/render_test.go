@@ -11,22 +11,21 @@ func TestDNSRecord(t *testing.T) {
 	got := DNSRecord("docs.example.com", "192.0.2.2")
 	want := Header + "\n" +
 		"local=/docs.example.com/\n" +
-		"address=/docs.example.com/192.0.2.2\n" +
-		"address=/docs.example.com/::\n"
+		"address=/docs.example.com/192.0.2.2\n"
 	if got != want {
 		t.Fatalf("DNSRecord mismatch:\n got: %q\nwant: %q", got, want)
 	}
 }
 
-// The :: vs ::1 distinction is structural (design §4.1): :: suppresses the
-// public AAAA; ::1 is an explicit bug.
-func TestDNSRecord_SuppressesAAAAWithUnspecified(t *testing.T) {
+// No AAAA is emitted (design §4.1): local= answers AAAA with NODATA, while
+// both :: and ::1 are real records that IPv6-first clients dial as themselves.
+func TestDNSRecord_NoAAAA(t *testing.T) {
 	got := DNSRecord("x.example.net", "192.0.2.1")
-	if !strings.Contains(got, "address=/x.example.net/::\n") {
-		t.Errorf("missing AAAA-suppression line: %q", got)
+	if !strings.Contains(got, "local=/x.example.net/\n") {
+		t.Errorf("missing local= line (it is what makes AAAA NODATA): %q", got)
 	}
-	if strings.Contains(got, "::1") {
-		t.Errorf("emitted ::1 (loopback) — must be :: (unspecified): %q", got)
+	if strings.Contains(got, "::") {
+		t.Errorf("emitted an AAAA address: %q", got)
 	}
 }
 
